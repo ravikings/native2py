@@ -2,7 +2,7 @@
 
 **Audience:** CTO, Directors of Engineering, and the budget holder for legacy
 modernization.
-**Source:** <https://github.com/ravikings/ThinkDeck/tree/main/haliburtion>
+**Source:** <https://github.com/ravikings/native2py>
 **Companion documents:** [`design.md`](design.md) (the specification),
 [`README.md`](README.md) (what exists today),
 [`tools/native2py/docs/production-readiness.md`](tools/native2py/docs/production-readiness.md)
@@ -218,25 +218,56 @@ context, which decides whether the task finishes at all.
 | Hand-written | ~500 lines emitted (pybind11 TU, CMakeLists, pyproject, package init, FastAPI app, tests), then 3–4 compile and link repair rounds, all resident afterwards | 20,000 – 40,000 |
 | Generated | One command and a four-line checklist. The generated files never enter context, because there is no reason to read them | 300 – 500 |
 
+The hand-written figure is dominated by repair, not by the first draft. Three
+or four compile-or-link rounds is normal for template-adjacent code, and
+`include/`-vs-`src/` layout problems and undefined-symbol-at-import failures
+reliably burn several.
+
 Three effects matter more than the ratio:
 
-- **The repair loop disappears rather than shrinks.** The generator refuses
-  what it cannot bind, with a reason, instead of emitting code that fails to
-  compile.
+- **The repair loop disappears rather than shrinks.** The generator emits code
+  that already compiles for the constructs it accepts, and refuses the rest
+  with a reason. The agent never enters the read-error → re-emit → rebuild
+  cycle that dominates hand-written binding cost.
 - **`golden verify` is a correctness signal the agent cannot fake.** Left to
-  itself, an agent writes tests from its own reading of the source, validating
-  its interpretation rather than the numbers.
-- **Generated output is identical at 80% context.** A hand-written binding
-  degrades as the window fills.
+  itself, an agent asked whether a re-hosted library still works writes tests
+  from its own reading of the source, which validates its interpretation
+  rather than the numbers. `golden record` / `golden verify` gives a real
+  pass/fail on the answers for a couple of hundred tokens.
+- **Correctness stops depending on how much context is left.** A hand-written
+  binding degrades as the window fills, with later methods getting less
+  attention than earlier ones. Generated output is identical at the start of a
+  session and at 80% context.
 
 > **On these token figures.** Estimates derived from the size of the generated
-> artifacts, not a measured benchmark. The ratio is not a close call; the
+> artifacts, not a measured benchmark. The ratio is not a close call, and it
+> is structural rather than a matter of prompting the agent better, but the
 > absolute numbers are not data.
 
-This axis is now addressable directly: `tools/native2py/skill/` is a Claude
-Code skill (symlinked to `.claude/skills/native2py`) that makes a coding agent
-invoke the CLI instead of hand-writing bindings. See "Use it as an agent
-skill" in [`tools/native2py/README.md`](tools/native2py/README.md).
+**This axis is addressable today.** `tools/native2py/skill/` is a Claude Code
+skill, symlinked to `.claude/skills/native2py`, that makes a coding agent
+invoke the CLI instead of hand-writing bindings. It encodes what an agent has
+no way to infer from `--help`: that `suggest` exists, so it should not read
+headers itself to choose a starting file; that a `regex reader` line means the
+parse is missing symbols and must not be trusted; that skipped-binding reasons
+should be relayed rather than summarized; and that generated files are
+rewritten every run, so hand-edits are lost.
+
+It also carries the production-readiness gap list, so an agent raises §6
+unprompted rather than handing over a service with no auth as though it were
+finished. For a governance conversation that matters as much as the token
+count: it makes the honest disclosure the default behaviour rather than
+something a reviewer has to catch.
+
+Installing it in another project:
+
+```bash
+mkdir -p .claude/skills
+cp -r /path/to/native2py/tools/native2py/skill .claude/skills/native2py
+```
+
+Full argument in "Use it as an agent skill" in
+[`tools/native2py/README.md`](tools/native2py/README.md).
 
 ### 3.6 Where cost does *not* go away
 

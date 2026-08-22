@@ -85,7 +85,7 @@ that project's environment and run it from that project's root.
 ```bash
 cd /path/to/other-project
 python3 -m venv .venv
-.venv/bin/pip install "native2py[clang,build,test] @ git+https://github.com/ravikings/ThinkDeck.git@<sha>#subdirectory=haliburtion/tools/native2py"
+.venv/bin/pip install "native2py[clang,build,test] @ git+https://github.com/ravikings/native2py.git@<sha>#subdirectory=tools/native2py"
 
 .venv/bin/native2py quickstart src/mylib.hpp --build
 ```

@@ -52,7 +52,7 @@ package and resolves `services/` against your current directory:
 ```bash
 cd /path/to/your-project
 python3 -m venv .venv
-.venv/bin/pip install "native2py[clang,build,test] @ git+https://github.com/ravikings/ThinkDeck.git@<sha>#subdirectory=haliburtion/tools/native2py"
+.venv/bin/pip install "native2py[clang,build,test] @ git+https://github.com/ravikings/native2py.git@<sha>#subdirectory=tools/native2py"
 .venv/bin/native2py init && .venv/bin/native2py quickstart src/yourlib.hpp
 ```
 
