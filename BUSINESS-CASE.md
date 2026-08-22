@@ -1,7 +1,8 @@
 # native2py — Business Case
 
-**Audience:** CTO, Directors of Engineering, and the budget holder for legacy
-modernization.
+**Status:** V1 prototype, shared for technical review.
+**Audience:** engineering leadership evaluating a legacy-modernization
+approach.
 **Source:** <https://github.com/ravikings/native2py>
 **Companion documents:** [`design.md`](design.md) (the specification),
 [`README.md`](README.md) (what exists today),
@@ -12,10 +13,10 @@ modernization.
 
 ## 1. The problem in one sentence
 
-We have decades of C++ and FORTRAN that computes correctly and that nobody
-dares touch. Every new product needs those numbers: a web portal, an
-optimizer, an ML pipeline, a customer-facing API. Today there are three ways
-to get them.
+An organization has decades of C++ and FORTRAN that computes correctly and
+that nobody dares touch. Every new product needs those numbers: a web portal,
+an optimizer, an ML pipeline, a customer-facing API. There are three usual
+ways to get them.
 
 | Option | What it costs |
 |---|---|
@@ -301,10 +302,10 @@ approved at all, and the strongest defence if the answer is ever challenged
 after the fact.
 
 **3. Key-person risk drops, and the bottleneck moves off the critical path.**
-Today the two people who can compile the FORTRAN gate every downstream
-project, and one of them is closer to retirement than to the roadmap.
-Afterwards, Python developers write `from petro import ...` and never learn
-f2py. The native code stays the computational core, but the scarce skill is no
+Where only a handful of people can compile the FORTRAN, they gate every
+downstream project that needs it, and that pool usually shrinks with time
+rather than growing. Afterwards, Python developers write
+`from petro import ...` and never learn f2py. The native code stays the computational core, but the scarce skill is no
 longer required for each new feature. That is a throughput gain across every
 team consuming these numbers, well beyond the modernization team itself.
 
@@ -340,20 +341,19 @@ here:
   re-hosting is eventual forced replacement. This defers or removes a large
   future capital cost.
 
-### 4.3 The open-API partner initiative
+### 4.3 Where this might meet the open-API initiative
 
-> **To be made specific.** This section is written against the general shape of
-> a partner-API programme. It needs five facts before it goes in front of
-> anyone: the partners or tier being targeted; which computations they want to
-> call; the endpoint count and any committed date; the commercial model; and
-> who owns auth, rate limiting and SLAs today. With those, the section names
-> real bottlenecks instead of describing a category.
+> **Written from the outside.** I learned about the partner initiative in
+> conversation, not from inside it, so this section is a hypothesis rather
+> than a plan. It sets out what I understood the programme to need and where
+> this approach would fit, and ends with the questions I would want answered
+> before believing any of it.
 
-The partner programme needs computational endpoints that partners can call,
-version against, and rely on contractually. Those computations exist today
-only as FORTRAN routines and batch executables, so every partner endpoint is
-gated on a bindings specialist and a validation cycle. That is the bottleneck
-this removes.
+An open-API partner programme needs computational endpoints that partners can
+call, version against, and rely on contractually. If those computations live
+today mainly as Fortran routines and batch executables, then every partner
+endpoint is gated on a bindings specialist and a validation cycle — and that
+is the specific bottleneck this removes.
 
 Five things the partner initiative needs, and where each comes from:
 
@@ -365,33 +365,46 @@ Five things the partner initiative needs, and where each comes from:
 | Independent versioning and release per endpoint | Every service is its own wheel, its own version, its own container. One partner endpoint ships without rebuilding the others |
 | Endpoints added at partner-request speed | Adding a routine to the catalogue is a config entry and a regenerate — days, not a quarter |
 
-What this does to the initiative's timeline. Per §3, each new partner
-endpoint currently carries **3.5–18 specialist and expert days** of binding
-and validation work before anyone writes a line of API surface. Generated,
-that drops to **0.25–2 days**. Across a catalogue of a dozen endpoints, that
-is the difference between a multi-quarter build-out and one sprint of
-configuration, and the removed work is the work only two people in the
-building can do.
+If the day figures in §3 hold, each new partner endpoint would carry
+**3.5–18 specialist and expert days** of binding and validation before anyone
+writes a line of API surface. Generated, that drops to **0.25–2 days**. Across
+a catalogue of a dozen endpoints, the difference between a multi-quarter
+build-out and roughly a sprint of configuration — and the work removed is the
+work only a few people can do.
 
-The second-order effect matters as much. The partner roadmap stops being
-shaped by *what we can afford to bind* and starts being shaped by *what
-partners will pay for*. Endpoints not currently proposed because the binding
-cost cannot be justified become viable.
+The second-order effect may matter as much. The partner roadmap would stop
+being shaped by *what can be afforded in binding effort* and start being
+shaped by *what partners will pay for*. Endpoints not proposed today because
+the binding cost cannot be justified become viable.
 
 The caveat, which is on the critical path here. A partner-facing API is
 the case the gaps in §6 do not yet cover: no auth, no rate limiting, no
 exception handling, and a native segfault takes the worker down. Tolerable for
-internal phase-1 embedding; blocking for an external partner endpoint. The
-sequencing that follows:
+internal phase-1 embedding; blocking for an external partner endpoint. Which
+suggests two workstreams in parallel rather than in sequence: the binding and
+validation bottleneck can be removed now, while the platform layer — auth,
+rate limiting, segfault isolation, deployment templates — is scoped as its own
+piece of work, since a partner-facing endpoint is what makes it mandatory.
 
-1. Use native2py now to remove the binding and validation bottleneck and
-   build the internal catalogue. That value is available today.
-2. Fund the platform layer — auth, rate limiting, process isolation for
-   segfaults, deployment templates — as a named, scoped workstream *for the
-   partner initiative*, since the initiative is what makes it mandatory.
+#### What I would need to know before believing any of this
 
-Those two run in parallel. What is no longer on the critical path is the
-thirty-year-old FORTRAN, which was always the part nobody could schedule.
+Each of these could change the conclusion, and some could invalidate it
+outright. I would rather put them on the table than assume my way past them.
+
+- **Is binding effort actually on the critical path?** If partner endpoints
+  are blocked on commercial terms, data governance, or platform capacity
+  instead, this solves a problem you do not have.
+- **Which computations do partners want to call?** The shape of the answer
+  decides whether generated bindings are sufficient or whether the real work
+  is API design — coarse-graining a chatty interface is not a tooling problem.
+- **What already exists internally?** A binding layer, a validation harness or
+  a service template I do not know about would make most of this redundant,
+  and I would want to build on it rather than beside it.
+- **Who owns auth, rate limiting and SLAs today?** That determines whether
+  §6's gaps are already on someone's roadmap or genuinely unowned.
+- **What is the numerical acceptance bar?** Golden values assume bitwise-stable
+  answers are the goal. If the standard is a tolerance band, or if results are
+  expected to shift with recalibration, the mechanism needs rethinking.
 
 ### 4.4 How to size it for your organization
 
