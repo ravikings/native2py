@@ -1,0 +1,13 @@
+[build-system]
+requires = ["scikit-build-core", "numpy"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "petro_api"
+version = "1.0.0"
+requires-python = ">=3.10"
+dependencies = ["fastapi", "uvicorn", "numpy"]
+
+[tool.scikit-build]
+wheel.packages = ["python/petro_api"]
+cmake.source-dir = "."

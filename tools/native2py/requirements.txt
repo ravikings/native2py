@@ -1,0 +1,37 @@
+# Installs native2py itself (editable) plus everything needed to build,
+# test, and document the generated services. Equivalent to:
+#   pip install -e ".[docs,build,test]"
+# Prefer that form if you only need a subset — see pyproject.toml for the
+# [build]/[test]/[docs] groups broken out individually.
+
+-e .
+
+# --- native2py CLI runtime (also in pyproject.toml [project.dependencies]) ---
+click>=8.1
+pyyaml>=6.0
+jinja2>=3.1
+
+# --- C++ AST parser (pyproject.toml [clang]) ---
+# Ships its own libclang shared library. Without it the C++ front end falls
+# back to the regex reader: no preprocessor, no templates, no typedef
+# resolution. Set NATIVE2PY_LIBCLANG to use a system libclang instead.
+libclang>=16
+
+# --- building generated C++/Fortran services (pyproject.toml [build]) ---
+scikit-build-core>=0.10
+pybind11>=3.0
+numpy>=1.26
+fastapi>=0.110
+uvicorn>=0.29
+
+# --- testing generated services (pyproject.toml [test]) ---
+pytest>=8.0
+httpx>=0.27
+
+# --- docs site (pyproject.toml [docs]) ---
+mkdocs>=1.6
+mkdocs-material>=9.5
+
+# NOT covered by pip: system compilers + build tools. You still need, separately:
+#   macOS:  brew install cmake gcc ninja      # gcc provides gfortran
+#   Debian: apt-get install cmake build-essential gfortran ninja-build

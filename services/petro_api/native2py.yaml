@@ -1,0 +1,15 @@
+name: petro_api
+language: fortran
+expose:
+  classes: []
+  functions:
+  - pvt_set_fluid
+  - solution_gor
+  - oil_fvf
+  - oil_viscosity
+  - gas_z_factor
+  - bubble_point
+  - pvt_state
+  - tubing_bhp
+  - vogel_rate
+  - last_error

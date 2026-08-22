@@ -1,0 +1,68 @@
+-- =====================================================================
+-- BRAZOS FIELD - 10 x 10 x 3 SECTOR MODEL
+-- PREPARED 04-MAY-1994  M. OKONKWO
+-- REVISED  22-JAN-1998  SWOF RETUNED TO 1997 CORE DATA
+--
+-- CARD IMAGE DECK FOR THE PETRO LIBRARY DECK READER.
+-- COLUMN SENSITIVE IN RUNSPEC ONLY.  '/' TERMINATES A RECORD.
+-- =====================================================================
+
+RUNSPEC
+
+DIMENS
+   10  10   3  /
+
+FIELD
+
+GRID
+
+PORO
+   300*0.22  /
+
+PERMX
+   100*150.0  100*180.0  100*95.0  /
+
+PERMY
+   100*150.0  100*180.0  100*95.0  /
+
+PERMZ
+   100*15.0   100*18.0   100*9.5   /
+
+DZ
+   100*25.0   100*30.0   100*18.0  /
+
+TOPS
+   300*8000.0  /
+
+NTG
+   300*0.85  /
+
+ACTNUM
+   300*1  /
+
+PROPS
+
+-- SW      KRW     KROW    PCOW
+SWOF
+   0.20    0.000   1.000   12.00
+   0.30    0.012   0.640    4.10
+   0.40    0.048   0.360    1.90
+   0.50    0.108   0.160    0.95
+   0.60    0.192   0.040    0.40
+   0.70    0.300   0.000    0.10
+   0.75    0.300   0.000    0.00  /
+
+SOLUTION
+
+SCHEDULE
+
+WELSPECS
+   'PROD-01'  'G1'   5   5  /
+   'PROD-02'  'G1'   8   3  /
+   'INJ-01'   'G1'   2   9  /
+/
+
+TSTEP
+   10  10  20  30  30  30  /
+
+END

@@ -1,0 +1,235 @@
+{
+  "name": "petro_api",
+  "language": "fortran",
+  "source_file": "services/petro_api/native/petro_api.f90",
+  "classes": [],
+  "functions": [
+    {
+      "name": "pvt_set_fluid",
+      "parameters": [
+        {
+          "name": "api_gravity",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "gas_gravity",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "temp_f",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "icorr",
+          "type": "int",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "void",
+      "is_subroutine": true,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "solution_gor",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "oil_fvf",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "oil_viscosity",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "gas_z_factor",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "bubble_point",
+      "parameters": [
+        {
+          "name": "target_gor",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "pvt_state",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "props",
+          "type": "float",
+          "is_array": true,
+          "intent": "inout"
+        },
+        {
+          "name": "n",
+          "type": "int",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "void",
+      "is_subroutine": true,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "tubing_bhp",
+      "parameters": [
+        {
+          "name": "wellhead_p",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "q_oil",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "q_water",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "q_gas",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "diameter",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "&\n                        roughness",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "tvd",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "md",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "nseg",
+          "type": "int",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "vogel_rate",
+      "parameters": [
+        {
+          "name": "res_pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "flowing_bhp",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        },
+        {
+          "name": "q_max",
+          "type": "float",
+          "is_array": false,
+          "intent": "in"
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "last_error",
+      "parameters": [],
+      "returns": "int",
+      "is_subroutine": false,
+      "fortran_module": "petro_api"
+    }
+  ],
+  "structs": [],
+  "fortran_module": "petro_api",
+  "skipped": [],
+  "diagnostics": []
+}

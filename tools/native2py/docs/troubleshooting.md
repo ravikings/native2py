@@ -1,0 +1,173 @@
+# Troubleshooting
+
+## `native2py build` fails: `pybind11_DIR` not found / `find_package(pybind11 CONFIG REQUIRED)` fails
+
+You need `pybind11`'s CMake config, not just the Python package alone in
+some environments. If `pip install pybind11` isn't enough:
+
+```bash
+pip install pybind11
+python3 -c "import pybind11; print(pybind11.get_cmake_dir())"
+```
+
+and pass that path explicitly if CMake still can't find it:
+
+```bash
+cmake -S . -B build -Dpybind11_DIR="$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')"
+```
+
+## CMake picks the wrong Python interpreter
+
+If you have multiple Python installs (pyenv, conda, system), CMake's
+`find_package(Python)` may pick one that doesn't have `pybind11`/`numpy`
+installed. Pin it explicitly:
+
+```bash
+cmake -S . -B build -DPYTHON_EXECUTABLE="$(python3 -c 'import sys; print(sys.executable)')"
+```
+
+## `gfortran: command not found`
+
+Fortran services need a real Fortran compiler. On macOS:
+
+```bash
+brew install gcc   # provides gfortran, gfortran-<version>, etc.
+```
+
+## `cmake: command not found`
+
+```bash
+brew install cmake
+```
+
+## Build fails with `lipo: can't open input file: ninja`
+
+`scikit-build-core` (which `native2py build`/`quickstart --build` use under
+the hood) defaults to the Ninja generator. Install it:
+
+```bash
+brew install ninja        # macOS
+apt-get install ninja-build   # Debian/Ubuntu
+```
+
+## `ModuleNotFoundError` for a compiled extension after `native2py generate`
+
+`generate` only regenerates *source* (bindings, CMake, `__init__.py`) — it
+does not compile anything. Run `native2py build <name>` (or `cmake --build`
+directly) afterward, then make sure the resulting `.so` actually ends up
+under `python/<name>/_native/` (that's where the generated `__init__.py`
+looks for it — `scikit-build-core`'s `install(TARGETS ...)` destination in
+the generated `CMakeLists.txt` handles this when building the wheel, but a
+manual `cmake --build` alone won't place it there for you).
+
+## `symbol not found in flat namespace` after a successful build
+
+```
+ImportError: dlopen(.../widget_cpp.cpython-311-darwin.so, 0x0002):
+symbol not found in flat namespace '__ZN6Widget6squareEd'
+```
+
+Your C++ class has methods **declared** in the header but never **defined**
+anywhere (no `.cpp`, and no inline body in the header). This compiles and
+links "successfully" on macOS — undefined symbols in a Python extension
+bundle are resolved lazily at `dlopen` time, not at link time — so
+`native2py build` reports success right up until the first `import`.
+
+Add the missing `.cpp` implementation under `services/<name>/native/`
+(same stem as the header, e.g. `widget.hpp` → `widget.cpp`) and re-run
+`native2py generate <name>` then `build`. `native2py quickstart` does this
+copy automatically when given a header that has a sibling `.cpp` file next
+to it — see [CLI reference](cli-reference.md#native2py-quickstart-source).
+
+## Fortran: `AttributeError: module 'physics' has no attribute 'calculate_pressure'`
+
+This means you're importing the **raw f2py extension** directly instead of
+going through the generated package. If your Fortran source wraps its
+routines in a `module` block, f2py nests them one level deeper
+(`physics.physics.calculate_pressure`, not `physics.calculate_pressure`).
+Import from the generated Python package instead — `python/<name>/__init__.py`
+already handles this nesting for you. See
+[Exposing Fortran](fortran-guide.md#the-module-wrapper-gotcha) for details.
+
+## `generate` fails: "Fortran sources require explicit `expose.functions:` entries"
+
+This is intentional, not a bug — see
+[Exposing Fortran](fortran-guide.md#designed-for-large-legacy-files). Add
+the routine names you want under `expose.functions:` in `native2py.yaml`.
+
+## `NativeTypeError: Unsupported native type '...'`
+
+The parser found a parameter or return type not in `ir.TYPE_MAP` (C++) or
+`ir.FORTRAN_TYPE_MAP` (Fortran) — e.g. pointers, `std::vector<T>`, custom
+structs. Either add a mapping in `native2py/ir.py`, or exclude that
+class/function from `native2py.yaml`'s `expose:` block for now. This error
+is deliberate: native2py refuses to silently generate a binding it can't
+guarantee is safe.
+
+## C++: `generate` reports "compiler error: ... file not found"
+
+The Clang parser could not open a header yours `#include`s, so it refuses to
+bind anything from that file. Add the missing directory to the `clang:` block
+in `native2py.yaml`:
+
+```yaml
+clang:
+  include_paths:
+    - libraries/common-cpp/include
+```
+
+Refusing the whole header is deliberate: clang recovers from a failed include
+by treating every unknown name as `int`, so the alternative is bindings whose
+signatures silently disagree with the C++ they call.
+
+## C++: a symbol vanished after moving to another machine
+
+Check the parser line printed by `generate`:
+
+```
+Parsing C++ with regex reader (libclang unavailable: ...)
+```
+
+The fallback reader has no preprocessor, so macro-generated declarations (the
+`F77_NAME(...)` bridge pattern) and types from `#include`s are skipped there.
+Install the AST parser and set `parser: clang` so this fails loudly instead of
+shrinking your API:
+
+```bash
+pip install "native2py[clang]"
+```
+
+If libclang is installed but its shared library is not found, point
+`NATIVE2PY_LIBCLANG` at it (e.g.
+`/Library/Developer/CommandLineTools/usr/lib/libclang.dylib`).
+
+## C++: "is a template; pybind11 binds instantiations, not templates"
+
+There is no single symbol to bind for `template <typename T> ...`. Add a
+non-template wrapper for the instantiation you actually call, and expose that:
+
+```cpp
+double clamp_double(double v, double lo, double hi);   // bindable
+```
+
+## I deleted part of a service — what brings it back?
+
+`native2py generate <name>` regenerates the bindings, `CMakeLists.txt`, the
+Python package, the tests and `.native2py/ir.json`, and restores
+`pyproject.toml` if it is missing (it never overwrites one you have edited).
+`native2py docker <name>` rewrites the Dockerfile. A deleted gateway comes
+back with `native2py gateway <name> --service ...`.
+
+What does **not** come back is anything you wrote: `native/` sources,
+`native2py.yaml`, and the recorded answers in `golden.json`.
+
+`native2py init` will not help here. It only creates the empty top-level
+directories (`services/`, `libraries/`, `tools/`, `infrastructure/*`) and is
+harmless to re-run, but it restores no service content. See
+[Architecture](architecture.md#what-is-generated-what-is-yours) for the full
+table.
+
+## `native2py build` fails with "no pyproject.toml"
+
+It was deleted. Run `native2py generate <name>` — it writes a fresh one when
+the file is missing.

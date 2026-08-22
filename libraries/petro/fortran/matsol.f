@@ -1,0 +1,203 @@
+C=======================================================================
+C     MATSOL   -   LINEAR ALGEBRA KERNELS FOR THE IMPES PRESSURE SOLVE
+C
+C     WRITTEN   19-JAN-1989   R.T. HALSEY
+C     REVISED   07-MAY-1991   LSOR REPLACES POINT JACOBI
+C     REVISED   28-FEB-1993   ORTHOMIN(K) ADDED FOR STIFF GAS CASES
+C     REVISED   09-SEP-1996   BANDWIDTH NOW TAKEN FROM /GDIM/ NOT NX
+C
+C     THE MATRIX IS STORED AS SEVEN DIAGONALS IN NATURAL ORDERING:
+C         AE  AW  AN  AS  AT  AB  AD
+C     WITH AD THE MAIN DIAGONAL.  THIS IS NOT A GENERAL SPARSE SOLVER
+C     AND WILL PRODUCE NONSENSE IF THE CONNECTIVITY IS NOT THE SEVEN
+C     POINT STENCIL BUILT BY TRNCAL.
+C=======================================================================
+      SUBROUTINE THOMAS (A, B, C, D, X, N)
+C-----------------------------------------------------------------------
+C     TRIDIAGONAL SOLVE, NO PIVOTING.  A = SUB, B = DIAG, C = SUPER.
+C     D IS DESTROYED.  USED BY THE LINE SOR SWEEPS AND BY WELLBORE.
+C-----------------------------------------------------------------------
+      INCLUDE 'PETRO.INC'
+      PARAMETER (MXBAND = 512)
+      DIMENSION A(N), B(N), C(N), D(N), X(N)
+      DIMENSION CP(MXBAND), DP(MXBAND)
+C
+      IF (N .GT. MXBAND) THEN
+         IERR = 21
+         RETURN
+      END IF
+      IF (DABS(B(1)) .LT. SMALL) THEN
+         IERR = 22
+         RETURN
+      END IF
+C
+      CP(1) = C(1) / B(1)
+      DP(1) = D(1) / B(1)
+      DO 100 I = 2, N
+         DEN = B(I) - A(I)*CP(I-1)
+         IF (DABS(DEN) .LT. SMALL) THEN
+            IERR = 22
+            RETURN
+         END IF
+         CP(I) = C(I) / DEN
+         DP(I) = (D(I) - A(I)*DP(I-1)) / DEN
+  100 CONTINUE
+C
+      X(N) = DP(N)
+      DO 110 I = N-1, 1, -1
+         X(I) = DP(I) - CP(I)*X(I+1)
+  110 CONTINUE
+      RETURN
+      END
+C
+C-----------------------------------------------------------------------
+      SUBROUTINE LSOR (AE, AW, AN, AS, AT, AB, AD, RHS, X,
+     &                 OMEGA, TOL, ITMAX, ITUSED, RESID)
+C-----------------------------------------------------------------------
+C     LINE SUCCESSIVE OVER RELAXATION IN THE X DIRECTION.
+C     ONE TRIDIAGONAL SOLVE PER (J,K) LINE, THEN RELAX.
+C-----------------------------------------------------------------------
+      INCLUDE 'PETRO.INC'
+      INCLUDE 'GRID.INC'
+      DIMENSION AE(MXCELL), AW(MXCELL), AN(MXCELL), AS(MXCELL)
+      DIMENSION AT(MXCELL), AB(MXCELL), AD(MXCELL)
+      DIMENSION RHS(MXCELL), X(MXCELL)
+      DIMENSION TA(512), TB(512), TC(512), TD(512), TX(512)
+C
+      IF (NX .GT. 512) THEN
+         IERR = 23
+         RETURN
+      END IF
+C
+      R0 = RESNRM(AE, AW, AN, AS, AT, AB, AD, RHS, X)
+      IF (R0 .LT. SMALL) R0 = ONE
+C
+      DO 300 ITER = 1, ITMAX
+         DO 220 K = 1, NZ
+         DO 210 J = 1, NY
+            DO 200 I = 1, NX
+               L  = I + (J-1)*NX + (K-1)*NX*NY
+               TA(I) = -AW(L)
+               TB(I) =  AD(L)
+               TC(I) = -AE(L)
+               SUM   =  RHS(L)
+               IF (J .GT.  1) SUM = SUM + AS(L)*X(L-NX)
+               IF (J .LT. NY) SUM = SUM + AN(L)*X(L+NX)
+               IF (K .GT.  1) SUM = SUM + AB(L)*X(L-NX*NY)
+               IF (K .LT. NZ) SUM = SUM + AT(L)*X(L+NX*NY)
+               TD(I) = SUM
+  200       CONTINUE
+            TA(1)  = ZERO
+            TC(NX) = ZERO
+            CALL THOMAS (TA, TB, TC, TD, TX, NX)
+            IF (IERR .NE. 0) RETURN
+            DO 205 I = 1, NX
+               L = I + (J-1)*NX + (K-1)*NX*NY
+               X(L) = X(L) + OMEGA*(TX(I) - X(L))
+  205       CONTINUE
+  210    CONTINUE
+  220    CONTINUE
+C
+         RESID  = RESNRM(AE, AW, AN, AS, AT, AB, AD, RHS, X) / R0
+         ITUSED = ITER
+         IF (RESID .LT. TOL) RETURN
+  300 CONTINUE
+C
+      IWARN = IWARN + 1
+      IF (LUNPRT .GT. 0) WRITE (LUNPRT,9200) ITMAX, RESID
+      RETURN
+ 9200 FORMAT (' *** LSOR NOT CONVERGED IN',I5,' ITERATIONS, RESID =',
+     &        1PE12.4)
+      END
+C
+C-----------------------------------------------------------------------
+      DOUBLE PRECISION FUNCTION RESNRM (AE, AW, AN, AS, AT, AB, AD,
+     &                                  RHS, X)
+C-----------------------------------------------------------------------
+C     L2 NORM OF RHS - A*X OVER ACTIVE CELLS ONLY.
+C-----------------------------------------------------------------------
+      INCLUDE 'PETRO.INC'
+      INCLUDE 'GRID.INC'
+      DIMENSION AE(MXCELL), AW(MXCELL), AN(MXCELL), AS(MXCELL)
+      DIMENSION AT(MXCELL), AB(MXCELL), AD(MXCELL)
+      DIMENSION RHS(MXCELL), X(MXCELL)
+C
+      S = ZERO
+      DO 420 K = 1, NZ
+      DO 410 J = 1, NY
+      DO 400 I = 1, NX
+         L = I + (J-1)*NX + (K-1)*NX*NY
+         IF (IACT(L) .EQ. 0) GO TO 400
+         R = RHS(L) - AD(L)*X(L)
+         IF (I .GT.  1) R = R + AW(L)*X(L-1)
+         IF (I .LT. NX) R = R + AE(L)*X(L+1)
+         IF (J .GT.  1) R = R + AS(L)*X(L-NX)
+         IF (J .LT. NY) R = R + AN(L)*X(L+NX)
+         IF (K .GT.  1) R = R + AB(L)*X(L-NX*NY)
+         IF (K .LT. NZ) R = R + AT(L)*X(L+NX*NY)
+         S = S + R*R
+  400 CONTINUE
+  410 CONTINUE
+  420 CONTINUE
+      RESNRM = DSQRT(S)
+      RETURN
+      END
+C
+C-----------------------------------------------------------------------
+      SUBROUTINE GAUSSB (A, B, N, LDA, INFO)
+C-----------------------------------------------------------------------
+C     DENSE GAUSSIAN ELIMINATION WITH PARTIAL PIVOTING.  USED ONLY FOR
+C     THE SMALL WELL COUPLING SYSTEM (N .LE. MXWELL) AND FOR THE EOS
+C     FLASH JACOBIAN.  A IS OVERWRITTEN, B RETURNS THE SOLUTION.
+C-----------------------------------------------------------------------
+      INCLUDE 'PETRO.INC'
+      DIMENSION A(LDA,N), B(N)
+C
+      INFO = 0
+      DO 540 K = 1, N-1
+         IP = K
+         AM = DABS(A(K,K))
+         DO 500 I = K+1, N
+            IF (DABS(A(I,K)) .GT. AM) THEN
+               AM = DABS(A(I,K))
+               IP = I
+            END IF
+  500    CONTINUE
+         IF (AM .LT. SMALL) THEN
+            INFO = K
+            RETURN
+         END IF
+         IF (IP .NE. K) THEN
+            DO 510 J = K, N
+               T       = A(K,J)
+               A(K,J)  = A(IP,J)
+               A(IP,J) = T
+  510       CONTINUE
+            T     = B(K)
+            B(K)  = B(IP)
+            B(IP) = T
+         END IF
+         DO 530 I = K+1, N
+            FCT = A(I,K) / A(K,K)
+            IF (FCT .EQ. ZERO) GO TO 530
+            DO 520 J = K+1, N
+               A(I,J) = A(I,J) - FCT*A(K,J)
+  520       CONTINUE
+            B(I) = B(I) - FCT*B(K)
+  530    CONTINUE
+  540 CONTINUE
+C
+      IF (DABS(A(N,N)) .LT. SMALL) THEN
+         INFO = N
+         RETURN
+      END IF
+      B(N) = B(N) / A(N,N)
+      DO 560 I = N-1, 1, -1
+         S = B(I)
+         DO 550 J = I+1, N
+            S = S - A(I,J)*B(J)
+  550    CONTINUE
+         B(I) = S / A(I,I)
+  560 CONTINUE
+      RETURN
+      END
