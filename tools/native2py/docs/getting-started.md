@@ -276,5 +276,3 @@ Two things to know before sizing anything:
 
 [Is this production-ready?](production-readiness.md), and `DEFECTS.md` in the
 tool's root, are the honest gap lists.
-- Before running any of this for real:
-  [Is this production-ready?](production-readiness.md)

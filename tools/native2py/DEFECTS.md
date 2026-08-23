@@ -192,7 +192,7 @@ an `optional` argument and an argument-less subroutine.
 
 The tool succeeds, the service builds, the numbers are wrong.
 
-### A9. An INTENT-less derived-type dummy loses its output components — **open**
+### A9. An INTENT-less derived-type dummy loses its output components — **closed**
 
 `parsers/fortran_fparser.py:402` defaults a declaration with no INTENT clause
 to `"in"`, and line 471 stores that verbatim in `derived_intents`. Fortran does
@@ -208,8 +208,23 @@ with intent resolved to `"in"`, the generated shim emits `shim_pre` but not
 copied back. The caller receives its own input values, unchanged. Nothing
 raises. A smoke test that does not assert on output-field mutation passes.
 
-Fix is to distinguish *absent* from `"in"` in `_attributes`, and let absent fall
-through to `"inout"` for derived dummies.
+**Fixed.** `_attributes` now returns `None` for a declaration with no INTENT
+clause — absent, not `"in"` — and each caller picks its own default: `"inout"`
+for a derived-type dummy (copying back a component the routine did not touch
+returns the caller's own value, which is harmless; not copying one it did write
+is a wrong answer), `"in"` for an ordinary scalar, which is what f2py assumes
+and what the regex backend records. The parity harness confirms the two
+backends still produce byte-identical IR. Two tests in
+`tests/test_derived_types.py` pin both halves: absent INTENT copies back, and an
+explicit `intent(in)` still does not.
+
+**The same reasoning has not been applied to companion scalars.** A non-derived
+dummy with no INTENT also defaults to `"in"` (`fortran_fparser.py:494`), so a
+plain `real(dp) :: rho` used as an output has the same shape of problem. It is
+left alone deliberately: changing that default would alter intent inference for
+every free-form routine and break backend parity, and the fixed-form path infers
+intents separately via `fixed_form.infer_intents`. Needs its own change, with
+the corpus measured before and after.
 
 ### A10. Flattening shims are spliced into the wrong module — **open**
 

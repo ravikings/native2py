@@ -399,9 +399,18 @@ def _derived_spelling(type_spec) -> str:
     return str(type_spec).replace(" ", "").lower()
 
 
-def _attributes(decl) -> tuple[str, bool, bool]:
-    """(intent, is_optional, has_dimension_attr) from a declaration's attribute list."""
-    intent, optional, dimension = "in", False, False
+def _attributes(decl) -> tuple[str | None, bool, bool]:
+    """(intent, is_optional, has_dimension_attr) from a declaration's attribute list.
+
+    `intent` is None when the declaration carries no INTENT clause — ABSENT,
+    not `"in"`. Fortran leaves such a dummy usable for both read and write, so
+    the two cases are not the same and the caller picks the default that suits
+    it: `"in"` for an ordinary scalar (what f2py assumes, and what keeps the IR
+    byte-identical to the regex backend), `"inout"` for a derived-type dummy,
+    where guessing `"in"` means the flattening shim never copies output
+    components back and the caller silently receives its own input values.
+    """
+    intent, optional, dimension = None, False, False
     attr_list = decl.items[1]
     if attr_list is None:
         return intent, optional, dimension
@@ -467,13 +476,22 @@ def _parse_declarations(spec_part) -> _Declarations:
             for name, _ in _entities(decl):
                 result.unbindable[name.lower()] = spelling
                 # A flattening shim needs the declared intent: intent(out)
-                # components must be copied back after the call.
-                result.derived_intents[name.lower()] = intent
+                # components must be copied back after the call. No INTENT
+                # clause means Fortran allows both directions, so assume the
+                # routine may write — copying a component back that the
+                # routine did not touch returns the caller's own value, which
+                # is harmless; NOT copying one it did write is a silently
+                # wrong answer.
+                result.derived_intents[name.lower()] = intent or "inout"
             continue
 
         base_type = _base_type_word(type_spec)
         py_type = map_fortran_type(base_type)
         intent, optional, has_dimension = _attributes(decl)
+        # An ordinary dummy with no INTENT keeps the historical "in": that is
+        # what f2py assumes and what the regex backend records, and the parity
+        # harness holds the two to byte-identical IR.
+        intent = intent or "in"
 
         for name, entity_is_array in _entities(decl):
             key = name.lower()
@@ -617,7 +635,9 @@ def _plan_flattening(
                     f"argument '{param}' is declared '{spelling}', which does "
                     f"not flatten: {components}"
                 )
-            intent = decls.derived_intents.get(key, "inout") or "inout"
+            # Absent from the map means the type was declared out of this
+            # scope; assume writable for the same reason as above.
+            intent = decls.derived_intents.get(key, "inout")
             shim_decls.append(f"        type({type_name}) :: {param}")
             for comp_name, py_type in components:
                 flat = f"{param}_{comp_name}"

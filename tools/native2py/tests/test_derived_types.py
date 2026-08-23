@@ -163,3 +163,57 @@ def test_generate_appends_the_shim_inside_the_module(tmp_path, monkeypatch):
     init = (service / "python" / "fluid" / "__init__.py").read_text()
     assert "density = _native.fluid_mod.density_n2p" in init
     assert '__all__ = ["density"]' in init
+
+
+def test_a_derived_dummy_with_no_intent_clause_is_treated_as_writable(tmp_path):
+    """A9: absent INTENT is not intent(in), and guessing wrong loses outputs.
+
+    Fortran leaves a dummy with no INTENT usable in both directions, and
+    declaring one that way is ordinary in older code. Reading it as intent(in)
+    used to emit a shim that copied components IN and never back OUT, so every
+    field the routine updated reached the caller as the value the caller had
+    sent — a wrong answer with nothing raised and nothing logged.
+
+    Copying back a component the routine did not touch is harmless: the caller
+    gets its own value. Not copying one it did write is the silent bug. So the
+    safe default is inout.
+    """
+    source = FLUID_F90.replace(
+        "type(fluid_state), intent(in) :: state",
+        "type(fluid_state) :: state",
+    )
+    assert source != FLUID_F90  # a silent no-op replace tests nothing
+    module = _parse(tmp_path, source)
+
+    (shim,) = module.fortran_shims
+    assert "state%pressure = state_pressure" in shim, "components must go in"
+    assert "state_pressure = state%pressure" in shim, "and must come back out"
+
+    assert [
+        (p.name, p.intent)
+        for p in module.functions[0].parameters
+        if p.name.startswith("state_")
+    ] == [
+        ("state_pressure", "inout"),
+        ("state_temperature", "inout"),
+        ("state_ncomp", "inout"),
+    ]
+
+
+def test_an_explicit_intent_in_derived_dummy_still_gets_no_copy_back(tmp_path):
+    """The other half: the inout default must not swallow a real intent(in).
+
+    Without this, "default to inout" would be indistinguishable from "always
+    inout", and an intent(in) argument would start reporting writes the
+    routine is forbidden from making.
+    """
+    module = _parse(tmp_path)  # FLUID_F90 declares intent(in)
+
+    (shim,) = module.fortran_shims
+    assert "state%pressure = state_pressure" in shim
+    assert "state_pressure = state%pressure" not in shim
+    assert all(
+        p.intent == "in"
+        for p in module.functions[0].parameters
+        if p.name.startswith("state_")
+    )

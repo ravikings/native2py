@@ -26,15 +26,13 @@ from native2py.config import ExposeConfig
 from native2py.parsers import fortran as fortran_parser
 from native2py.parsers import fortran_fparser, fortran_regex
 
+# The one definition of this marker lives in conftest.py — four modules use it.
+from conftest import requires_fparser
+
 REPO = Path(__file__).parents[3]
 PETRO = REPO / "libraries" / "petro" / "fortran"
 PETRO_INCLUDE = [PETRO / "include"]
 PETRO_API = REPO / "services" / "petro_api" / "native" / "petro_api.f90"
-
-requires_fparser = pytest.mark.skipif(
-    not fortran_fparser.is_available(),
-    reason=f"fparser is not installed: {fortran_fparser.unavailable_reason()}",
-)
 
 
 def _corpus() -> list[Path]:
