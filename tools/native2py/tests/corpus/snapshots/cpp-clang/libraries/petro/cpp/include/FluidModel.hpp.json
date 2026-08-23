@@ -80,7 +80,8 @@
           "is_static": false,
           "name": "activate",
           "parameters": [],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -88,7 +89,8 @@
           "is_static": false,
           "name": "api_gravity",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -96,7 +98,8 @@
           "is_static": false,
           "name": "gas_gravity",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -104,7 +107,8 @@
           "is_static": false,
           "name": "temperature",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -112,7 +116,8 @@
           "is_static": false,
           "name": "bubble_point",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -130,7 +135,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -148,7 +154,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -166,7 +173,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -184,7 +192,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -202,7 +211,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -220,7 +230,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -238,7 +249,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -256,7 +268,8 @@
               "type": "float"
             }
           ],
-          "returns": "PvtState"
+          "returns": "PvtState",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -292,7 +305,8 @@
               "type": "int"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -300,7 +314,8 @@
           "is_static": false,
           "name": "table_size",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -308,7 +323,8 @@
           "is_static": false,
           "name": "clear_table",
           "parameters": [],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -316,7 +332,8 @@
           "is_static": false,
           "name": "last_error",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -324,7 +341,8 @@
           "is_static": false,
           "name": "last_error_text",
           "parameters": [],
-          "returns": "str"
+          "returns": "str",
+          "returns_array": false
         }
       ],
       "name": "FluidModel",
@@ -336,7 +354,7 @@
   "functions": [],
   "language": "cpp",
   "name": "FluidModel",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [],
   "source_file": "libraries/petro/cpp/include/FluidModel.hpp",
   "structs": [

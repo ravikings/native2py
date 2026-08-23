@@ -79,6 +79,7 @@ def every_field_module() -> ModuleIR:
                         is_static=True,
                         is_const=True,
                         is_overloaded=True,
+                        returns_array=True,
                     ),
                     Method(name="reset"),
                 ],
@@ -96,6 +97,7 @@ def every_field_module() -> ModuleIR:
                 is_subroutine=True,
                 namespace="petro",
                 is_overloaded=True,
+                returns_array=True,
                 fortran_module="physics",
             )
         ],

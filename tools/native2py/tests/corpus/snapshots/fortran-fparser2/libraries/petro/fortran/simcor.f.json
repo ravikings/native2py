@@ -38,7 +38,8 @@
           "type": "int"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -75,7 +76,8 @@
           "type": "int"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -84,7 +86,8 @@
       "name": "TRNCAL",
       "namespace": null,
       "parameters": [],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -130,7 +133,8 @@
           "type": "float"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -167,7 +171,8 @@
           "type": "int"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -249,7 +254,8 @@
           "type": "float"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -268,7 +274,8 @@
           "type": "int"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -277,12 +284,13 @@
       "name": "FIPOIL",
       "namespace": null,
       "parameters": [],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     }
   ],
   "language": "fortran",
   "name": "simcor",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [],
   "source_file": "libraries/petro/fortran/simcor.f",
   "structs": []

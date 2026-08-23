@@ -395,6 +395,72 @@ def _is_incomplete_record(t) -> bool:
     return not decl.is_definition()
 
 
+def _refuse_mutable_vector_ref(t, *, is_return: bool) -> None:
+    """Refuse `std::vector<T>&` — pybind11 discards writes through it, silently.
+
+    THIS IS THE REASON std::vector SUPPORT IS SAFE TO HAVE AT ALL.
+
+    `<pybind11/stl.h>` converts a Python list to a *temporary* std::vector for
+    the duration of the call. For an input parameter — by value or by
+    `const&` — that is exactly right. For a non-const `std::vector<T>&`, which
+    in C++ means "I am going to write to your vector", the callee writes into
+    the temporary and the temporary is destroyed on return. The caller's list
+    is unchanged.
+
+    Nothing raises. Nothing warns. It compiles, it runs, it returns. Measured
+    with a real pybind11 module:
+
+        void scale_in_place(std::vector<double>& v, double k);
+
+        >>> data = [1.0, 2.0, 3.0]
+        >>> probe.scale_in_place(data, 10.0)
+        >>> data
+        [1.0, 2.0, 3.0]          # writes discarded
+
+    A service that binds that builds, imports, passes a smoke test, and returns
+    unmodified data to whoever asked. That is the exact failure class this
+    project treats as the worst kind, so the binding is refused instead.
+
+    Returning `std::vector<T>&` is fine to bind — pybind11 copies it out, and a
+    copy of a returned value is what Python wants anyway.
+    """
+    if is_return or t.kind not in _kinds("LVALUEREFERENCE"):
+        return
+    pointee = t.get_pointee()
+    if not _is_std_vector(pointee):
+        return
+    if pointee.is_const_qualified() or pointee.get_canonical().is_const_qualified():
+        return
+    raise NativeTypeError(
+        f"'{t.spelling}' is a mutable reference to a std::vector. pybind11 "
+        "converts the caller's list into a temporary vector, so anything the "
+        "function writes through this parameter is discarded when the call "
+        "returns — silently, with no error. Take 'const std::vector<T>&' if "
+        "the data is input, or RETURN the modified vector, or exclude the "
+        "symbol in native2py.yaml."
+    )
+
+
+def _is_std_vector(t) -> bool:
+    """True for std::vector<T> in any spelling, through typedefs."""
+    canonical = t.get_canonical()
+    spelling = canonical.spelling.replace("const ", "").strip()
+    return spelling.startswith("std::vector<") or spelling.startswith(
+        "std::__1::vector<"
+    )
+
+
+def _vector_element(t):
+    """The T of a std::vector<T>, or None if it cannot be read off the AST."""
+    canonical = t.get_canonical()
+    try:
+        if canonical.get_num_template_arguments() > 0:
+            return canonical.get_template_argument_type(0)
+    except (AttributeError, TypeError):  # older libclang on some platforms
+        pass
+    return None
+
+
 def _map_type(t, known_records: frozenset[str], *, is_return: bool) -> tuple[str, bool]:
     """Map a clang Type to (python_type, is_array), or raise NativeTypeError.
 
@@ -402,8 +468,37 @@ def _map_type(t, known_records: frozenset[str], *, is_return: bool) -> tuple[str
     never changes which signatures are considered safe — only how accurately
     they are recognised.
     """
+    # Checked BEFORE _strip_refs, because for std::vector the reference and its
+    # constness are the whole question — see _refuse_mutable_vector_ref.
+    _refuse_mutable_vector_ref(t, is_return=is_return)
+
     t = _strip_refs(t)
     spelling = t.spelling
+
+    if _is_std_vector(t):
+        element = _vector_element(t)
+        if element is None:
+            raise NativeTypeError(
+                f"'{spelling}' is a std::vector whose element type could not be "
+                "read from the AST. Expose a function taking a concrete vector "
+                "(std::vector<double>, std::vector<int>, ...) instead, or "
+                "exclude the symbol in native2py.yaml."
+            )
+        inner, inner_is_array = _map_type(element, known_records, is_return=is_return)
+        if inner_is_array:
+            raise NativeTypeError(
+                f"'{spelling}' is a nested container. pybind11 will convert it, "
+                "but native2py has no IR shape for a list of lists, so the "
+                "generated Pydantic model would be wrong. Flatten it (pass the "
+                "data and its shape separately), or exclude the symbol."
+            )
+        if inner not in ("float", "int", "bool", "str"):
+            raise NativeTypeError(
+                f"'{spelling}' has element type '{inner}', which is not a scalar "
+                "pybind11 converts element-wise. Use a vector of a numeric type "
+                "or std::string, or exclude the symbol in native2py.yaml."
+            )
+        return inner, True
 
     # `double values[4]` / `double values[]` as a *field*; parameters decay to
     # pointers and are recovered from the source tokens by the caller.
@@ -722,7 +817,7 @@ def _parse_record(
                 )
                 continue
             try:
-                returns, _ = _map_type(
+                returns, returns_array = _map_type(
                     child.result_type, known_records, is_return=True
                 )
                 parameters = _parameters(child, known_records)
@@ -738,6 +833,7 @@ def _parse_record(
                     returns=returns,
                     is_static=child.is_static_method(),
                     is_const=_bool_method(child, "is_const_method"),
+                    returns_array=returns_array,
                 )
             )
             continue
@@ -851,7 +947,9 @@ def _parse_function(
         )
         return
     try:
-        returns, _ = _map_type(cursor.result_type, known_records, is_return=True)
+        returns, returns_array = _map_type(
+            cursor.result_type, known_records, is_return=True
+        )
         parameters = _parameters(cursor, known_records)
     except NativeTypeError as exc:
         module.skipped.append(SkippedSymbol(cursor.spelling, str(exc)))
@@ -864,6 +962,7 @@ def _parse_function(
             # Without this a function in `namespace petro` is emitted as
             # `&bubble_point` — "use of undeclared identifier".
             namespace=_namespace_of(cursor),
+            returns_array=returns_array,
         )
     )
 

@@ -374,11 +374,12 @@ at the same time.
 
 ### Parser/type coverage (also see [Exposing C++](cpp-guide.md), [Exposing Fortran](fortran-guide.md))
 
-- C++: overloads, public inheritance, typedefs, enums, macros and `#include`d
-  types are handled since the move to the Clang AST parser. Still unsupported:
-  templates and `std::vector`, and raw numeric pointers (`double*`) carry no
-  length so they're refused — which means real numerical C++ APIs built on raw
-  arrays aren't expressible yet. See
+- C++: overloads, public inheritance, typedefs, enums, macros, `#include`d
+  types and **`std::vector<T>`** are handled. Still unsupported: templates, and
+  raw numeric pointers (`double*`) carry no length so they're refused — a
+  numerical C++ API built on bare pointers still needs a wrapper that carries
+  its own size. A non-const `std::vector<T>&` is refused on purpose: pybind11
+  silently discards writes through it (see [Exposing C++](cpp-guide.md)). See
   [Exposing C++](cpp-guide.md#what-the-parser-supports).
 - No C language support at all, despite being in the project name/design.md
   scope.

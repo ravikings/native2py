@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "native2py_version": "0.1.0",
   "name": "petro_api",
   "language": "fortran",
@@ -50,6 +50,7 @@
       "is_subroutine": true,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -69,6 +70,7 @@
       "is_subroutine": false,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -88,6 +90,7 @@
       "is_subroutine": false,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -107,6 +110,7 @@
       "is_subroutine": false,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -126,6 +130,7 @@
       "is_subroutine": false,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -145,6 +150,7 @@
       "is_subroutine": false,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -182,6 +188,7 @@
       "is_subroutine": true,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -273,6 +280,7 @@
       "is_subroutine": false,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -310,6 +318,7 @@
       "is_subroutine": false,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     },
     {
@@ -319,6 +328,7 @@
       "is_subroutine": false,
       "namespace": null,
       "is_overloaded": false,
+      "returns_array": false,
       "fortran_module": "petro_api"
     }
   ],

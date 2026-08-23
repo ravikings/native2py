@@ -40,7 +40,8 @@
               "type": "int"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -58,7 +59,8 @@
               "type": "str"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -66,7 +68,8 @@
           "is_static": false,
           "name": "nx",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -74,7 +77,8 @@
           "is_static": false,
           "name": "ny",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -82,7 +86,8 @@
           "is_static": false,
           "name": "nz",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -90,7 +95,8 @@
           "is_static": false,
           "name": "cell_count",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -108,7 +114,8 @@
               "type": "float"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -144,7 +151,8 @@
               "type": "float"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -152,7 +160,8 @@
           "is_static": false,
           "name": "compute_transmissibility",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -197,7 +206,8 @@
               "type": "float"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -260,7 +270,8 @@
               "type": "float"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -268,7 +279,8 @@
           "is_static": false,
           "name": "well_count",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -295,7 +307,8 @@
               "type": "float"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -313,7 +326,8 @@
               "type": "float"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -331,7 +345,8 @@
               "type": "float"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -339,7 +354,8 @@
           "is_static": false,
           "name": "state",
           "parameters": [],
-          "returns": "RunState"
+          "returns": "RunState",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -347,7 +363,8 @@
           "is_static": false,
           "name": "time_days",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -355,7 +372,8 @@
           "is_static": false,
           "name": "oil_in_place",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -363,7 +381,8 @@
           "is_static": false,
           "name": "average_pressure",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -399,7 +418,8 @@
               "type": "int"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -435,7 +455,8 @@
               "type": "int"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -471,7 +492,8 @@
               "type": "int"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -479,7 +501,8 @@
           "is_static": false,
           "name": "last_error",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -487,7 +510,8 @@
           "is_static": false,
           "name": "last_error_text",
           "parameters": [],
-          "returns": "str"
+          "returns": "str",
+          "returns_array": false
         }
       ],
       "name": "Simulator",
@@ -499,7 +523,7 @@
   "functions": [],
   "language": "cpp",
   "name": "Simulator",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [
     {
       "name": "Simulator::set_porosity",

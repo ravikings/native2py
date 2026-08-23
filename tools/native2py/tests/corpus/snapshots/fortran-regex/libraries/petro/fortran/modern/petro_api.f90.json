@@ -47,7 +47,8 @@
           "type": "int"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -66,7 +67,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -85,7 +87,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -104,7 +107,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -123,7 +127,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -142,7 +147,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -179,7 +185,8 @@
           "type": "int"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -270,7 +277,8 @@
           "type": "int"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -307,7 +315,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": "petro_api",
@@ -316,12 +325,13 @@
       "name": "last_error",
       "namespace": null,
       "parameters": [],
-      "returns": "int"
+      "returns": "int",
+      "returns_array": false
     }
   ],
   "language": "fortran",
   "name": "petro_api",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [],
   "source_file": "libraries/petro/fortran/modern/petro_api.f90",
   "structs": []

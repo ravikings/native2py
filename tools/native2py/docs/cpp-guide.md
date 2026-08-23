@@ -31,6 +31,11 @@ pip install "native2py[clang]"
 - overloads (same name, different signature)
 - `const` / reference qualifiers stripped: `const double&` → `float`
 - `const char*` and `std::string` (in any spelling) → `str`
+- **`std::vector<T>`** as a parameter (by value or `const&`) and as a return,
+  for numeric elements and `std::string` — converted to and from a Python
+  `list` by `<pybind11/stl.h>`. The generated endpoint annotates it
+  `list[float]` / `list[int]` and applies the `MAX_ARRAY_ITEMS` cap, so an
+  unbounded request body cannot exhaust the worker
 - enums, scoped or not, as `int`
 - public single and multiple inheritance — emitted as
   `py::class_<Derived, Base>` so inherited methods are callable from Python
@@ -46,7 +51,27 @@ pip install "native2py[clang]"
   `template <typename T> T clamp(...)` have no single instantiation to bind.
   Add a non-template wrapper (or a typedef for the instantiation) and expose
   that.
-- `std::vector<T>` and other STL containers with no `ir.TYPE_MAP` entry
+- **non-const `std::vector<T>&`** — refused deliberately, and this is the one
+  worth understanding. pybind11 converts the caller's list into a *temporary*
+  vector, so a function that writes through the reference writes into the
+  temporary and the temporary dies on return. Measured against a real
+  pybind11 module:
+
+  ```python
+  >>> data = [1.0, 2.0, 3.0]
+  >>> probe.scale_in_place(data, 10.0)   # void f(std::vector<double>&, double)
+  >>> data
+  [1.0, 2.0, 3.0]                        # writes discarded — no error at all
+  ```
+
+  It compiles, it runs, it returns unmodified data. Take
+  `const std::vector<T>&` if the argument is input, or **return** the modified
+  vector
+- nested containers (`std::vector<std::vector<T>>`) and vectors of records —
+  pybind11 would convert them, but the IR has no shape for a list of lists so
+  the generated Pydantic model would be wrong
+- other STL containers with no `ir.TYPE_MAP` entry (`std::map`, `std::array`,
+  `std::span`)
 - private and protected inheritance: the `Derived*` -> `Base*` conversion is
   inaccessible, so pybind11 cannot be told about it. The derived class is
   still bound, with its own members only.

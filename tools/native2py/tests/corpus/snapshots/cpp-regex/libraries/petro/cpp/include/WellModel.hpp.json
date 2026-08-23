@@ -33,7 +33,8 @@
           "is_static": false,
           "name": "name",
           "parameters": [],
-          "returns": "str"
+          "returns": "str",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -41,7 +42,8 @@
           "is_static": false,
           "name": "control",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -59,7 +61,8 @@
               "type": "int"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -86,7 +89,8 @@
               "type": "float"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -131,7 +135,8 @@
               "type": "float"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -149,7 +154,8 @@
               "type": "float"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -167,7 +173,8 @@
               "type": "float"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -185,7 +192,8 @@
               "type": "float"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -193,7 +201,8 @@
           "is_static": false,
           "name": "radius",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -201,7 +210,8 @@
           "is_static": false,
           "name": "skin",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -209,7 +219,8 @@
           "is_static": false,
           "name": "tubing_id",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -217,7 +228,8 @@
           "is_static": false,
           "name": "water_cut",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -225,7 +237,8 @@
           "is_static": false,
           "name": "gas_oil_ratio",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -252,7 +265,8 @@
               "type": "float"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -270,7 +284,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -288,7 +303,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -296,7 +312,8 @@
           "is_static": false,
           "name": "solve_operating_point",
           "parameters": [],
-          "returns": "OperatingPoint"
+          "returns": "OperatingPoint",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -341,7 +358,8 @@
               "type": "int"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -349,7 +367,8 @@
           "is_static": false,
           "name": "fortran_index",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -367,7 +386,8 @@
               "type": "int"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -375,7 +395,8 @@
           "is_static": false,
           "name": "perforation_count",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         }
       ],
       "name": "WellModel",
@@ -387,7 +408,7 @@
   "functions": [],
   "language": "cpp",
   "name": "WellModel",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [],
   "source_file": "libraries/petro/cpp/include/WellModel.hpp",
   "structs": [

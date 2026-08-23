@@ -22,7 +22,8 @@
               "type": "str"
             }
           ],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -30,7 +31,8 @@
           "is_static": false,
           "name": "nx",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -38,7 +40,8 @@
           "is_static": false,
           "name": "ny",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -46,7 +49,8 @@
           "is_static": false,
           "name": "nz",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -54,7 +58,8 @@
           "is_static": false,
           "name": "cell_count",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -62,7 +67,8 @@
           "is_static": false,
           "name": "unit_system",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -70,7 +76,8 @@
           "is_static": false,
           "name": "well_count",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -78,7 +85,8 @@
           "is_static": false,
           "name": "api_gravity",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -86,7 +94,8 @@
           "is_static": false,
           "name": "gas_gravity",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -94,7 +103,8 @@
           "is_static": false,
           "name": "reservoir_temperature",
           "parameters": [],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -102,7 +112,8 @@
           "is_static": false,
           "name": "has_dimensions",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -110,7 +121,8 @@
           "is_static": false,
           "name": "error_text",
           "parameters": [],
-          "returns": "str"
+          "returns": "str",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -118,7 +130,8 @@
           "is_static": false,
           "name": "error_line",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         }
       ],
       "name": "DeckReader",
@@ -130,7 +143,7 @@
   "functions": [],
   "language": "cpp",
   "name": "DeckReader",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [],
   "source_file": "libraries/petro/cpp/include/DeckReader.hpp",
   "structs": []

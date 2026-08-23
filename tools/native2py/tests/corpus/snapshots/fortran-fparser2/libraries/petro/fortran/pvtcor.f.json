@@ -47,7 +47,8 @@
           "type": "int"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -66,7 +67,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -85,7 +87,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -104,7 +107,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -123,7 +127,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -142,7 +147,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -161,7 +167,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -180,7 +187,8 @@
           "type": "float"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -217,7 +225,8 @@
           "type": "float"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -245,12 +254,13 @@
           "type": "str"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     }
   ],
   "language": "fortran",
   "name": "pvtcor",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [
     {
       "name": "PVTERR(MSG)",

@@ -22,7 +22,8 @@
               "type": "int"
             }
           ],
-          "returns": "None"
+          "returns": "None",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -30,7 +31,8 @@
           "is_static": false,
           "name": "system",
           "parameters": [],
-          "returns": "int"
+          "returns": "int",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -48,7 +50,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -66,7 +69,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -84,7 +88,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -102,7 +107,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -120,7 +126,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -138,7 +145,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": true,
@@ -156,7 +164,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         }
       ],
       "name": "UnitConverter",
@@ -183,7 +192,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -202,7 +212,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -221,7 +232,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -240,7 +252,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -259,7 +272,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -278,7 +292,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -297,7 +312,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -316,7 +332,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -335,7 +352,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -354,7 +372,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -373,12 +392,13 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     }
   ],
   "language": "cpp",
   "name": "Units",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [
     {
       "name": "UnitConverter::convert_array",

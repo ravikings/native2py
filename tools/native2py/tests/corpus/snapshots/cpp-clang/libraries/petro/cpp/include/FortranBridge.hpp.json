@@ -10,7 +10,8 @@
       "name": "trncal_",
       "namespace": null,
       "parameters": [],
-      "returns": "None"
+      "returns": "None",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -19,12 +20,13 @@
       "name": "fipoil_",
       "namespace": null,
       "parameters": [],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     }
   ],
   "language": "cpp",
   "name": "FortranBridge",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [
     {
       "name": "pvtini_",

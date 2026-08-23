@@ -22,7 +22,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         },
         {
           "is_const": false,
@@ -49,7 +50,8 @@
               "type": "float"
             }
           ],
-          "returns": "float"
+          "returns": "float",
+          "returns_array": false
         }
       ],
       "name": "Geometry",
@@ -61,7 +63,7 @@
   "functions": [],
   "language": "cpp",
   "name": "geometry",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [],
   "source_file": "libraries/geometry/geometry.hpp",
   "structs": []

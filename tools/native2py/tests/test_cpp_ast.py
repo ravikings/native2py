@@ -813,3 +813,179 @@ def test_a_c_header_can_be_parsed_as_c(tmp_path):
     command = cpp_ast.ClangOptions(language="c", std="c11").command_line(path)
     assert command[:2] == ["-x", "c"]
     assert "-std=c11" in command
+
+
+# --- std::vector (the STL container gap) ---------------------------------
+#
+# `<pybind11/stl.h>` converts std::vector<T> <-> Python list. The conversion is
+# a COPY in both directions, which is the whole reason the mutable-reference
+# case below has to be refused rather than bound.
+
+
+def test_vector_parameters_and_returns_are_bound(tmp_path):
+    header = tmp_path / "stats.hpp"
+    header.write_text(
+        """
+        #include <vector>
+        #include <string>
+        double mean(const std::vector<double>& samples);
+        double total(std::vector<double> samples);
+        std::vector<double> normalise(const std::vector<double>& samples);
+        int count_positive(const std::vector<int>& values);
+        std::vector<std::string> labels(int n);
+        """
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+    by_name = {f.name: f for f in module.functions}
+
+    assert set(by_name) == {"mean", "total", "normalise", "count_positive", "labels"}
+    # Element type, and the fact that it IS a sequence, both survive.
+    assert by_name["mean"].parameters[0].type == "float"
+    assert by_name["mean"].parameters[0].is_array is True
+    assert by_name["count_positive"].parameters[0].type == "int"
+    assert by_name["count_positive"].parameters[0].is_array is True
+    # A vector RETURN is marked too. Without returns_array a
+    # std::vector<double> return is indistinguishable from a double, and the
+    # endpoint annotates `float` while pybind11 hands back a list.
+    assert by_name["normalise"].returns == "float"
+    assert by_name["normalise"].returns_array is True
+    assert by_name["labels"].returns == "str"
+    assert by_name["labels"].returns_array is True
+    assert by_name["mean"].returns_array is False
+
+
+def test_a_mutable_vector_reference_is_refused(tmp_path):
+    # THE load-bearing refusal. Measured against a real pybind11 module:
+    #
+    #     void scale_in_place(std::vector<double>& v, double k);
+    #     >>> data = [1.0, 2.0, 3.0]
+    #     >>> probe.scale_in_place(data, 10.0)
+    #     >>> data
+    #     [1.0, 2.0, 3.0]        # writes discarded, no error
+    #
+    # stl.h converts the list into a TEMPORARY vector; the callee writes into
+    # the temporary and it dies on return. It compiles, runs, and returns
+    # unmodified data — the silent-wrong-answer class this project treats as
+    # the worst kind. So it is skipped with a reason instead.
+    header = tmp_path / "mut.hpp"
+    header.write_text(
+        """
+        #include <vector>
+        void scale_in_place(std::vector<double>& samples, double k);
+        double mean(const std::vector<double>& samples);
+        """
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+
+    assert [f.name for f in module.functions] == ["mean"]
+    skipped = {s.name: s.reason for s in module.skipped}
+    assert "discarded" in skipped["scale_in_place"]
+    # The reason has to say what to do instead, not just that it refused.
+    assert "const std::vector<T>&" in skipped["scale_in_place"]
+
+
+def test_a_const_vector_reference_is_not_refused(tmp_path):
+    # The refusal must be about mutability, not about references — otherwise it
+    # would reject the single most idiomatic way to pass an array in C++.
+    header = tmp_path / "c.hpp"
+    header.write_text(
+        "#include <vector>\ndouble mean(const std::vector<double>& s);\n"
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+
+    assert [f.name for f in module.functions] == ["mean"]
+    assert module.skipped == []
+
+
+def test_nested_and_non_scalar_vectors_are_refused_with_a_reason(tmp_path):
+    header = tmp_path / "n.hpp"
+    header.write_text(
+        """
+        #include <vector>
+        double grid(const std::vector<std::vector<double>>& cells);
+        """
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+
+    assert module.functions == []
+    assert "nested container" in module.skipped[0].reason
+
+
+def test_the_bindings_include_the_stl_header(tmp_path):
+    # Without <pybind11/stl.h> the conversion does not exist and the generated
+    # binding fails to compile with a wall of template errors.
+    from native2py.generators import pybind_gen
+
+    header = tmp_path / "s.hpp"
+    header.write_text("#include <vector>\ndouble mean(const std::vector<double>& s);\n")
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+
+    bindings = pybind_gen.generate_bindings(module, "s.hpp")
+
+    assert "#include <pybind11/stl.h>" in bindings
+    assert "#include <vector>" in bindings
+
+
+def test_a_cpp_router_does_not_import_numpy(tmp_path):
+    # numpy is NOT a declared dependency of a C++ service. Only the Fortran
+    # path marshals through it (f2py wants a contiguous buffer); pybind11 takes
+    # a plain list. When std::vector became bindable, keying the import off
+    # `p.is_array` put `import numpy` in every C++ router — which passes on a
+    # dev machine that has numpy and fails at import inside the container.
+    from native2py.generators import python_pkg_gen
+
+    header = tmp_path / "s.hpp"
+    header.write_text(
+        "#include <vector>\nint count_positive(const std::vector<int>& v);\n"
+    )
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+
+    router = python_pkg_gen.generate_router_py(module, "stats")
+
+    assert "import numpy" not in router
+    # The list still goes straight through, untouched by any conversion.
+    assert "np.array" not in router
+    # And it still carries the memory-exhaustion cap.
+    assert "MAX_ARRAY_ITEMS" in router
+
+
+def test_both_cpp_backends_agree_on_vectors(tmp_path):
+    # cpp_ast's docstring promises the two readers refuse the same signatures,
+    # so switching parsers never changes which bindings are considered safe.
+    # Adding std::vector to only one of them would break that quietly: a
+    # machine without libclang would skip functions the CI machine bound, and
+    # the difference would surface as a missing endpoint in a container.
+    header = tmp_path / "stats.hpp"
+    header.write_text(
+        """
+        #include <vector>
+        #include <string>
+        double mean(const std::vector<double>& samples);
+        double total(std::vector<double> samples);
+        std::vector<double> normalise(const std::vector<double>& samples);
+        int count_positive(const std::vector<int>& values);
+        std::vector<std::string> labels(int n);
+        void scale_in_place(std::vector<double>& samples, double k);
+        """
+    )
+
+    tree = cpp_ast.parse_header(header, ExposeConfig(all=True))
+    regex = cpp_regex.parse_header(header, ExposeConfig(all=True))
+
+    assert sorted(f.name for f in tree.functions) == sorted(
+        f.name for f in regex.functions
+    )
+    assert sorted(s.name for s in tree.skipped) == sorted(
+        s.name for s in regex.skipped
+    ) == ["scale_in_place"]
+    # And agree on the element type, not just on which names got through.
+    by_tree = {f.name: f for f in tree.functions}
+    by_regex = {f.name: f for f in regex.functions}
+    for name in by_tree:
+        assert [
+            (p.type, p.is_array) for p in by_tree[name].parameters
+        ] == [(p.type, p.is_array) for p in by_regex[name].parameters], name

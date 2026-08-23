@@ -201,6 +201,11 @@ def _strip_inline_bodies(text: str) -> str:
 # --- type mapping -------------------------------------------------------
 
 
+# `std::vector<T>` in the spellings a header actually uses, tolerating the
+# spaces a formatter may leave inside the angle brackets.
+_VECTOR_RE = re.compile(r"\bstd::vector\s*<\s*(.+)\s*>\s*$")
+
+
 def _normalize_type(
     raw: str, known_records: frozenset[str] = frozenset(), *, is_return: bool = False
 ) -> tuple[str, bool]:
@@ -217,6 +222,26 @@ def _normalize_type(
     frame. A pointer to anything else has no length information and is
     likewise refused.
     """
+    # Checked on the RAW spelling, before cv-qualifiers and `&` are tokenised
+    # away, because for std::vector the reference and its constness are the
+    # whole question. pybind11 converts a Python list into a TEMPORARY vector,
+    # so a non-const `std::vector<T>&` — which in C++ means "I will write to
+    # your vector" — has its writes discarded when the temporary dies. Silently:
+    # it compiles, runs, and hands back unmodified data. Same refusal, and the
+    # same wording, as cpp_ast._refuse_mutable_vector_ref.
+    raw_text = raw.strip()
+    if "vector" in raw_text and "&" in raw_text and not is_return:
+        before_ref = raw_text.split("&")[0]
+        if _VECTOR_RE.search(before_ref) and "const" not in before_ref.split():
+            raise NativeTypeError(
+                f"'{raw_text}' is a mutable reference to a std::vector. pybind11 "
+                "converts the caller's list into a temporary vector, so anything "
+                "the function writes through this parameter is discarded when the "
+                "call returns — silently, with no error. Take "
+                "'const std::vector<T>&' if the data is input, or RETURN the "
+                "modified vector, or exclude the symbol in native2py.yaml."
+            )
+
     text = " ".join(raw.replace("*", " * ").replace("&", " & ").split())
     tokens = [t for t in text.split(" ") if t not in ("const", "volatile", "&")]
 
@@ -240,6 +265,27 @@ def _normalize_type(
             "through a temporary. Return std::string (or take 'const char*' for "
             "input), or exclude the symbol in native2py.yaml."
         )
+
+    vector_match = _VECTOR_RE.match(base)
+    if vector_match:
+        # pybind11's <pybind11/stl.h> converts std::vector<T> <-> list, by copy.
+        inner, inner_is_array = _normalize_type(
+            vector_match.group(1), known_records, is_return=is_return
+        )
+        if inner_is_array:
+            raise NativeTypeError(
+                f"'{raw.strip()}' is a nested container. pybind11 will convert "
+                "it, but native2py has no IR shape for a list of lists, so the "
+                "generated Pydantic model would be wrong. Flatten it (pass the "
+                "data and its shape separately), or exclude the symbol."
+            )
+        if inner not in ("float", "int", "bool", "str"):
+            raise NativeTypeError(
+                f"'{raw.strip()}' has element type '{inner}', which is not a "
+                "scalar pybind11 converts element-wise. Use a vector of a "
+                "numeric type or std::string, or exclude the symbol."
+            )
+        return inner, True
 
     if base in known_records:
         if pointer_depth == 0:

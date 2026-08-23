@@ -92,7 +92,8 @@
           "type": "float"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -147,7 +148,8 @@
           "type": "int"
         }
       ],
-      "returns": "void"
+      "returns": "void",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -166,7 +168,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -185,7 +188,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -204,7 +208,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -232,7 +237,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -251,7 +257,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -270,7 +277,8 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     },
     {
       "fortran_module": null,
@@ -316,12 +324,13 @@
           "type": "float"
         }
       ],
-      "returns": "float"
+      "returns": "float",
+      "returns_array": false
     }
   ],
   "language": "fortran",
   "name": "relperm",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "skipped": [],
   "source_file": "libraries/petro/fortran/relperm.f",
   "structs": []

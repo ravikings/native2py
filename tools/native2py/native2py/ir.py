@@ -121,6 +121,11 @@ class Method:
     # `&Cls::name` is then ambiguous and does not compile; the binding has to
     # go through py::overload_cast<...> with the argument types spelled out.
     is_overloaded: bool = False
+    # True when the return is a sequence (std::vector<T>) rather than a scalar.
+    # Without this a `std::vector<double>` return is indistinguishable from a
+    # `double` in the IR, and the generated endpoint annotates it `float` while
+    # pybind11 hands back a list — a wrong type on every response.
+    returns_array: bool = False
 
 
 @dataclass
@@ -186,6 +191,11 @@ class FunctionDef:
     # Set when the translation unit declares more than one function of this
     # name — same ambiguity as Method.is_overloaded.
     is_overloaded: bool = False
+    # True when the return is a sequence (std::vector<T>) rather than a scalar.
+    # Without this a `std::vector<double>` return is indistinguishable from a
+    # `double` in the IR, and the generated endpoint annotates it `float` while
+    # pybind11 hands back a list — a wrong type on every response.
+    returns_array: bool = False
     # Enclosing `module X ... end module X`, if any. f2py nests those routines
     # under `<ext>.X.<name>` while bare F77 routines land at the top level, so
     # this has to be tracked per routine: a modern F90 facade sitting on top of
@@ -370,7 +380,7 @@ def validate(module: "ModuleIR") -> list[Problem]:
 # hand-edited, and quietly ignoring them is how a typo'd "is_cosnt: true"
 # becomes a wrong binding.
 SCHEMA_VERSION_MAJOR = 1
-SCHEMA_VERSION_MINOR = 0
+SCHEMA_VERSION_MINOR = 1
 SCHEMA_VERSION = f"{SCHEMA_VERSION_MAJOR}.{SCHEMA_VERSION_MINOR}"
 
 # What a document with no `schema_version` at all is treated as: everything
@@ -446,7 +456,15 @@ _PARAMETER_KEYS = frozenset(
     {"name", "type", "is_array", "intent", "native_type", "is_const", "is_optional"}
 )
 _METHOD_KEYS = frozenset(
-    {"name", "parameters", "returns", "is_static", "is_const", "is_overloaded"}
+    {
+        "name",
+        "parameters",
+        "returns",
+        "is_static",
+        "is_const",
+        "is_overloaded",
+        "returns_array",
+    }
 )
 _CLASS_KEYS = frozenset(
     {
@@ -468,6 +486,7 @@ _FUNCTION_KEYS = frozenset(
         "is_subroutine",
         "namespace",
         "is_overloaded",
+        "returns_array",
         "fortran_module",
     }
 )
@@ -557,6 +576,7 @@ def module_from_dict(data: dict) -> ModuleIR:
                         is_static=m.get("is_static", False),
                         is_const=m.get("is_const", False),
                         is_overloaded=m.get("is_overloaded", False),
+                        returns_array=m.get("returns_array", False),
                     )
                     for m in cls.get("methods", [])
                 ],
@@ -576,6 +596,7 @@ def module_from_dict(data: dict) -> ModuleIR:
                 fortran_module=fn.get("fortran_module"),
                 namespace=fn.get("namespace"),
                 is_overloaded=fn.get("is_overloaded", False),
+                returns_array=fn.get("returns_array", False),
             )
             for fn in data.get("functions", [])
         ],
