@@ -6,27 +6,39 @@ are given per class.
 
 ---
 
-> ## STATUS: all defects below are fixed and verified
+> ## STATUS: every defect below is fixed and verified — merged in `2380fc7`
 >
 > | | Before | After |
 > |---|---|---|
-> | Tests | 238 (223 pass, 15 could not run) | **358, all passing** |
+> | Tests | 238 (223 pass, 15 could not run) | **441, all passing** |
 > | Probe C++ header | 2 hard compile errors, 0 symbols skipped | compiles clean, 1 symbol correctly skipped |
-> | Probe router.py | `SyntaxError` | compiles, both overloads reachable |
+> | Probe `router.py` | `SyntaxError` | compiles, both overloads reachable |
 > | `ModuleIR.skipped` | empty for every defect | populated with reasons |
+> | `services/petro_api` | shipped an unparseable `router.py` | imports, and matches a native binary |
 >
 > The 15 previously-unrunnable tests were not environmental noise — they gate
 > the CLI end-to-end path and now execute and pass with the package installed.
 >
-> Verification was done independently of the agents that made the fixes, by
-> re-running every probe in this document plus a real `clang++ -fsyntax-only`
-> compile of the generated bindings and a byte-determinism check. See
-> [ROADMAP.md](ROADMAP.md) for what remains — Class C's parser-replacement
-> argument still stands, and none of the Workstream 2 operability items
-> (COMMON-block concurrency, crash containment, GIL) are touched by this work.
+> Verification was done independently of the agents that made the fixes: every
+> probe in this document re-run, a real `clang++ -fsyntax-only` compile of the
+> generated bindings, a byte-determinism check, and the generated package
+> imported against a freshly built f2py extension.
 >
-> Each fix carries a regression test that was confirmed to fail before it and
-> pass after.
+> **A code-review pass over the fix itself found nine further defects**, seven
+> confirmed, all resolved — including three in code written during the sweep.
+> Two were worth the exercise on their own: `expose: false` was coerced to `{}`
+> and bound the entire API (`False or {}` is `{}`), and internal `contains`
+> procedures silently retyped an outer routine's arguments. Notably, the finding
+> about bare-`end` block termination was **not reproducible as described**;
+> probing it anyway surfaced the `contains` bug, which was worse.
+>
+> Each fix carries a regression test confirmed to fail before it and pass after.
+>
+> **What remains is in [ROADMAP.md](ROADMAP.md).** Class C is the only part of
+> this document not fully closed: `.F90` preprocessed Fortran is now *detected
+> and warned about* but still not handled, and STL/template coverage is
+> unchanged. Both are the fparser2 argument (W1.4). Defects (g) statement
+> functions and (h) `COMMON`/`EQUIVALENCE` outputs also await that work.
 
 ---
 
