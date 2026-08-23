@@ -86,6 +86,20 @@ _LIBCLANG_CANDIDATES = (
     "/usr/lib/llvm-16/lib/libclang.so.1",
     "/usr/lib/x86_64-linux-gnu/libclang-18.so.1",
     "/usr/lib/x86_64-linux-gnu/libclang.so.1",
+    # Windows: LLVM's own installer and the two package managers that ship it.
+    # A DLL is loaded by name, so these are absolute paths on purpose —
+    # set_library_file with a bare name would search PATH and could pick up an
+    # unrelated libclang.dll.
+    r"C:\Program Files\LLVM\bin\libclang.dll",
+    r"C:\Program Files (x86)\LLVM\bin\libclang.dll",
+    str(
+        Path(os.environ.get("ProgramData", r"C:\ProgramData"))
+        / "chocolatey/lib/llvm/tools/LLVM/bin/libclang.dll"
+    ),
+    str(
+        Path(os.environ.get("VCPKG_ROOT", r"C:\vcpkg"))
+        / "installed/x64-windows/bin/libclang.dll"
+    ),
 )
 
 

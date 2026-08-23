@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -89,24 +90,27 @@ def _resolve(
     `platform` is every compatible tag for ONE architecture; pip takes the set
     and picks whichever a project publishes.
     """
-    command = [
-        *pip,
-        "install",
-        "--dry-run",
-        "--quiet",
-        "--report",
-        "-",
-        "--only-binary=:all:",
-        "--python-version",
-        LOCK_PYTHON_VERSION,
-        *[arg for tag in platform for arg in ("--platform", tag)],
-        # pip requires a target when resolving for a foreign platform; nothing
-        # is written, because --dry-run.
-        "--target",
-        "/tmp/native2py-lock-dry-run",
-        *requirements,
-    ]
-    result = subprocess.run(command, capture_output=True, text=True)
+    # pip requires a target when resolving for a foreign platform; nothing is
+    # written, because --dry-run. It still has to be a path pip can create, so
+    # take one from the OS rather than hardcoding /tmp — that is not a
+    # writable location on Windows.
+    with tempfile.TemporaryDirectory(prefix="native2py-lock-") as dry_run_target:
+        command = [
+            *pip,
+            "install",
+            "--dry-run",
+            "--quiet",
+            "--report",
+            "-",
+            "--only-binary=:all:",
+            "--python-version",
+            LOCK_PYTHON_VERSION,
+            *[arg for tag in platform for arg in ("--platform", tag)],
+            "--target",
+            dry_run_target,
+            *requirements,
+        ]
+        result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise LockError(
             f"pip could not resolve {' '.join(requirements)} for "
