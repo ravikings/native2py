@@ -247,16 +247,71 @@ no outbound network and a change-control board that wants to know exactly
 what went into a binary. This section is about what works there, and — more
 usefully — what does not yet.
 
-### Reproducibility: the three pins
+### Reproducibility: the five pins
 
-Reproducibility here means three separate things, pinned in three places.
-Miss any one and the other two buy you nothing.
+Reproducibility here means five separate things, pinned in five places. Miss
+any one and the others buy you nothing — the base-image digest pins the
+filesystem you *start from* and says nothing about what gets downloaded into
+it afterwards.
 
 | What | Pinned by | Mutable if unpinned |
 |---|---|---|
 | native2py's own Python deps | `constraints.txt` (exact `==` + SHA-256) | resolution drifts daily |
 | The container base image | `docker_gen.BASE_IMAGE_DIGEST` (`@sha256:`) | Docker Hub re-points `python:3.12-slim` on every rebuild |
+| **The compiler and build tools** | `docker_gen.APT_PINS` (`name=version`, including the concrete `gfortran-14`) | `apt-get install gfortran` resolves against the live Debian archive |
+| **The service's Python deps** | `requirements.lock` + `--require-hashes` (`native2py lock`) | pip resolves fastapi/uvicorn/numpy at build time, every time |
 | The native sources compiled in | the generated SBOM (path + SHA-256) | nothing records which revision of the deck is inside the wheel |
+
+#### Verified, by building it twice
+
+Three independent `docker build --no-cache` runs of `petro_api`:
+
+- all 16 third-party Python packages **identical**
+- `libgfortran5` and `libstdc++6` **identical**
+- the compiled `.so` **byte-identical**
+- the service wheel **byte-identical** — once `SOURCE_DATE_EPOCH` was set; a
+  wheel is a zip, and a zip stores per-entry mtimes, so the artifact you ship
+  and sign was moving even though the extension inside it was not
+- the running container returned the recorded golden values **exactly**, from
+  Debian `gfortran 14.2.0-19`, while those goldens were recorded on macOS with
+  Homebrew GCC 16.2.0
+
+And flipping one byte of one hash in `requirements.lock` failed the build with
+pip's `THESE PACKAGES DO NOT MATCH THE HASHES` — the pinning is enforced, not
+decorative.
+
+Three things had to be fixed to get there, and each was found by building
+rather than by reading:
+
+1. **`gfortran` is a metapackage.** Pinning it left the actual compiler free:
+   the image had `gfortran 4:14.2.0-1` and `gfortran-14 14.2.0-19`, and Debian
+   can move the second without touching the first. The concrete compiler
+   packages are named explicitly now.
+2. **`pip wheel .` downloads dependency wheels into `/dist`**, and the install
+   step then picked those over the hash-locked ones — shipping numpy 2.5.2
+   over a locked 2.2.6 silently. Fixed with `--no-deps`.
+3. **`--platform` is an exact tag match, not a floor.** Locking against
+   `manylinux2014` pinned numpy 2.2.6 while the image itself resolved 2.5.2,
+   because numpy 2.5.2 publishes `manylinux_2_28` only. A lock that pins
+   something the image would never have chosen is worse than no lock.
+
+#### Locking a service
+
+```bash
+native2py lock petro_api      # resolve + hash every dependency, for the IMAGE
+native2py docker petro_api    # regenerate the Dockerfile so it uses the lock
+```
+
+`lock` resolves for Python 3.12 on Linux, both architectures — not for the
+machine you run it on. Several hashes per entry is normal: one artifact per
+architecture. Without a lock the Dockerfile still builds, and `native2py
+docker` says plainly that dependencies will be resolved at build time.
+
+**Still not pinned:** `apt-get update` itself fetches live indexes, so a build
+whose pinned versions have been superseded fails rather than drifting — a loud
+failure you resolve deliberately. Full archive pinning would need
+`snapshot.debian.org`, which is a deliberate trade against mirror speed and is
+not the default here.
 
 **1. The tool.** `pyproject.toml` keeps `>=` ranges because native2py is a
 library and pinning a library's `dependencies` propagates conflicts to

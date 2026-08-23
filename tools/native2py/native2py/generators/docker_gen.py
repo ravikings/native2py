@@ -49,9 +49,84 @@ BASE_IMAGE = "python:3.12-slim"
 BASE_IMAGE_DIGEST = "sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a"
 BASE_IMAGE_REF = f"{BASE_IMAGE}@{BASE_IMAGE_DIGEST}"
 
+# --- apt pins -------------------------------------------------------------
+#
+# WHY THE VERSIONS ARE SPELLED OUT
+#   `apt-get install gfortran` resolves against the LIVE Debian archive, so the
+#   same Dockerfile, from the same digest-pinned base, installs a different
+#   compiler the week after Debian publishes one. The image digest pins the
+#   filesystem you start from; it does nothing about what you then download
+#   into it. For a tool whose whole claim is "the re-hosted numerics return the
+#   same answers", the compiler is the single most consequential input, and it
+#   was the one thing nothing pinned.
+#
+#   These are the candidates in the base image named by BASE_IMAGE_DIGEST
+#   (Debian trixie), read from the image itself rather than from a changelog.
+#
+# WHEN A PIN GOES STALE
+#   Debian drops superseded versions from the live mirror, so an old pin
+#   eventually fails with "Version '...' for '...' was not found". That is the
+#   intended behaviour: a loud failure you resolve deliberately, rather than a
+#   silent toolchain change nobody reviewed. Refresh with:
+#
+#       native2py toolchain --refresh
+#
+#   which reads the candidates out of the pinned base image and prints the
+#   block to paste here. Update the base digest and these pins together, then
+#   re-run the generated service's golden-value tests before shipping.
+#
+# WHY THE CONCRETE COMPILER PACKAGES ARE NAMED, NOT JUST `gfortran`
+#   Pinning `gfortran=4:14.2.0-1` pins a METAPACKAGE. It exists to provide the
+#   /usr/bin/gfortran symlink and to depend on the real compiler; the compiler
+#   itself is `gfortran-14`, and apt only honours `=version` for packages named
+#   on the command line. Measured in the built image:
+#
+#       gfortran       4:14.2.0-1     <- what the first version of this pinned
+#       gfortran-14    14.2.0-19      <- the compiler that actually runs
+#
+#   Debian can ship gfortran-14 14.2.0-20 with the metapackage unchanged, and a
+#   build that looked pinned would quietly change compilers. So the concrete
+#   packages are named too. That hard-codes the GCC major version, which moves
+#   with the Debian release — refresh it together with the base image digest.
+#
+# Read 2026-08-23 from python:3.12-slim@sha256:2c941e86... (Debian trixie).
+APT_SUITE = "trixie"
+APT_PINS = {
+    "build-essential": "12.12",
+    "cmake": "3.31.6-2",
+    # Metapackage: provides the unsuffixed /usr/bin/gfortran.
+    "gfortran": "4:14.2.0-1",
+    # The compilers that actually run, and the runtimes they emit code against.
+    "gcc-14": "14.2.0-19",
+    "g++-14": "14.2.0-19",
+    "gfortran-14": "14.2.0-19",
+    "libgfortran5": "14.2.0-19",
+    "libstdc++6": "14.2.0-19",
+}
+
+
+def _pinned(package: str) -> str:
+    """`name=version` when the version is known, bare name otherwise.
+
+    An unpinned name is not silently tolerated in the languages native2py
+    generates for — every package in the tables below has an entry — but a
+    caller passing `extra_build_deps` may name something native2py has never
+    seen, and refusing to emit a Dockerfile for it would be worse than
+    installing it unpinned and saying so in the SBOM.
+    """
+    version = APT_PINS.get(package)
+    return f"{package}={version}" if version else package
+
+
+# Both the metapackage and the concrete compiler are listed: the first gives
+# the unsuffixed command every build system looks for, the second is what apt
+# can actually pin. See APT_PINS.
 _LANGUAGE_BUILD_DEPS = {
-    "cpp": ["build-essential", "cmake"],
-    "fortran": ["build-essential", "gfortran", "cmake"],
+    "cpp": ["build-essential", "gcc-14", "g++-14", "cmake"],
+    "fortran": [
+        "build-essential", "gcc-14", "g++-14",
+        "gfortran", "gfortran-14", "cmake",
+    ],
 }
 
 _LANGUAGE_RUNTIME_DEPS = {
@@ -74,6 +149,31 @@ _LANGUAGE_RUNTIME_DEPS = {
 #   more here than saving a layer. ninja comes along because meson drives it.
 _LANGUAGE_PIP_BUILD_TOOLS = {
     "fortran": ["meson", "ninja"],
+}
+
+# PEP 517 build requirements, installed explicitly so the wheel can be built
+# with --no-build-isolation. Mirrors pyproject_gen._BUILD_REQUIRES; kept as a
+# local copy for the same reason the runtime list is, so drift shows up as a
+# diff in review.
+#
+# WHY --no-build-isolation, WHICH IS THE OPPOSITE OF THE USUAL ADVICE
+#   Two reasons, and the build failed on the first one.
+#
+#   1. It did not work. `pip wheel .` runs the backend in an isolated
+#      environment, and f2py's meson backend then died with
+#      `ModuleNotFoundError: No module named 'mesonbuild'` — the `meson`
+#      executable was on PATH from the layer above, but the module it needs
+#      was not importable from inside the isolated build.
+#
+#   2. Isolation is itself a reproducibility hole. pip *downloads* the build
+#      requirements into that environment at build time, unpinned — so the
+#      scikit-build-core and numpy that compile the extension could differ
+#      between two builds of the same pinned Dockerfile, which is exactly what
+#      this whole exercise is closing. Installing them explicitly makes them
+#      visible, and lockable.
+_LANGUAGE_BUILD_REQUIRES = {
+    "cpp": ["scikit-build-core", "pybind11"],
+    "fortran": ["scikit-build-core", "numpy"],
 }
 
 # --- Crash containment (ROADMAP 2.2) --------------------------------------
@@ -121,22 +221,57 @@ def generate_dockerfile(
     package_name: str,
     extra_build_deps: list[str] | None = None,
     libraries: list[str] | None = None,
+    locked: bool = False,
+    needs_numpy: bool = False,
 ) -> str:
+    """The service's multi-stage Dockerfile.
+
+    `locked` is set when `requirements.lock` exists beside the service (see
+    `native2py lock`). Without it the runtime `pip install` resolves the
+    service's dependencies from PyPI at build time, so an image rebuilt a week
+    later ships different Python code with no record of the change. With it,
+    the dependencies are installed by hash and the wheel goes in `--no-deps`.
+    """
     build_deps = _LANGUAGE_BUILD_DEPS.get(language, ["build-essential", "cmake"]) + (extra_build_deps or [])
     runtime_deps = _LANGUAGE_RUNTIME_DEPS.get(language, [])
     libraries = libraries or []
 
     runtime_install = ""
     if runtime_deps:
-        deps = " \\\n        ".join(runtime_deps)
+        deps = " \\\n        ".join(_pinned(d) for d in runtime_deps)
         runtime_install = (
             "\nRUN apt-get update && \\\n"
             f"    apt-get install -y --no-install-recommends {deps} && \\\n"
             "    rm -rf /var/lib/apt/lists/*\n"
         )
 
-    build_deps_str = " \\\n        ".join(build_deps)
-    pip_build_tools = " ".join(["build"] + _LANGUAGE_PIP_BUILD_TOOLS.get(language, []))
+    build_deps_str = " \\\n        ".join(_pinned(d) for d in build_deps)
+    pip_build_tools = " ".join(
+        ["build"]
+        + _LANGUAGE_BUILD_REQUIRES.get(language, _LANGUAGE_BUILD_REQUIRES["cpp"])
+        + _LANGUAGE_PIP_BUILD_TOOLS.get(language, [])
+        + (["numpy"] if language == "cpp" and needs_numpy else [])
+    )
+
+    # The lock lives beside the service, so the path it is COPYed from depends
+    # on which directory the build context is rooted at.
+    lock_source = (
+        f"services/{service_name}/requirements.lock" if libraries else "requirements.lock"
+    )
+    lock_block = (
+        f"""
+COPY {lock_source} ./requirements.lock
+
+# --require-hashes: every dependency pinned by version AND sha256, so a
+# rebuild either installs exactly this or fails. Generated by `native2py lock`.
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+"""
+        if locked
+        else ""
+    )
+    # Without the lock the wheel's dependencies must still be resolved, so
+    # --no-deps is only correct once they are already installed from it.
+    no_deps = " --no-deps" if locked else ""
 
     workers = _LANGUAGE_DEFAULT_WORKERS.get(language, 1)
     worker_note = (
@@ -174,9 +309,22 @@ COPY services/{service_name} ./services/{service_name}
 
 WORKDIR /build/services/{service_name}
 
+# A wheel is a zip, and a zip records a modification time per entry, so two
+# builds of identical sources produced wheels with different SHA-256s. The
+# compiled extension inside was byte-identical both times — measured — but the
+# artifact you actually ship and sign was not. SOURCE_DATE_EPOCH is the
+# reproducible-builds convention every Python packaging tool honours for
+# exactly this. The value is arbitrary and fixed; 1980-01-01 is the earliest a
+# zip can represent.
+ENV SOURCE_DATE_EPOCH=315532800
+
 RUN pip install --no-cache-dir {pip_build_tools}
 
-RUN pip wheel . -w /dist
+# --no-deps, and it is load-bearing: without it `pip wheel` downloads every
+# DEPENDENCY into /dist as well, and the `pip install /dist/*.whl` below then
+# installs those instead of the hash-locked ones — silently defeating the lock.
+# Caught by building the image and reading which numpy actually landed.
+RUN pip wheel . -w /dist --no-build-isolation --no-deps
 """
     else:
         context_note = (
@@ -187,9 +335,21 @@ RUN pip wheel . -w /dist
 
 COPY . .
 
+# A wheel is a zip, and a zip records a modification time per entry, so two
+# builds of identical sources produced wheels with different SHA-256s. The
+# compiled extension inside was byte-identical both times — measured — but the
+# artifact you actually ship and sign was not. SOURCE_DATE_EPOCH is the
+# reproducible-builds convention every Python packaging tool honours for
+# exactly this. The value is arbitrary and fixed; 1980-01-01 is the earliest a
+# zip can represent.
+ENV SOURCE_DATE_EPOCH=315532800
+
 RUN pip install --no-cache-dir {pip_build_tools}
 
-RUN pip wheel . -w /dist
+# --no-deps, and it is load-bearing: without it `pip wheel` downloads every
+# DEPENDENCY into /dist as well, and the `pip install /dist/*.whl` below then
+# installs those instead of the hash-locked ones — silently defeating the lock.
+RUN pip wheel . -w /dist --no-build-isolation --no-deps
 """
 
     return f"""# Generated by native2py. Do not edit by hand — re-run `native2py docker {service_name}`.
@@ -210,8 +370,8 @@ FROM {BASE_IMAGE_REF}
 WORKDIR /app
 
 COPY --from=builder /dist /dist
-
-RUN pip install --no-cache-dir /dist/*.whl
+{lock_block}
+RUN pip install --no-cache-dir{no_deps} /dist/*.whl
 
 # design.md section 21: run as non-root. UID is explicit so a Kubernetes
 # `runAsUser: 1000` and `runAsNonRoot: true` match the image rather than
@@ -333,6 +493,39 @@ def generate_sbom(
         )
 
     components: list[dict] = []
+
+    # The build toolchain, which nothing recorded until now. The base image
+    # digest pinned the filesystem you start from and said nothing about what
+    # gets installed into it, so two images built a month apart could carry
+    # different compilers with byte-identical SBOMs — precisely the gap the
+    # golden values exist to close, left open in the artifact that is supposed
+    # to document it.
+    #
+    # Deterministic because APT_PINS is static. Scope distinguishes what ships
+    # from what only built it: the compilers stay in the builder stage
+    # ("excluded"), the runtime libraries are in the final image ("required").
+    build_only = set(_LANGUAGE_BUILD_DEPS.get(language, [])) - set(
+        _LANGUAGE_RUNTIME_DEPS.get(language, [])
+    )
+    apt_packages = sorted(
+        build_only | set(_LANGUAGE_RUNTIME_DEPS.get(language, []))
+    )
+    for name in apt_packages:
+        version = APT_PINS.get(name)
+        components.append(
+            {
+                "type": "library",
+                "bom-ref": f"deb/{name}",
+                "name": name,
+                **({"version": version} if version else {}),
+                "purl": (
+                    f"pkg:deb/debian/{name}@{version}?distro={APT_SUITE}"
+                    if version
+                    else f"pkg:deb/debian/{name}?distro={APT_SUITE}"
+                ),
+                "scope": "excluded" if name in build_only else "required",
+            }
+        )
 
     for name in sorted(python_dependencies):
         components.append(

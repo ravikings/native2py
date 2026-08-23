@@ -362,11 +362,16 @@ Ordered by value per hour, not by workstream.
    worker, and the Kubernetes manifests pin it to one worker per pod, both
    *because this is unsolved*. Fixing it lifts a throughput ceiling in two
    places at once.
-3. **Reproducible generated builds** — `apt-get` is unpinned, the generated
-   `pip install` has no `--require-hashes`, and `f2py` shells out to a system
-   gfortran the SBOM never records. Two machines with different gfortran
-   produce an identical SBOM and different binaries, which undercuts the
-   "same answers" claim the golden values exist to support.
+3. ~~**Reproducible generated builds**~~ **— done.** apt packages are
+   version-pinned (including the concrete `gfortran-14`, because pinning the
+   metapackage left the compiler free to move), the service's Python
+   dependencies are hash-locked via `native2py lock` + `--require-hashes`, the
+   wheel is byte-reproducible via `SOURCE_DATE_EPOCH`, and the toolchain is
+   recorded in the SBOM. Verified by three `--no-cache` builds: identical
+   packages, byte-identical `.so` and wheel, golden values reproduced exactly
+   from a different compiler than recorded them, and a tampered hash failing
+   the build. Still unpinned: `apt-get update` fetches live indexes, so a
+   superseded pin fails loudly rather than drifting.
 4. **Authorization, not just authentication** — a valid API key today can call
    every endpoint. Per-key scopes are the obvious next step.
 5. **OpenTelemetry, and splitting native time from HTTP overhead** — request

@@ -34,6 +34,7 @@ from .preprocess import (
     uses_kind_parameters,
 )
 from . import golden as golden_lib
+from . import locking
 from .suggest import POOR, READY, WORKABLE, analyse_tree
 from .generators import (
     cmake_gen,
@@ -686,11 +687,22 @@ def docker(name: str, build: bool) -> None:
     service_dir = _service_dir(name)
     config = _load_config(service_dir)
     libraries = _validated_libraries(config)
+    # Generated from what is actually there: a lock the user has not created
+    # would produce a Dockerfile with a COPY that fails, and silently ignoring
+    # one they HAVE created would quietly drop the pinning they asked for.
+    locked = (service_dir / locking.LOCK_FILENAME).exists()
     dockerfile = docker_gen.generate_dockerfile(
-        name, config.language, name, libraries=libraries
+        name, config.language, name, libraries=libraries, locked=locked
     )
     (service_dir / "Dockerfile").write_text(dockerfile)
     click.echo(f"Wrote {service_dir / 'Dockerfile'}")
+    if locked:
+        click.echo("  Dependencies install from requirements.lock (--require-hashes).")
+    else:
+        click.echo(
+            f"  NOTE: no {locking.LOCK_FILENAME} — pip will resolve dependencies at "
+            f"build time, so two builds can differ. Run `native2py lock {name}`."
+        )
 
     if libraries:
         # Shared libraries live outside the service dir, so the build context
@@ -703,6 +715,38 @@ def docker(name: str, build: bool) -> None:
             )
     elif build:
         _run(["docker", "build", "-t", f"{name}:latest", "."], cwd=service_dir)
+
+
+@main.command("lock")
+@click.argument("name")
+def lock(name: str) -> None:
+    """Pin this service's Python dependencies by version and SHA-256.
+
+    Writes requirements.lock, which the generated Dockerfile installs with
+    --require-hashes. Without it, `docker build` resolves fastapi/uvicorn/numpy
+    from PyPI every time, so an image rebuilt a week later ships different code
+    with nothing recording the change.
+
+    Resolution targets the IMAGE — Python 3.12 on Linux, both architectures —
+    not the machine running this command.
+    """
+    service_dir = _service_dir(name)
+    config = _load_config(service_dir)
+
+    requirements = list(
+        docker_gen._LANGUAGE_RUNTIME_PYTHON_DEPS.get(
+            config.language, docker_gen._LANGUAGE_RUNTIME_PYTHON_DEPS["cpp"]
+        )
+    )
+    click.echo(f"Resolving {len(requirements)} direct dependencies for the image...")
+    try:
+        target = locking.write_lock(service_dir, name, requirements)
+    except locking.LockError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    pinned = sum(1 for line in target.read_text().splitlines() if "==" in line)
+    click.echo(f"Wrote {target} ({pinned} packages pinned by hash)")
+    click.echo(f"  Re-run `native2py docker {name}` so the Dockerfile installs from it.")
 
 
 @main.command("k8s")

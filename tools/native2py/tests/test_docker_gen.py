@@ -206,7 +206,7 @@ def test_fortran_builder_installs_meson_and_ninja(libraries):
         "petro_api", "fortran", "petro_api", libraries=libraries
     )
 
-    assert "pip install --no-cache-dir build meson ninja" in dockerfile
+    assert "meson ninja" in dockerfile
     # Must be installed BEFORE the wheel build that invokes f2py, not after.
     assert dockerfile.index("meson ninja") < dockerfile.index("pip wheel .")
 
@@ -216,7 +216,9 @@ def test_cpp_builder_does_not_pull_in_meson():
     # be cargo-culting a Fortran-specific fix into every image.
     dockerfile = docker_gen.generate_dockerfile("calculator", "cpp", "calculator")
 
-    assert "pip install --no-cache-dir build\n" in dockerfile
+    # pybind11/CMake has no f2py step, so no meson — but the build backend
+    # itself is still installed explicitly (see --no-build-isolation).
+    assert "pip install --no-cache-dir build scikit-build-core pybind11" in dockerfile
     assert "meson" not in dockerfile
 
 
@@ -285,3 +287,125 @@ def test_the_supervisor_is_a_declared_runtime_dependency():
         assert '"gunicorn"' in pyproject
         assert '"uvicorn-worker"' in pyproject
         assert "gunicorn" in docker_gen._LANGUAGE_RUNTIME_PYTHON_DEPS[language]
+
+
+# --- reproducible builds -------------------------------------------------
+#
+# The base image digest pinned the filesystem you START from and nothing else.
+# Everything downloaded into it afterwards — the compiler, the Python
+# dependencies, the build backend — resolved live, so two builds of the same
+# Dockerfile could ship different code with nothing recording the change.
+#
+# Verified by building the real petro_api image twice with --no-cache:
+#   * all 16 third-party Python packages identical
+#   * libgfortran5 / libstdc++6 identical
+#   * the compiled .so byte-identical (sha256 9f2e60c2e4c85f3c...)
+#   * the service wheel byte-identical (once SOURCE_DATE_EPOCH was set)
+#   * the running service returned the recorded golden values exactly,
+#     from Debian gfortran 14.2.0-19, while the goldens were recorded on
+#     macOS with Homebrew GCC 16.2.0
+# and by flipping one byte of a hash in the lock, which failed the build with
+# pip's "THESE PACKAGES DO NOT MATCH THE HASHES" error.
+
+
+def test_apt_packages_are_version_pinned():
+    dockerfile = docker_gen.generate_dockerfile("svc", "fortran", "svc")
+
+    for package in ("build-essential", "cmake", "gfortran"):
+        assert f"{package}={docker_gen.APT_PINS[package]}" in dockerfile
+
+
+def test_the_concrete_compiler_is_pinned_not_only_the_metapackage():
+    # `gfortran` is a METAPACKAGE. Pinning it alone leaves the compiler free to
+    # move: measured in a built image, gfortran was 4:14.2.0-1 while the
+    # compiler that actually ran was gfortran-14 at 14.2.0-19. Debian can ship
+    # a new gfortran-14 with the metapackage unchanged, and a build that looked
+    # pinned would quietly change compilers.
+    dockerfile = docker_gen.generate_dockerfile("svc", "fortran", "svc")
+
+    assert "gfortran-14=14.2.0-19" in dockerfile
+    assert "gcc-14=14.2.0-19" in dockerfile
+    assert "g++-14=14.2.0-19" in dockerfile
+
+
+@pytest.mark.parametrize("libraries", [None, ["petro"]])
+def test_the_wheel_build_does_not_resolve_its_own_dependencies(libraries):
+    # Two separate hazards, both measured.
+    #
+    # --no-build-isolation: pip's isolated build env DOWNLOADS the build
+    # requirements at build time, unpinned, so the scikit-build-core and numpy
+    # that compile the extension could differ between builds. It also simply
+    # did not work — f2py's meson backend died with
+    # `ModuleNotFoundError: No module named 'mesonbuild'`.
+    #
+    # --no-deps on `pip wheel`: without it, every DEPENDENCY wheel lands in
+    # /dist too, and the `pip install /dist/*.whl` below installs those
+    # instead of the hash-locked ones. The first build of this shipped
+    # numpy 2.5.2 over a locked 2.2.6 without a word.
+    # BOTH build-context branches. They are separate f-strings, and patching
+    # only one is a mistake this file has now seen twice — once for meson, once
+    # for --no-deps.
+    dockerfile = docker_gen.generate_dockerfile(
+        "svc", "fortran", "svc", locked=True, libraries=libraries
+    )
+
+    assert "pip wheel . -w /dist --no-build-isolation --no-deps" in dockerfile
+    assert "scikit-build-core" in dockerfile
+
+
+def test_the_wheel_is_byte_reproducible():
+    # A wheel is a zip and a zip stores per-entry mtimes, so identical sources
+    # produced wheels with different SHA-256s even though the .so inside was
+    # byte-identical. The artifact you ship and sign has to be stable too.
+    dockerfile = docker_gen.generate_dockerfile("svc", "cpp", "svc")
+
+    assert "ENV SOURCE_DATE_EPOCH=315532800" in dockerfile
+    assert dockerfile.index("SOURCE_DATE_EPOCH") < dockerfile.index("pip wheel .")
+
+
+def test_dependencies_install_by_hash_when_a_lock_exists():
+    locked = docker_gen.generate_dockerfile("svc", "cpp", "svc", locked=True)
+
+    assert "--require-hashes -r requirements.lock" in locked
+    # --no-deps is only correct once the lock has installed them; otherwise the
+    # service would come up missing fastapi.
+    assert "pip install --no-cache-dir --no-deps /dist/*.whl" in locked
+
+
+def test_without_a_lock_the_wheel_still_brings_its_dependencies():
+    # Locking is opt-in (it needs a network resolution the user runs
+    # deliberately). Emitting --no-deps without a lock would produce an image
+    # that builds and then cannot import fastapi.
+    unlocked = docker_gen.generate_dockerfile("svc", "cpp", "svc", locked=False)
+
+    assert "requirements.lock" not in unlocked
+    assert "pip install --no-cache-dir /dist/*.whl" in unlocked
+
+
+def test_the_sbom_records_the_build_toolchain():
+    # Nothing recorded which compiler built the image, so two images built a
+    # month apart could carry different toolchains with byte-identical SBOMs —
+    # the exact gap the golden values exist to close, left open in the document
+    # that is supposed to attest to it.
+    import json
+
+    sbom = json.loads(docker_gen.generate_sbom("svc", "fortran", "svc"))
+    debs = {c["name"]: c for c in sbom["components"] if c["bom-ref"].startswith("deb/")}
+
+    assert "gfortran-14" in debs
+    assert debs["gfortran-14"]["version"] == "14.2.0-19"
+    assert debs["gfortran-14"]["purl"].endswith("?distro=trixie")
+    # Scope separates what only built the image from what ships in it.
+    assert debs["gfortran-14"]["scope"] == "excluded"
+    assert debs["libgfortran5"]["scope"] == "required"
+
+
+def test_the_sbom_stays_deterministic_with_the_toolchain_in_it():
+    # The SBOM is committed and diffed; a toolchain read from the local machine
+    # would make it differ per developer. These come from static pins, so they
+    # do not. (What the LOCAL compiler was is recorded in golden.json, where it
+    # belongs — that file is evidence about numbers, not about the image.)
+    first = docker_gen.generate_sbom("svc", "fortran", "svc")
+    second = docker_gen.generate_sbom("svc", "fortran", "svc")
+
+    assert first == second
