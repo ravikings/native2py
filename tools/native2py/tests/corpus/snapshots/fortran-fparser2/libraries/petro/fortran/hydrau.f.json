@@ -391,7 +391,7 @@
   ],
   "language": "fortran",
   "name": "hydrau",
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "skipped": [],
   "source_file": "libraries/petro/fortran/hydrau.f",
   "structs": []

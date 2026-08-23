@@ -228,6 +228,10 @@ _SCALAR_POINTER_ELEMENTS = {
 }
 
 
+# `operator+`, `operator[]`, `operator()`, `operator<=`, `operator bool` ...
+_OPERATOR_SPELLING_RE = re.compile(r"\boperator\s*(?:\[\]|\(\)|[^\s(\w]+|\w+)")
+
+
 # `std::vector<T>` in the spellings a header actually uses, tolerating the
 # spaces a formatter may leave inside the angle brackets.
 _VECTOR_RE = re.compile(r"\bstd::vector\s*<\s*(.+)\s*>\s*$")
@@ -429,7 +433,12 @@ def _statements(body: str):
 
 @dataclass
 class _Decl:
-    """One classified declaration: kind is "method", "ctor" or "field"."""
+    """One classified declaration.
+
+    kind is "method", "ctor", "field", or "operator" — the last meaning a
+    recognised operator this reader will not attempt to bind, so the caller
+    can report it rather than drop it.
+    """
 
     kind: str
     name: str = ""
@@ -442,6 +451,16 @@ def _parse_declarator(statement: str, record_name: str | None) -> _Decl | None:
     """Classify one ';'-terminated declaration, or None if it isn't one."""
     exposed = _EXPOSE_ATTR in statement
     text = statement.replace(_EXPOSE_ATTR, " ").strip()
+
+    # Checked FIRST, because a symbolic operator never reaches the branches
+    # below: _DECLARATOR_RE's name group is `~?\w+`, which cannot match the
+    # `+` in `operator+`, so `Vec2 operator+(const Vec2&) const` fell through
+    # to the data-member branch and was reported as a field called "const".
+    # cpp_ast binds these as Python special methods; this reader cannot parse
+    # them reliably, so it names them honestly and says so.
+    operator = _OPERATOR_SPELLING_RE.search(text)
+    if operator and "(" in text:
+        return _Decl(kind="operator", name=operator.group(0).strip(), exposed=exposed)
 
     match = _DECLARATOR_RE.match(text)
     if not match:
@@ -461,8 +480,18 @@ def _parse_declarator(statement: str, record_name: str | None) -> _Decl | None:
         t for t in match.group("spec").split() if t not in _DROPPED_SPECIFIERS
     ]
 
-    if name.startswith("~") or "operator" in name:
+    # A destructor is genuinely nothing to bind: pybind11 destroys the held
+    # object itself, and Python has no `__del__` contract worth wiring to it.
+    if name.startswith("~"):
         return None
+    # Operators ARE bindable — cpp_ast binds them as Python special methods —
+    # but this reader's declarator pattern cannot match `operator[]`,
+    # `operator()` or `operator<` reliably, and half-parsing one is worse than
+    # not parsing it. Reported rather than silently dropped, with the reason,
+    # so the difference between the two backends is visible instead of being
+    # discovered as a missing method.
+    if "operator" in name:
+        return _Decl(kind="operator", name=name, exposed=exposed)
     if record_name and name == record_name and not spec_tokens:
         return _Decl(kind="ctor", name=name, params=match.group("params"), exposed=exposed)
     if not spec_tokens:
@@ -533,6 +562,34 @@ def _parse_record(
     for statement, access in _statements(body):
         effective = access or default_access
         decl = _parse_declarator(statement, name)
+        if decl is not None and decl.kind == "operator":
+            # Reported, not dropped. cpp_ast binds operators as Python special
+            # methods; this reader cannot parse their declarations reliably, so
+            # the difference is made visible instead of being discovered later
+            # as a method that is simply missing.
+            module.skipped.append(
+                SkippedSymbol(
+                    f"{name}::{decl.name}",
+                    f"'{decl.name}' is an operator. The Clang AST parser binds "
+                    "operators as Python special methods; this regex reader "
+                    "cannot parse their declarations reliably. Install libclang "
+                    '(pip install "native2py[clang]") to bind it, or expose a '
+                    "named method instead.",
+                )
+            )
+            continue
+        if decl is not None and decl.kind == "operator":
+            module.skipped.append(
+                SkippedSymbol(
+                    f"{name}::{decl.name}",
+                    f"'{decl.name}' is an operator. The Clang AST parser binds "
+                    "operators as Python special methods; this regex reader "
+                    "cannot parse their declarations reliably. Install libclang "
+                    '(pip install "native2py[clang]") to bind it, or expose a '
+                    "named method instead.",
+                )
+            )
+            continue
         if decl is None:
             continue
 
@@ -700,6 +757,34 @@ def parse_header(
 
     for statement, _access in _statements(outside):
         decl = _parse_declarator(statement, None)
+        if decl is not None and decl.kind == "operator":
+            # Reported, not dropped. cpp_ast binds operators as Python special
+            # methods; this reader cannot parse their declarations reliably, so
+            # the difference is made visible instead of being discovered later
+            # as a method that is simply missing.
+            module.skipped.append(
+                SkippedSymbol(
+                    decl.name,
+                    f"'{decl.name}' is an operator. The Clang AST parser binds "
+                    "operators as Python special methods; this regex reader "
+                    "cannot parse their declarations reliably. Install libclang "
+                    '(pip install "native2py[clang]") to bind it, or expose a '
+                    "named method instead.",
+                )
+            )
+            continue
+        if decl is not None and decl.kind == "operator":
+            module.skipped.append(
+                SkippedSymbol(
+                    decl.name,
+                    f"'{decl.name}' is an operator. The Clang AST parser binds "
+                    "operators as Python special methods; this regex reader "
+                    "cannot parse their declarations reliably. Install libclang "
+                    '(pip install "native2py[clang]") to bind it, or expose a '
+                    "named method instead.",
+                )
+            )
+            continue
         if decl is None or decl.kind != "method":
             # A statement that clearly wants to be a function declaration but
             # didn't parse is reported, not dropped. Returning an empty module

@@ -396,6 +396,64 @@ def _is_incomplete_record(t) -> bool:
     return not decl.is_definition()
 
 
+# C++ operator -> the Python special method pybind11 should bind it as, keyed
+# by (spelling, argument count). The count matters: a member `operator-` with
+# one argument is subtraction, with none it is negation, and binding one as the
+# other would compile and then compute something else entirely.
+_OPERATOR_DUNDERS = {
+    ("operator+", 1): "__add__",
+    ("operator-", 1): "__sub__",
+    ("operator*", 1): "__mul__",
+    ("operator/", 1): "__truediv__",
+    ("operator%", 1): "__mod__",
+    ("operator+", 0): "__pos__",
+    ("operator-", 0): "__neg__",
+    ("operator==", 1): "__eq__",
+    ("operator!=", 1): "__ne__",
+    ("operator<", 1): "__lt__",
+    ("operator<=", 1): "__le__",
+    ("operator>", 1): "__gt__",
+    ("operator>=", 1): "__ge__",
+    ("operator[]", 1): "__getitem__",
+    ("operator()", 1): "__call__",
+    ("operator!", 0): "__invert__",
+}
+
+# Why the rest are refused rather than approximated.
+_OPERATOR_REFUSALS = {
+    "operator=": "assignment has no Python equivalent — Python rebinds names, it does not assign through them",
+    "operator+=": "a compound assignment must return the mutated object for Python's `__iadd__` protocol, and a C++ `T&` return needs a return-value policy native2py cannot infer",
+    "operator-=": "same as operator+=",
+    "operator*=": "same as operator+=",
+    "operator/=": "same as operator+=",
+    "operator++": "Python has no increment operator",
+    "operator--": "Python has no decrement operator",
+    "operator->": "member access cannot be forwarded through pybind11",
+    "operator new": "allocation is not something Python may call",
+    "operator delete": "deallocation is managed by pybind11's holder, not by Python",
+}
+
+
+def _operator_dunder(spelling: str, arg_count: int) -> str | None:
+    return _OPERATOR_DUNDERS.get((spelling, arg_count))
+
+
+def _operator_refusal(spelling: str, arg_count: int) -> str:
+    """Why this operator is not bound — never just 'unsupported'."""
+    base = spelling.split("(")[0].strip()
+    if base in _OPERATOR_REFUSALS:
+        return (
+            f"'{spelling}' is not bound: {_OPERATOR_REFUSALS[base]}. "
+            "Expose a named method instead, or exclude the symbol in "
+            "native2py.yaml."
+        )
+    return (
+        f"'{spelling}' with {arg_count} argument(s) has no Python special "
+        "method native2py maps it to. Expose a named method instead, or "
+        "exclude the symbol in native2py.yaml."
+    )
+
+
 class PointerLengthUnknown(NativeTypeError):
     """A pointer to a scalar, whose length is not knowable from the type alone.
 
@@ -894,8 +952,23 @@ def _parse_record(
         if kind == _cindex.CursorKind.CXX_METHOD:
             if not _is_public(child) or _is_deleted(child):
                 continue
+            # Operators used to be dropped here, silently and without a
+            # `skipped` entry — the one thing this parser is not allowed to do.
+            # pybind11 binds them perfectly well as Python special methods, so
+            # the ones with an honest mapping are bound and the rest are
+            # reported with the reason they cannot be.
+            operator_dunder = None
             if child.spelling.startswith("operator"):
-                continue
+                arg_count = len(list(child.get_arguments()))
+                operator_dunder = _operator_dunder(child.spelling, arg_count)
+                if operator_dunder is None:
+                    module.skipped.append(
+                        SkippedSymbol(
+                            f"{name}::{child.spelling}",
+                            _operator_refusal(child.spelling, arg_count),
+                        )
+                    )
+                    continue
             if broken:
                 module.skipped.append(
                     SkippedSymbol(
@@ -934,12 +1007,15 @@ def _parse_record(
                 continue
             methods.append(
                 Method(
-                    name=child.spelling,
+                    name=operator_dunder or child.spelling,
                     parameters=parameters,
                     returns=returns,
                     is_static=child.is_static_method(),
                     is_const=_bool_method(child, "is_const_method"),
                     returns_array=returns_array,
+                    # Only set for operators: the published name is the dunder,
+                    # but the address to take is still `Cls::operator+`.
+                    cpp_name=child.spelling if operator_dunder else None,
                 )
             )
             continue

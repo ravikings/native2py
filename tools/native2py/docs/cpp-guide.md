@@ -37,6 +37,10 @@ pip install "native2py[clang]"
   **disappears from the Python signature**, because it is read off the array
   the caller actually passed. A length the caller cannot state is a length
   that cannot disagree with the data
+- **operator overloading**, bound as Python special methods: `operator+` →
+  `__add__`, `operator[]` → `__getitem__`, `operator==` → `__eq__`, and so on.
+  The mapping is keyed on argument count, so a unary `operator-` becomes
+  `__neg__` and the binary one `__sub__`
 - **`std::vector<T>`** as a parameter (by value or `const&`) and as a return,
   for numeric elements and `std::string` — converted to and from a Python
   `list` by `<pybind11/stl.h>`. The generated endpoint annotates it
@@ -83,7 +87,7 @@ pip install "native2py[clang]"
   still bound, with its own members only.
 - inheriting from a class the service does not bind: reported, and the
   relationship dropped — expose the base too if Python needs its methods
-- operator overloading, destructors
+- operator overloading — **now supported**, see below
 - raw numeric pointers whose length **nothing in the signature names**. See
   below — a pointer paired with a length argument *is* now bindable
 - pointer *returns* of class types — ownership ambiguity
@@ -181,6 +185,56 @@ in `[build-system] requires` and `[project] dependencies`. `generate` warns
 when a binding needs it and the file does not declare it; it does not edit
 `pyproject.toml`, which is yours to hand-edit. A C++ service that binds no
 pointers does not acquire the dependency.
+
+### Operators
+
+Operators bind as Python special methods, so a C++ value type behaves like one
+in Python:
+
+```cpp
+class Vec2 {
+public:
+    Vec2 operator+(const Vec2& o) const;
+    Vec2 operator*(double s) const;
+    bool operator==(const Vec2& o) const;
+    double operator[](int i) const;
+};
+```
+
+```python
+>>> (Vec2(1, 2) + Vec2(10, 20)).x()
+11.0
+>>> Vec2(1, 2)[1]
+2.0
+>>> Vec2(1, 2) == Vec2(1, 2)
+True
+```
+
+Arithmetic (`+ - * / %`), comparison (`== != < <= > >=`), `operator[]`,
+`operator()` and unary `+`/`-` are mapped. The mapping is keyed on **argument
+count**, because a member `operator-` with one argument is subtraction and with
+none it is negation — binding one as the other compiles and then computes
+something else.
+
+Not mapped, and reported with the reason rather than dropped:
+
+| | Why |
+|---|---|
+| `operator=` | assignment has no Python equivalent — Python rebinds names, it does not assign through them |
+| `operator+=` and friends | Python's `__iadd__` must return the mutated object, and a C++ `T&` return needs a return-value policy native2py cannot infer |
+| `operator++`, `operator--` | Python has no increment or decrement operator |
+| `operator->`, `new`, `delete` | not things Python may call |
+
+**Destructors are not a gap.** pybind11 destroys the held object itself, so
+there is nothing for a binding to do; they are ignored rather than reported,
+because reporting them would imply a missing capability.
+
+**The regex fallback reader cannot bind operators.** Its declarator pattern
+matches `~?\w+` for a name, which cannot match the `+` in `operator+`. It
+reports them as skipped, naming each one and pointing at
+`pip install "native2py[clang]"`. This is one of the few places the two C++
+backends genuinely differ, and it differs safely — the fallback binds strictly
+less.
 
 ### Telling the parser what your build knows
 

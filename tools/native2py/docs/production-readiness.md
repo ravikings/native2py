@@ -383,8 +383,11 @@ at the same time.
   guessed); and buffer arguments on class methods. Two refusals are
   deliberate and worth knowing: a non-const `std::vector<T>&`, and a
   wrong-dtype or read-only array for a writable buffer — pybind11 would
-  silently discard the writes in both cases. See
-  [Exposing C++](cpp-guide.md). See
+  silently discard the writes in both cases. **Operators** bind as Python
+  special methods (`operator+` → `__add__`); the ones with no honest mapping
+  (`operator=`, `operator++`, compound assignment) are reported with the
+  reason rather than dropped. Destructors are not a gap — pybind11 handles
+  destruction itself. See [Exposing C++](cpp-guide.md). See
   [Exposing C++](cpp-guide.md#what-the-parser-supports).
 - No C language support at all, despite being in the project name/design.md
   scope.

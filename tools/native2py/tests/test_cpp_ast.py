@@ -1094,3 +1094,127 @@ def test_both_cpp_backends_agree_on_buffers(tmp_path):
         t = next(f for f in tree.functions if f.name == name).parameters[0]
         r = next(f for f in regex.functions if f.name == name).parameters[0]
         assert (t.length_param, t.is_mutable_buffer) == (r.length_param, r.is_mutable_buffer)
+
+
+# --- operators -----------------------------------------------------------
+#
+# These used to be dropped by `if child.spelling.startswith("operator"):
+# continue` — silently, with no `skipped` entry, which is the one thing this
+# parser is not allowed to do. pybind11 binds them perfectly well as Python
+# special methods, so the ones with an honest mapping are bound and the rest
+# are reported with the reason.
+#
+# Verified by compiling and running the generated module: a + b, b - a, a * 3,
+# a == b and a[i] all return the right values through the C++ operators.
+
+
+def test_operators_are_bound_as_python_special_methods(tmp_path):
+    header = tmp_path / "vec2.hpp"
+    header.write_text(
+        """
+        class Vec2 {
+        public:
+            Vec2(double x, double y);
+            double x() const;
+            Vec2 operator+(const Vec2& o) const;
+            Vec2 operator-(const Vec2& o) const;
+            Vec2 operator*(double s) const;
+            bool operator==(const Vec2& o) const;
+            double operator[](int i) const;
+        };
+        """
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+    methods = {m.name: m for m in module.classes[0].methods}
+
+    assert set(methods) == {"x", "__add__", "__sub__", "__mul__", "__eq__", "__getitem__"}
+    # The published name is the dunder; the address to take is still the C++
+    # operator, because `&Vec2::__add__` names nothing.
+    assert methods["__add__"].cpp_name == "operator+"
+    assert methods["x"].cpp_name is None
+
+
+def test_a_unary_operator_is_not_bound_as_its_binary_namesake(tmp_path):
+    # `operator-` with one argument is subtraction and with none it is
+    # negation. Binding one as the other compiles and then computes something
+    # else entirely, which is why the mapping is keyed on argument count.
+    header = tmp_path / "n.hpp"
+    header.write_text(
+        """
+        class N {
+        public:
+            N operator-() const;
+            N operator-(const N& o) const;
+        };
+        """
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+    by_dunder = {m.name: m.cpp_name for m in module.classes[0].methods}
+
+    assert by_dunder == {"__neg__": "operator-", "__sub__": "operator-"}
+
+
+def test_unmappable_operators_are_reported_not_dropped(tmp_path):
+    # The point of the change. Each refusal names why, and what to do instead
+    # — "unsupported" on its own tells the reader nothing.
+    header = tmp_path / "acc.hpp"
+    header.write_text(
+        """
+        class Acc {
+        public:
+            Acc& operator+=(const Acc& o);
+            Acc& operator=(const Acc& o);
+            Acc& operator++();
+            double value() const;
+        };
+        """
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+
+    assert [m.name for m in module.classes[0].methods] == ["value"]
+    reasons = {s.name: s.reason for s in module.skipped}
+    assert set(reasons) == {"Acc::operator+=", "Acc::operator=", "Acc::operator++"}
+    assert "Python rebinds names" in reasons["Acc::operator="]
+    assert "no increment operator" in reasons["Acc::operator++"]
+    assert all("named method instead" in r for r in reasons.values())
+
+
+def test_a_destructor_is_not_a_gap(tmp_path):
+    # Deliberately NOT reported: pybind11 destroys the held object itself, so
+    # there is nothing for a binding to do. Listing it as skipped would be
+    # noise implying a capability is missing when none is.
+    header = tmp_path / "d.hpp"
+    header.write_text("class D {\npublic:\n    D();\n    ~D();\n    int v() const;\n};\n")
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+
+    assert [m.name for m in module.classes[0].methods] == ["v"]
+    assert module.skipped == []
+
+
+def test_the_regex_reader_reports_operators_rather_than_mangling_them(tmp_path):
+    # This reader's declarator pattern has `~?\w+` for the name, which cannot
+    # match the `+` in `operator+`, so these fell through to the data-member
+    # branch and were reported as a field called "const". It cannot bind them;
+    # it can at least name them correctly and say why.
+    header = tmp_path / "vec2.hpp"
+    header.write_text(
+        """
+        class Vec2 {
+        public:
+            Vec2 operator+(const Vec2& o) const;
+            double operator[](int i) const;
+            double x() const;
+        };
+        """
+    )
+
+    module = cpp_regex.parse_header(header, ExposeConfig(all=True))
+
+    assert [m.name for m in module.classes[0].methods] == ["x"]
+    names = {s.name for s in module.skipped}
+    assert names == {"Vec2::operator+", "Vec2::operator[]"}
+    assert all("native2py[clang]" in s.reason for s in module.skipped)

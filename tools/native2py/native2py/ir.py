@@ -138,6 +138,11 @@ class Method:
     # `double` in the IR, and the generated endpoint annotates it `float` while
     # pybind11 hands back a list — a wrong type on every response.
     returns_array: bool = False
+    # The C++ member to take the address of, when it differs from the name the
+    # binding is published under. An operator is bound as a Python special
+    # method — `operator+` becomes `__add__` — so the two names genuinely
+    # differ, and `&Cls::__add__` names nothing.
+    cpp_name: str | None = None
 
 
 @dataclass
@@ -392,7 +397,7 @@ def validate(module: "ModuleIR") -> list[Problem]:
 # hand-edited, and quietly ignoring them is how a typo'd "is_cosnt: true"
 # becomes a wrong binding.
 SCHEMA_VERSION_MAJOR = 1
-SCHEMA_VERSION_MINOR = 2
+SCHEMA_VERSION_MINOR = 3
 SCHEMA_VERSION = f"{SCHEMA_VERSION_MAJOR}.{SCHEMA_VERSION_MINOR}"
 
 # What a document with no `schema_version` at all is treated as: everything
@@ -486,6 +491,7 @@ _METHOD_KEYS = frozenset(
         "is_const",
         "is_overloaded",
         "returns_array",
+        "cpp_name",
     }
 )
 _CLASS_KEYS = frozenset(
@@ -601,6 +607,7 @@ def module_from_dict(data: dict) -> ModuleIR:
                         is_const=m.get("is_const", False),
                         is_overloaded=m.get("is_overloaded", False),
                         returns_array=m.get("returns_array", False),
+                        cpp_name=m.get("cpp_name"),
                     )
                     for m in cls.get("methods", [])
                 ],

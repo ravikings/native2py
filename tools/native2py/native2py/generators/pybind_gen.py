@@ -95,7 +95,9 @@ def _overloaded_target(
 
 
 def _method_target(method: Method, qualified: str, namespace: str | None) -> str:
-    target = f"{qualified}::{method.name}"
+    # `cpp_name` when the published name is not the C++ one — an operator is
+    # bound as a Python special method, so `&Cls::__add__` would name nothing.
+    target = f"{qualified}::{getattr(method, 'cpp_name', None) or method.name}"
     if getattr(method, "is_overloaded", False):
         return _overloaded_target(
             target, method.parameters, namespace, getattr(method, "is_const", False)

@@ -82,6 +82,7 @@ def every_field_module() -> ModuleIR:
                         is_const=True,
                         is_overloaded=True,
                         returns_array=True,
+                        cpp_name="operator+",
                     ),
                     Method(name="reset"),
                 ],

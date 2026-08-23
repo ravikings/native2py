@@ -7,6 +7,7 @@
       "has_default_constructor": true,
       "methods": [
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -50,6 +51,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -71,6 +73,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -80,6 +83,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -89,6 +93,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -98,6 +103,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -107,6 +113,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -128,6 +135,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -171,6 +179,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -180,6 +189,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -234,6 +244,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -310,6 +321,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -319,6 +331,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -351,6 +364,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -372,6 +386,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -393,6 +408,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -402,6 +418,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -411,6 +428,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -420,6 +438,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -429,6 +448,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -472,6 +492,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -515,6 +536,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -558,6 +580,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -567,6 +590,7 @@
           "returns_array": false
         },
         {
+          "cpp_name": null,
           "is_const": false,
           "is_overloaded": false,
           "is_static": false,
@@ -585,7 +609,7 @@
   "functions": [],
   "language": "cpp",
   "name": "Simulator",
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "skipped": [
     {
       "name": "Simulator::set_porosity",
@@ -626,6 +650,10 @@
     {
       "name": "Simulator::add_well",
       "reason": "'WellModel*' refers to 'WellModel', which is only forward-declared (an incomplete type). pybind11 needs the full definition to bind it. Add the header that defines 'WellModel' to this service's native/ directory, or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::operator=",
+      "reason": "'operator=' is an operator. The Clang AST parser binds operators as Python special methods; this regex reader cannot parse their declarations reliably. Install libclang (pip install \"native2py[clang]\") to bind it, or expose a named method instead."
     }
   ],
   "source_file": "libraries/petro/cpp/include/Simulator.hpp",
