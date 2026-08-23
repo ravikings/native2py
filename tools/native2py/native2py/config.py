@@ -60,6 +60,15 @@ class ClangConfig:
     include_paths: list[str] = field(default_factory=list)
     defines: list[str] = field(default_factory=list)
     extra_args: list[str] = field(default_factory=list)
+    # Names of extern "C" functions whose bare `T*` arguments are SCALARS
+    # passed by reference — the Fortran-linkage convention. Opt-in per
+    # function, never inferred: `double* x` is also how C passes an array
+    # whose length travels through COMMON or a PARAMETER, and binding an
+    # array as one scalar hands the callee a pointer it reads past. FLASH2's
+    # XLIQ(NCMAX) looks exactly like PVTRS's scalar `p` in a C prototype —
+    # only the person who read the Fortran knows which is which, so they say
+    # so here. "*" asserts it for every extern "C" function in the service.
+    scalar_ref_functions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -97,6 +106,11 @@ class ServiceConfig:
     include_paths: list[str] = field(default_factory=list)
     # Authentication for the generated HTTP API. See ApiConfig.
     api: ApiConfig = field(default_factory=ApiConfig)
+    # -D flags for preprocessed Fortran (.F90/.F, or #ifdef in lowercase
+    # files), applied when native2py runs gfortran's preprocessor to produce
+    # the `_expanded` copy. Same reason clang.defines exists for C++: the
+    # branches differ, and only the build knows which one is live.
+    fortran_defines: list[str] = field(default_factory=list)
 
     @classmethod
     def load(cls, service_dir: Path) -> "ServiceConfig":
@@ -119,10 +133,12 @@ class ServiceConfig:
                 include_paths=list(clang_data.get("include_paths") or []),
                 defines=list(clang_data.get("defines") or []),
                 extra_args=list(clang_data.get("extra_args") or []),
+                scalar_ref_functions=list(clang_data.get("scalar_ref_functions") or []),
             ),
             libraries=list(data.get("libraries") or []),
             include_paths=list(data.get("include_paths") or []),
             api=_load_api(data.get("api"), config_path),
+            fortran_defines=list((data.get("fortran") or {}).get("defines") or []),
         )
 
     def save(self, service_dir: Path) -> None:

@@ -278,3 +278,58 @@ def resolve_kind_parameters(source: str) -> str:
 def uses_kind_parameters(source: str) -> bool:
     """True if `source` would be changed by resolve_kind_parameters."""
     return resolve_kind_parameters(source) != source
+
+
+# --- the C preprocessor, for .F90/.F sources ------------------------------
+
+
+class PreprocessError(RuntimeError):
+    """The C preprocessor failed or is unavailable for a source that needs it."""
+
+
+def run_c_preprocessor(
+    source_path: Path,
+    include_paths: list[Path] | None = None,
+    defines: list[str] | None = None,
+) -> str:
+    """Run gfortran's preprocessor over one source and return the text.
+
+    An uppercase suffix (`.F90`, `.F`, `.FOR`) — or `#ifdef` in a lowercase
+    file — means the code is not Fortran yet: it is input to the C
+    preprocessor, and reading it directly treats every conditional branch as
+    simultaneously live. That is how native2py used to read these files (with
+    a warning), which silently binds whichever branch happens to lex.
+
+    gfortran's own preprocessor rather than a bare `cpp`, because Fortran is
+    not C: a traditional cpp mangles Hollerith constants, `//` concatenation
+    (a C comment to cpp), and fixed-form continuation columns. `-cpp -E`
+    applies the preprocessor the compiler itself would use, so what native2py
+    parses is what gfortran would have compiled. `-P` drops linemarkers,
+    which are not Fortran and would poison the parse downstream.
+    """
+    import shutil as _shutil
+    import subprocess as _subprocess
+
+    compiler = _shutil.which("gfortran")
+    if compiler is None:
+        raise PreprocessError(
+            f"{source_path.name} needs the C preprocessor (#ifdef / uppercase "
+            "suffix) and gfortran is not on PATH to run it. Install gfortran, "
+            "or preprocess the file yourself and point native2py at the output."
+        )
+
+    command = [compiler, "-cpp", "-E", "-P"]
+    for directory in include_paths or []:
+        command += ["-I", str(directory)]
+    for define in defines or []:
+        command += ["-D", define]
+    command.append(str(source_path))
+
+    result = _subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise PreprocessError(
+            f"gfortran -cpp -E failed on {source_path.name}:\n"
+            f"{result.stderr.strip()[:800]}"
+        )
+    return result.stdout
+

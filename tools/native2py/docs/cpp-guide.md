@@ -142,8 +142,11 @@ the inference will not, because a false pairing binds the wrong argument as an
 extent and reads past the end of a buffer. Give the arguments matching names
 (`n_a`, `n_b`), take `std::vector`, or expose a wrapper.
 
-Buffer arguments on **class methods** are also refused for now — the generated
-lambda that reads the length off the array is emitted for free functions only.
+Buffer arguments on **class methods** bind the same way —
+`int set_porosity(double* values, int n)` is the single most common shape a
+numerical C++ class exposes. pybind11 passes the instance as the first
+argument of a def'd callable, so the same generated lambda covers it, and the
+endpoint returns the written array just like a free function's.
 
 #### Read-only and writable buffers are bound differently
 
@@ -180,6 +183,56 @@ array it wrote into does not outlive the request.
 POST /scale  {"data": [1.0, 2.0, 3.0], "k": 10.0}
       ->     {"data": [10.0, 20.0, 30.0]}
 ```
+
+#### extern "C" scalars passed by reference
+
+A C bridge to Fortran spells *every* argument as a pointer, because Fortran
+has no pass-by-value:
+
+```cpp
+extern "C" {
+void   pvtini_(double* api, double* sgg, double* tres, int* icorr);  // 4 scalars
+double pvtrs_(double* p);                                            // 1 scalar
+}
+```
+
+Those are scalars — but `double* x` is also how C passes an **array** whose
+extent travels through a `PARAMETER` or `COMMON` block. In this very corpus,
+`FLASH2`'s `double* x` is `XLIQ(NCMAX)`: an array, indistinguishable from
+`PVTRS`'s scalar `p` in the C prototype. Binding an array as one scalar hands
+the callee a pointer to a single stack double that it reads past — memory
+corruption, silently. The type information genuinely does not exist, so
+native2py **will not guess**. You assert it, per function:
+
+```yaml
+clang:
+  scalar_ref_functions:
+    - pvtini_
+    - pvtrs_
+    # NOT flash2_ — its x and y are arrays; read the Fortran first
+```
+
+Opted-in scalars bind by value; non-const ones are treated as in/out and
+their **final values are returned** (result first, then each argument in
+declaration order), so an output like an error code cannot die with the
+lambda's locals:
+
+```python
+>>> bridge.pvtini_(35.0, 0.65, 180.0, 2)
+(35.0, 0.65, 180.0, 2)
+>>> bridge.pvtrs_(2000.0)
+(355.0764805578969, 2000.0)      # == the recorded golden value, exactly
+```
+
+Two guardrails stay on even under opt-in: the convention is fenced to
+`extern "C"` (in C++ linkage a scalar in/out is spelled `T&`, which already
+binds), and a size-word integer anywhere in the signature vetoes it —
+`krload_(double* sw, ..., int* n)` is four arrays sharing a length, and no
+opt-in should turn them into five scalars.
+
+Verified against the real petro bridge, compiled and linked against the real
+Fortran: `pvtrs_(2000)` and `pvtbub_(1000)` reproduce the golden values to
+the last digit through the generated lambdas.
 
 #### It costs a numpy dependency
 

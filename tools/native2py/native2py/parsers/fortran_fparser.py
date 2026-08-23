@@ -52,9 +52,6 @@ unmeasurable:
 Requires the `fparser` package (``pip install "native2py[fparser]"``).
 `is_available()` reports whether it imported; `fortran.py` falls back to the
 regex reader when it did not.
-
-NOTE: fparser is not yet declared in pyproject.toml. It must be added as an
-optional `fparser` extra before `auto` can ever resolve here.
 """
 
 from __future__ import annotations
@@ -222,6 +219,45 @@ def _subprogram_stmt(subprogram):
 def _routine_name(subprogram) -> str:
     return _name_of(_subprogram_stmt(subprogram).items[1])
 
+
+def _statement_function_names(routine, decls, param_names) -> frozenset[str]:
+    """Names defined as statement functions in this routine's body.
+
+    fparser2 cannot help here: without a symbol table it classifies
+    `DBL(X) = X*2` as an Assignment_Stmt, same as a real array write —
+    measured, not assumed. The disambiguation is semantic and exact:
+
+        a SUBSCRIPTED assignment target that is not declared as an array
+        cannot be an array-element write (assigning to an element of a
+        scalar is not Fortran), so it is a statement function.
+
+    Guards, because the rule must never over-fire — skipping a REAL
+    assignment loses reads, and a lost read can flip a genuinely-read
+    argument to intent(out), which f2py then drops from the call:
+
+      * a `:` in the parenthesised part is a CHARACTER substring
+        (`STR(1:3) = ...`), a real write, kept;
+      * a dummy argument as target is a real write, kept;
+      * anything declared or DIMENSIONed as an array is a real write, kept.
+    """
+    import re as _re
+
+    names: set[str] = set()
+    params = {p.lower() for p in param_names}
+    for line in routine["body"].splitlines():
+        match = _re.match(r"\s*(\w+)\s*\(([^)]*)\)\s*=[^=]", line)
+        if not match:
+            continue
+        target, subscript = match.group(1).lower(), match.group(2)
+        if ":" in subscript or target in params:
+            continue
+        declaration = decls.declared.get(target)
+        if (declaration is not None and declaration.is_array) or (
+            target in decls.dimensioned
+        ):
+            continue
+        names.add(target)
+    return frozenset(names)
 
 def _dummy_args(subprogram) -> list[str]:
     """Dummy argument names, in order.
@@ -648,7 +684,17 @@ def _parse_fixed_form(path: Path, expose: ExposeConfig, include_paths: list[Path
         # intent(in) and its result is silently discarded — `STEP(DTIN, DTOUT,
         # ICONV)` would return None.
         routine = fixed_form.find_routine(normalized, name)
-        intents = fixed_form.infer_intents(routine, normalized) if routine else {}
+        intents = (
+            fixed_form.infer_intents(
+                routine,
+                normalized,
+                statement_functions=_statement_function_names(
+                    routine, decls, param_names
+                ),
+            )
+            if routine
+            else {}
+        )
 
         parameters = []
         for param_name in param_names:

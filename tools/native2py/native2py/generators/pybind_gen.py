@@ -95,6 +95,8 @@ def _overloaded_target(
 
 
 def _method_target(method: Method, qualified: str, namespace: str | None) -> str:
+    if _buffer_parameters(method) or _scalar_ref_parameters(method):
+        return _buffer_lambda(method, self_type=qualified)
     # `cpp_name` when the published name is not the C++ one — an operator is
     # bound as a Python special method, so `&Cls::__add__` would name nothing.
     target = f"{qualified}::{getattr(method, 'cpp_name', None) or method.name}"
@@ -154,12 +156,24 @@ def _buffer_parameters(func: FunctionDef) -> list[Parameter]:
     return [p for p in func.parameters if getattr(p, "length_param", None)]
 
 
+def _scalar_ref_parameters(func: FunctionDef) -> list[Parameter]:
+    """Scalars passed by reference — extern "C" Fortran-linkage arguments."""
+    return [p for p in func.parameters if getattr(p, "is_scalar_ref", False)]
+
+
 # numpy dtype for each element type native2py binds through a raw pointer.
 _NUMPY_DTYPE = {"float": "double", "int": "int", "bool": "bool"}
 
 
-def _buffer_lambda(func: FunctionDef) -> str:
+def _buffer_lambda(func, self_type: str | None = None) -> str:
     """A lambda binding `f(T* data, int n, ...)` as `f(data, ...)`.
+
+    With `self_type`, the same lambda binds a METHOD: pybind11 passes the
+    instance as the first argument of a def'd callable, so
+    `[](Simulator& self, py::array values) { return self.set_porosity(...); }`
+    is a complete method binding — `int set_porosity(double* values, int n)`
+    is the single most common shape a numerical C++ class exposes, and it used
+    to be refused with "not yet for class methods".
 
     THE LENGTH DISAPPEARS FROM THE PYTHON SIGNATURE, on purpose. It is read off
     the buffer the caller actually passed, so `n` cannot disagree with the data
@@ -183,7 +197,10 @@ def _buffer_lambda(func: FunctionDef) -> str:
       itself, and calls `request(true)`, which raises on a read-only array.
     """
     namespace = getattr(func, "namespace", None)
-    target = _qualified(func.name, namespace)
+    if self_type is not None:
+        target = f"self.{getattr(func, 'cpp_name', None) or func.name}"
+    else:
+        target = _qualified(func.name, namespace)
     buffers = {p.name for p in _buffer_parameters(func)}
     lengths = {p.length_param for p in _buffer_parameters(func)}
 
@@ -222,11 +239,17 @@ def _buffer_lambda(func: FunctionDef) -> str:
                 )
                 body.append(f"            auto {param.name}_info = {param.name}.request();")
             continue
-        sig.append(f"{_param_spelling(param, namespace)} {param.name}")
+        if getattr(param, "is_scalar_ref", False):
+            sig.append(f"{_CPP_SPELLING[param.type]} {param.name}")
+        else:
+            sig.append(f"{_param_spelling(param, namespace)} {param.name}")
         arg_names.append(param.name)
 
     for param in func.parameters:
-        if param.name in buffers:
+        if getattr(param, "is_scalar_ref", False):
+            # The value came in by value; the callee wants its address.
+            call_args.append(f"&{param.name}")
+        elif param.name in buffers:
             const = "" if param.is_mutable_buffer else "const "
             dtype = _NUMPY_DTYPE[param.type]
             call_args.append(f"static_cast<{const}{dtype}*>({param.name}_info.ptr)")
@@ -239,11 +262,42 @@ def _buffer_lambda(func: FunctionDef) -> str:
             call_args.append(param.name)
 
     invocation = f"{target}({', '.join(call_args)})"
-    body.append(
-        f"            {invocation};" if func.returns == "None" else f"            return {invocation};"
-    )
+    # Non-const scalar refs are OUTPUTS: the callee wrote through the address
+    # of a lambda local, and that local dies with the call. Returning the
+    # final values is what stops PVTERR's `int* icode` vanishing silently.
+    # The shape follows f2py's convention, which the Fortran router already
+    # speaks: result first, then each output in declaration order; a bare
+    # value when there is exactly one thing to return.
+    outputs = [
+        p.name
+        for p in func.parameters
+        if getattr(p, "is_scalar_ref", False) and p.intent != "in"
+    ]
+    if not outputs:
+        body.append(
+            f"            {invocation};"
+            if func.returns == "None"
+            else f"            return {invocation};"
+        )
+    elif func.returns == "None":
+        body.append(f"            {invocation};")
+        if len(outputs) == 1:
+            body.append(f"            return {outputs[0]};")
+        else:
+            body.append(
+                f"            return py::make_tuple({', '.join(outputs)});"
+            )
+    else:
+        body.append(f"            auto result = {invocation};")
+        body.append(
+            f"            return py::make_tuple(result, {', '.join(outputs)});"
+        )
 
     py_args = "".join(f', py::arg("{n}")' for n in arg_names)
+    if self_type is not None:
+        # `self` is positional-only from pybind11's point of view; naming it
+        # with py::arg would shift every argument name by one.
+        sig = [f"{self_type}& self"] + sig
     lines = [f"[]({', '.join(sig)}) {{"]
     lines += body
     lines.append("        }")
@@ -256,7 +310,7 @@ def _function_target(func: FunctionDef) -> str:
     Free functions used to be emitted unqualified, so anything outside the
     global namespace failed with "use of undeclared identifier".
     """
-    if _buffer_parameters(func):
+    if _buffer_parameters(func) or _scalar_ref_parameters(func):
         return _buffer_lambda(func)
     namespace = getattr(func, "namespace", None)
     target = _qualified(func.name, namespace)
@@ -312,7 +366,9 @@ def generate_bindings(module: ModuleIR, header_names: str | list[str]) -> str:
     # Only when something is actually bound through a raw pointer: numpy.h
     # pulls in numpy's headers at build time and numpy at runtime, and a C++
     # service that binds no buffers should not acquire that dependency.
-    needs_numpy = any(_buffer_parameters(fn) for fn in module.functions)
+    needs_numpy = any(_buffer_parameters(fn) for fn in module.functions) or any(
+        _buffer_parameters(m) for cls in module.classes for m in cls.methods
+    )
 
     lines = [
         "// Generated by native2py. Do not edit by hand — re-run `native2py generate`.",

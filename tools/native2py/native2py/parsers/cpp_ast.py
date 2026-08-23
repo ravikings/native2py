@@ -249,6 +249,10 @@ class ClangOptions:
     # a C++ diagnostic. Defaults to C++ so existing callers — config.ClangConfig
     # among them, which does not know about this field — are unchanged.
     language: str = "c++"
+    # extern "C" functions whose bare `T*` arguments are scalars passed by
+    # reference. See config.ClangConfig.scalar_ref_functions for why this is
+    # opt-in per function rather than inferred.
+    scalar_ref_functions: tuple[str, ...] = ()
 
     def command_line(self, header: Path) -> list[str]:
         args = ["-x", self.language, "-fsyntax-only"]
@@ -705,7 +709,23 @@ def _declared_as_array(cursor) -> bool:
     return "[" in tokens
 
 
-def _parameters(cursor, known_records: frozenset[str]) -> list[Parameter]:
+def _is_extern_c(cursor) -> bool:
+    """True when this declaration sits inside an `extern "C"` block."""
+    parent = cursor.lexical_parent
+    while parent is not None and parent.kind != _cindex.CursorKind.TRANSLATION_UNIT:
+        if parent.kind == _cindex.CursorKind.LINKAGE_SPEC:
+            return True
+        parent = parent.lexical_parent
+    return False
+
+
+def _parameters(
+    cursor,
+    known_records: frozenset[str],
+    *,
+    scalar_ref_ok: bool = False,
+    extern_c: bool = False,
+) -> list[Parameter]:
     """Map every argument, resolving bare pointers against the whole signature.
 
     A `double*` carries no length, so it cannot be bound from its type alone.
@@ -757,12 +777,68 @@ def _parameters(cursor, known_records: frozenset[str]) -> list[Parameter]:
 
     by_name = {p.name: p for p in params}
     paired = {array: length for length, array in size_pairings(params)}
+
+    # THE SCALAR-BY-REFERENCE FALLBACK, and why it is gated twice.
+    #
+    # In an `extern "C"` bridge to Fortran, EVERY argument is a pointer,
+    # because Fortran has no pass-by-value — `void pvtini(double* api, ...)`
+    # takes four scalars. Refusing those as "pointer with no length" refused
+    # the single most common C-linkage signature there is.
+    #
+    # But `T*` is also how C passes an ARRAY whose length travels some other
+    # way, and binding an array as one scalar hands the callee a pointer to a
+    # single stack double it will read past — the silent-wrong-answer class.
+    # Hence two gates:
+    #   1. extern "C" only. In C++ linkage a scalar in/out is spelled `T&`,
+    #      which already binds; a bare `T*` there usually IS an array.
+    #   2. no size-word integer anywhere in the signature. `krload(double* sw,
+    #      double* krw, double* kro, double* pcw, int* n)` has four arrays
+    #      sharing one `n` — the pairing above is ambiguous, and the presence
+    #      of `n` says "these are arrays", so everything stays refused rather
+    #      than becoming five scalars.
+    #
+    # Non-const scalars are marked intent="inout": the binding returns their
+    # final value, so an output like PVTERR's `int* icode` cannot be silently
+    # dropped into a discarded temporary.
+    from ..ir import _SIZE_WORDS, names_a_size_of
+
+    def _signature_has_size_word() -> bool:
+        for candidate in params:
+            if candidate.type != "int":
+                continue
+            lowered = candidate.name.lower()
+            if lowered in _SIZE_WORDS:
+                return True
+            if any(names_a_size_of(candidate.name, other.name) for other in params):
+                return True
+        return False
+
+    scalar_ref = scalar_ref_ok and not _signature_has_size_word()
+
     for name, exc in deferred.items():
         length = paired.get(name)
         if length is None:
+            if scalar_ref:
+                target = by_name[name]
+                target.is_array = False
+                target.length_param = None
+                target.is_scalar_ref = True
+                target.intent = "inout" if exc.is_mutable else "in"
+                continue
             # Nothing in the signature names this pointer's length. Refuse it
             # exactly as before — guessing here is how a service binds the
             # wrong argument as an extent and reads past the end of a buffer.
+            if extern_c:
+                raise NativeTypeError(
+                    str(exc)
+                    + f" If every `T*` argument of '{cursor.spelling}' is a "
+                    "SCALAR passed by reference (the Fortran-linkage "
+                    "convention), list it under `clang.scalar_ref_functions` "
+                    "in native2py.yaml — but check the Fortran first: an "
+                    "array whose extent lives in a PARAMETER or COMMON block "
+                    "looks identical in the C prototype, and binding it as a "
+                    "scalar corrupts memory."
+                ) from exc
             raise exc
         by_name[name].length_param = length
         by_name[name].is_mutable_buffer = exc.is_mutable
@@ -1000,25 +1076,6 @@ def _parse_record(
                     SkippedSymbol(f"{name}::{child.spelling}", str(exc))
                 )
                 continue
-            # A raw `T*` bound as a numpy buffer needs a generated lambda that
-            # reads the length off the array and drops it from the signature.
-            # pybind_gen emits that for free functions only; a method would be
-            # bound with `&Cls::m`, handing pybind11 a bare pointer it cannot
-            # convert. Refused with a reason rather than emitted broken —
-            # binding a method whose buffer argument does not work is worse
-            # than not binding it.
-            if any(p.length_param for p in parameters):
-                module.skipped.append(
-                    SkippedSymbol(
-                        f"{name}::{child.spelling}",
-                        f"'{child.spelling}' takes a raw pointer argument whose "
-                        "length is carried by another argument. native2py binds "
-                        "that shape for free functions, but not yet for class "
-                        "methods. Wrap it in a free function, take a "
-                        "std::vector, or exclude the symbol in native2py.yaml.",
-                    )
-                )
-                continue
             methods.append(
                 Method(
                     name=operator_dunder or child.spelling,
@@ -1135,6 +1192,7 @@ def _parse_function(
     module: ModuleIR,
     known_records: frozenset[str],
     errors: dict[int, str] | None = None,
+    scalar_ref_functions: frozenset[str] = frozenset(),
 ) -> None:
     broken = _error_at(cursor, errors or {})
     if broken:
@@ -1146,7 +1204,20 @@ def _parse_function(
         returns, returns_array = _map_type(
             cursor.result_type, known_records, is_return=True
         )
-        parameters = _parameters(cursor, known_records)
+        parameters = _parameters(
+            cursor,
+            known_records,
+            # Both conditions, and the second is the load-bearing one: the
+            # extern "C" check narrows WHERE the convention can apply, and the
+            # per-function opt-in is the user asserting it DOES apply — see
+            # config.ClangConfig.scalar_ref_functions and the FLASH2 case.
+            scalar_ref_ok=_is_extern_c(cursor)
+            and (
+                cursor.spelling in scalar_ref_functions
+                or "*" in scalar_ref_functions
+            ),
+            extern_c=_is_extern_c(cursor),
+        )
     except NativeTypeError as exc:
         module.skipped.append(SkippedSymbol(cursor.spelling, str(exc)))
         return
@@ -1386,6 +1457,8 @@ def parse_header(
     known_records = frozenset(defined_here) | extra_known_records
 
     # Pass 2: build the IR.
+    scalar_refs = frozenset(getattr(options, "scalar_ref_functions", ()) or ())
+
     def build(cursor):
         kind = cursor.kind
 
@@ -1432,7 +1505,13 @@ def parse_header(
         if kind == _cindex.CursorKind.FUNCTION_DECL:
             if not expose.is_exposed(cursor.spelling):
                 return
-            _parse_function(cursor, module, known_records, errors)
+            _parse_function(
+                cursor,
+                module,
+                known_records,
+                errors,
+                scalar_ref_functions=scalar_refs,
+            )
             return
 
         if kind == _cindex.CursorKind.TYPEDEF_DECL:

@@ -63,6 +63,7 @@ def every_field_module() -> ModuleIR:
         is_optional=True,
         length_param="n",
         is_mutable_buffer=True,
+        is_scalar_ref=True,
     )
     other = Parameter(name="lambda", type="float", native_type="double")
     return ModuleIR(

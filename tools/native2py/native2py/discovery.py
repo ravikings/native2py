@@ -10,6 +10,11 @@ from pathlib import Path
 # needs to know which dialect it's reading.
 _FIXED_FORM_SUFFIXES = {".f", ".for", ".f77"}
 _FREE_FORM_SUFFIXES = {".f90", ".f95", ".f03", ".f08"}
+# Uppercase = "run the C preprocessor first", by decades-old convention.
+# These were never in the table at all, so a .F90 was not merely mis-read —
+# `find_native_sources` could not SEE it, and generate reported "No Fortran
+# sources found" for a directory full of Fortran.
+_PREPROCESSED_SUFFIXES = {s.upper() for s in _FIXED_FORM_SUFFIXES | _FREE_FORM_SUFFIXES}
 
 _EXTENSIONS = {
     ".hpp": "cpp",
@@ -19,6 +24,7 @@ _EXTENSIONS = {
     ".cc": "cpp",
     **{s: "fortran" for s in _FIXED_FORM_SUFFIXES},
     **{s: "fortran" for s in _FREE_FORM_SUFFIXES},
+    **{s: "fortran" for s in _PREPROCESSED_SUFFIXES},
 }
 
 
@@ -143,10 +149,19 @@ def find_implementation_files(header: Path) -> list[Path]:
 def find_native_sources(root: Path, language: str) -> list[Path]:
     suffixes = [ext for ext, lang in _EXTENSIONS.items() if lang == language]
     found: list[Path] = []
+    # De-duplicated by identity, not by name: on a case-insensitive
+    # filesystem (macOS, Windows) rglob("*.f90") and rglob("*.F90") both
+    # match the same file, and compiling it twice is a duplicate-symbol
+    # link error. The SUFFIX the file actually has still decides whether
+    # the preprocessor runs.
+    seen: set[Path] = set()
     for suffix in suffixes:
-        found.extend(
-            p
-            for p in sorted(root.rglob(f"*{suffix}"))
-            if not GENERATED_DIRS.intersection(p.parts)
-        )
+        for p in sorted(root.rglob(f"*{suffix}")):
+            if GENERATED_DIRS.intersection(p.parts):
+                continue
+            resolved = p.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            found.append(p)
     return found

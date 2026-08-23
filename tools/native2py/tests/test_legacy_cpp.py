@@ -148,13 +148,15 @@ def test_const_char_pointer_maps_to_str(tmp_path):
 
 
 def test_pointer_parameter_is_skipped_with_a_reason(tmp_path):
-    # A bare `double*` has no length, so there is no safe binding. Refusing
-    # it is correct — but it must be reported, not silently dropped.
+    # A bare `double*` with NO length anywhere has no safe binding. Refusing
+    # it is correct — but it must be reported, not silently dropped. (With a
+    # length argument, `set_values(double* values, int n)`, the pair now binds
+    # as a numpy buffer instead — covered in test_cpp_ast.py.)
     module = parse(
         """
         class Grid {
         public:
-            int set_values(double* values, int n);
+            int set_values(double* values);
             int size() const;
         };
         """,

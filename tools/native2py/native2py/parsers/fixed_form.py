@@ -359,6 +359,7 @@ def infer_intents(
     routine: dict,
     normalized: str | None = None,
     _seen: frozenset[str] = frozenset(),
+    statement_functions: frozenset[str] = frozenset(),
 ) -> dict[str, str]:
     """Infer "in" / "out" / "inout" for each dummy argument of `routine`.
 
@@ -462,6 +463,15 @@ def infer_intents(
             assignment = _ASSIGNMENT_RE.match(statement)
             if assignment:
                 target = assignment.group("target").lower()
+                # `F(X) = X*2.0*B` where F is a STATEMENT FUNCTION is a
+                # declaration wearing an assignment's clothes: nothing
+                # executes here, so nothing is read. Counting its RHS as a
+                # read marks a pure-output dummy (B above) as "inout" —
+                # widened, so never a wrong answer, but a signature demanding
+                # a value the routine never consumes. The names come from the
+                # fparser2 tree, which recognises Stmt_Function_Stmt exactly.
+                if target in statement_functions:
+                    continue
                 rest = statement[assignment.end() :]
                 if assignment.group("subscript"):
                     # A subscript is a read of whatever indexes it, and an

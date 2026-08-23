@@ -28,6 +28,8 @@ from .discovery import (
 )
 from .preprocess import (
     IncludeError,
+    PreprocessError,
+    run_c_preprocessor,
     expand_includes,
     read_source,
     resolve_kind_parameters,
@@ -1304,6 +1306,44 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
                 f"include_paths entry '{p}' is not a directory (relative to the repo root)."
             )
 
+    # Preprocessed Fortran (.F90/.F, or #ifdef in a lowercase file) is not
+    # Fortran yet — it is INPUT to the C preprocessor, and parsing it directly
+    # reads every conditional branch as simultaneously live. It used to be
+    # warned about and mis-read; it is now preprocessed with gfortran's own
+    # `-cpp -E` into native/_expanded/ BEFORE anything parses it, so discovery,
+    # intent inference and f2py all see the code gfortran would have compiled.
+    preprocessed_set: set[Path] = set()
+    needs_cpp = [s for s in sources if requires_preprocessing(s)]
+    if needs_cpp:
+        expanded_dir = service_dir / "native" / "_expanded"
+        expanded_dir.mkdir(parents=True, exist_ok=True)
+        replaced: list[Path] = []
+        for source in sources:
+            if source not in needs_cpp:
+                replaced.append(source)
+                continue
+            target = expanded_dir / (source.stem + source.suffix.lower())
+            try:
+                target.write_text(
+                    run_c_preprocessor(
+                        source, include_paths, config.fortran_defines
+                    )
+                )
+            except PreprocessError as exc:
+                raise click.ClickException(str(exc)) from exc
+            replaced.append(target)
+            preprocessed_set.add(target)
+        sources = replaced
+        click.echo(
+            f"Preprocessed {len(needs_cpp)} source(s) with gfortran -cpp -E "
+            f"-> {expanded_dir}"
+            + (
+                f" (defines: {', '.join(config.fortran_defines)})"
+                if config.fortran_defines
+                else ""
+            )
+        )
+
     # Sources from `libraries:` are compiled INTO the extension — f2py links no
     # external target — so they join the service's own before anything below
     # classifies or expands them. See _fortran_library_inputs.
@@ -1438,7 +1478,7 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
     # build context is the service directory, so a path outside it could not be
     # COPYed in anyway.
     library_set = set(library_sources)
-    if rewritten or library_sources:
+    if rewritten or library_sources or preprocessed_set:
         expanded_dir = service_dir / "native" / "_expanded"
         expanded_dir.mkdir(parents=True, exist_ok=True)
         native_sources = []
@@ -1467,6 +1507,9 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
             elif source in library_set:
                 target = expanded_dir / source.name
                 target.write_text(read_source(source))
+                native_sources.append(f"native/_expanded/{source.name}")
+            elif source in preprocessed_set:
+                # Already written under _expanded/ by the preprocessor pass.
                 native_sources.append(f"native/_expanded/{source.name}")
             else:
                 native_sources.append(f"native/{source.name}")

@@ -380,11 +380,16 @@ at the same time.
 
 - C++: overloads, public inheritance, typedefs, enums, macros, `#include`d
   types, **`std::vector<T>`**, and **a raw `T*` paired with a length argument**
-  are handled — so an ordinary C numerical API (`void scale(double*, int,
-  double)`) binds, writes in place, and returns the written array over HTTP.
-  Still unsupported: templates; a pointer whose length nothing in the
-  signature names (`dot(a, b, n)` is ambiguous and refused rather than
-  guessed); and buffer arguments on class methods. Two refusals are
+  are handled — on free functions AND class methods — so an ordinary C
+  numerical API (`int set_porosity(double* values, int n)`) binds, writes in
+  place, and returns the written array over HTTP. extern "C" scalars passed
+  by reference (the Fortran-linkage convention) bind per-function via
+  `clang.scalar_ref_functions` — opt-in, because `double* x` is also how C
+  passes an array whose extent lives in a PARAMETER or COMMON block, and that
+  cannot be told apart from the prototype. On the real petro corpus: **79%
+  of recognised declarations bind with no configuration, 94% with one yaml
+  line**. Still unsupported: templates, and a pointer whose length nothing
+  names (`dot(a, b, n)` is ambiguous and refused rather than guessed). Two refusals are
   deliberate and worth knowing: a non-const `std::vector<T>&`, and a
   wrong-dtype or read-only array for a writable buffer — pybind11 would
   silently discard the writes in both cases. **Operators** bind as Python

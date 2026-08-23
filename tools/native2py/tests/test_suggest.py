@@ -102,13 +102,18 @@ def test_suggest_ranks_self_contained_header_first(tmp_path):
 
 
 def test_suggest_reports_skipped_declarations(tmp_path):
-    """A raw pointer cannot be bound; suggest must count it, not hide it."""
+    """An unbindable declaration must be counted, not hidden.
+
+    `fill(double* values, int n)` no longer qualifies — a pointer paired with
+    a length argument binds as a numpy buffer now — so the probe uses a
+    pointer with no length anywhere, which stays genuinely refusable.
+    """
     (tmp_path / "Arrays.hpp").write_text(
         "class Arrays {\npublic:\n"
         "    double total(double x);\n"
         "    double mean(double x);\n"
         "    double peak(double x);\n"
-        "    void fill(double* values, int n);\n"
+        "    void fill(double* values);\n"
         "};\n"
     )
 
@@ -123,7 +128,7 @@ def test_suggest_calls_a_header_poor_when_half_of_it_is_unbindable(tmp_path):
     (tmp_path / "Halved.hpp").write_text(
         "class Halved {\npublic:\n"
         "    double total(double x);\n"
-        "    void fill(double* values, int n);\n"
+        "    void fill(double* values);\n"
         "};\n"
     )
 

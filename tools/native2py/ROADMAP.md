@@ -132,15 +132,18 @@ What the tree parser now unblocks, still to be built on it:
 
 What is still broken without it:
 
-- **Statement functions** corrupt intent inference. `infer_intents` decides what
-  a statement *is* by matching its first word against a frozenset, so an F77
-  statement function `FUNC(X) = X*2` is indistinguishable from an assignment to
-  a dummy argument.
+- ~~**Statement functions** corrupt intent inference~~ — fixed, though not the
+  way 1.4 predicted: fparser2 *cannot* tell `DBL(X)=X*2` from an array write
+  without a symbol table (measured — it says Assignment_Stmt). The fix is
+  semantic: a subscripted assignment target never declared as an array cannot
+  be an element write, so it is a statement function and its definition line
+  is skipped by the inferencer.
 - **`COMMON` / `EQUIVALENCE` outputs are invisible.** A routine that writes its
   result through a COMMON block is scored as having no outputs.
-- **Preprocessed Fortran** (`.F90`, `.F`, `.FOR`) is detected and **warned about**
-  but not handled — conditional code is still read as if every `#ifdef` branch
-  were live.
+- ~~**Preprocessed Fortran** (`.F90`, `.F`, `.FOR`)~~ — handled: discovered
+  (they were not even in the extension table), run through gfortran `-cpp -E`
+  into `_expanded/` before any parse, with `fortran: defines:` choosing the
+  branch. Verified by compiling the result and calling it.
 - **Cross-file `CALL` resolution** widens to `inout`, which is safe but verbose.
 - **`ENTRY` points** are not discoverable.
 

@@ -623,23 +623,6 @@ def _parse_record(
         except NativeTypeError as exc:
             module.skipped.append(SkippedSymbol(f"{name}::{decl.name}", str(exc)))
             continue
-        # Same refusal as cpp_ast: a raw `T*` bound as a numpy buffer needs a
-        # generated lambda, which pybind_gen emits for free functions only. A
-        # method would be bound with `&Cls::m`, handing pybind11 a bare pointer
-        # it cannot convert. Refusing in only one of the two readers would mean
-        # a machine without libclang emits a binding that does not compile.
-        if any(p.length_param for p in parameters):
-            module.skipped.append(
-                SkippedSymbol(
-                    f"{name}::{decl.name}",
-                    f"'{decl.name}' takes a raw pointer argument whose length is "
-                    "carried by another argument. native2py binds that shape for "
-                    "free functions, but not yet for class methods. Wrap it in a "
-                    "free function, take a std::vector, or exclude the symbol in "
-                    "native2py.yaml.",
-                )
-            )
-            continue
         methods.append(
             Method(
                 name=decl.name,

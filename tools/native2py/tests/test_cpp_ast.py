@@ -1046,12 +1046,13 @@ def test_an_unpairable_pointer_is_still_refused(tmp_path):
     assert "pass its length in an argument named after it" in reasons["first"]
 
 
-def test_buffer_arguments_on_methods_are_refused(tmp_path):
-    # The generated lambda that reads a length off an array is emitted for free
-    # functions only. A method would be bound with `&Cls::m`, handing pybind11
-    # a bare pointer it cannot convert — so it is refused rather than emitted
-    # broken. Both readers must agree, or a machine without libclang produces
-    # a binding that does not compile.
+def test_buffer_arguments_on_methods_now_bind(tmp_path):
+    # `int set_porosity(double* values, int n)` is the single most common
+    # shape a numerical C++ class exposes, and it used to be refused with
+    # "not yet for class methods". pybind11 passes the instance as the first
+    # argument of a def'd callable, so the same generated lambda binds it.
+    # Verified by compiling and running: writes land in the caller's array,
+    # a wrong dtype is refused, and the length never appears in the signature.
     header = tmp_path / "cls.hpp"
     header.write_text(
         """
@@ -1067,10 +1068,12 @@ def test_buffer_arguments_on_methods_are_refused(tmp_path):
     regex = cpp_regex.parse_header(header, ExposeConfig(all=True))
 
     for module in (tree, regex):
-        assert [m.name for m in module.classes[0].methods] == ["size"]
-        assert "not yet for class methods" in module.skipped[0].reason
-
-
+        by_name = {m.name: m for m in module.classes[0].methods}
+        assert set(by_name) == {"set_values", "size"}
+        buffer = by_name["set_values"].parameters[0]
+        assert buffer.length_param == "n"
+        assert buffer.is_mutable_buffer is True
+        assert module.skipped == []
 def test_both_cpp_backends_agree_on_buffers(tmp_path):
     header = tmp_path / "arr.hpp"
     header.write_text(

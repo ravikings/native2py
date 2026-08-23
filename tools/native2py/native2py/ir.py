@@ -113,6 +113,13 @@ class Parameter:
     # than let pybind11 convert it, because a converted buffer is a temporary
     # and the writes are discarded with it.
     is_mutable_buffer: bool = False
+    # A C `T*` that is really ONE value passed by reference — the Fortran-
+    # linkage convention (`extern "C" void pvtini(double* api, ...)`, "EVERY
+    # argument is by reference"). The binding takes the value, passes its
+    # address, and, when the pointer is non-const, returns the final value —
+    # so an output scalar cannot be silently dropped. Set only under the
+    # guarded extern "C" heuristic in parsers/cpp_ast.py.
+    is_scalar_ref: bool = False
 
     def cpp_spelling(self, fallback: str) -> str:
         """The C++ type to emit, preferring the recorded native spelling."""
@@ -397,7 +404,7 @@ def validate(module: "ModuleIR") -> list[Problem]:
 # hand-edited, and quietly ignoring them is how a typo'd "is_cosnt: true"
 # becomes a wrong binding.
 SCHEMA_VERSION_MAJOR = 1
-SCHEMA_VERSION_MINOR = 3
+SCHEMA_VERSION_MINOR = 4
 SCHEMA_VERSION = f"{SCHEMA_VERSION_MAJOR}.{SCHEMA_VERSION_MINOR}"
 
 # What a document with no `schema_version` at all is treated as: everything
@@ -480,6 +487,7 @@ _PARAMETER_KEYS = frozenset(
         "is_optional",
         "length_param",
         "is_mutable_buffer",
+        "is_scalar_ref",
     }
 )
 _METHOD_KEYS = frozenset(
@@ -581,6 +589,7 @@ def module_from_dict(data: dict) -> ModuleIR:
                 is_array=item.get("is_array", False),
                 length_param=item.get("length_param"),
                 is_mutable_buffer=item.get("is_mutable_buffer", False),
+                is_scalar_ref=item.get("is_scalar_ref", False),
                 intent=item.get("intent", "in"),
                 native_type=item.get("native_type"),
                 is_const=item.get("is_const", False),

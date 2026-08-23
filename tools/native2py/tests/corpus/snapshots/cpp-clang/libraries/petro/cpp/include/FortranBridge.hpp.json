@@ -26,35 +26,35 @@
   ],
   "language": "cpp",
   "name": "FortranBridge",
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "skipped": [
     {
       "name": "pvtini_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'pvtini_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "pvtrs_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'pvtrs_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "pvtbo_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'pvtbo_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "pvtvis_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'pvtvis_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "pvtz_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'pvtz_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "pvtbub_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'pvtbub_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "pvtset_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'pvtset_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "pvterr_",
@@ -62,63 +62,63 @@
     },
     {
       "name": "krini_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'krini_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "krload_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'krload_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "krwat_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'krwat_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "krow_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'krow_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "krgas_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'krgas_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "kroil_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'kroil_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "pcow_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'pcow_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "bbdpdz_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'bbdpdz_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "traver_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'traver_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "cmpset_",
-      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'cmpset_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "flash2_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'flash2_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "simini_",
-      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'simini_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "grdset_",
-      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'grdset_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "equili_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'equili_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "step_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'step_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "weladd_",
@@ -126,11 +126,11 @@
     },
     {
       "name": "iprvog_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'iprvog_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     },
     {
       "name": "nodal_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml. If every `T*` argument of 'nodal_' is a SCALAR passed by reference (the Fortran-linkage convention), list it under `clang.scalar_ref_functions` in native2py.yaml \u2014 but check the Fortran first: an array whose extent lives in a PARAMETER or COMMON block looks identical in the C prototype, and binding it as a scalar corrupts memory."
     }
   ],
   "source_file": "libraries/petro/cpp/include/FortranBridge.hpp",
@@ -143,6 +143,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "api",
           "native_type": "double",
@@ -154,6 +155,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "sgg",
           "native_type": "double",
@@ -165,6 +167,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "sgw",
           "native_type": "double",
@@ -176,6 +179,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "tres",
           "native_type": "double",
@@ -187,6 +191,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "pb",
           "native_type": "double",
@@ -198,6 +203,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "psep",
           "native_type": "double",
@@ -209,6 +215,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "tsep",
           "native_type": "double",
@@ -220,6 +227,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "ncomp",
           "native_type": "int",
@@ -238,6 +246,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "bo",
           "native_type": "double",
@@ -249,6 +258,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "bg",
           "native_type": "double",
@@ -260,6 +270,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "bw",
           "native_type": "double",
@@ -271,6 +282,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "rsol",
           "native_type": "double",
@@ -282,6 +294,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "viso",
           "native_type": "double",
@@ -293,6 +306,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "visg",
           "native_type": "double",
@@ -304,6 +318,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "visw",
           "native_type": "double",
@@ -315,6 +330,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "rhoo",
           "native_type": "double",
@@ -326,6 +342,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "rhog",
           "native_type": "double",
@@ -337,6 +354,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "rhow",
           "native_type": "double",
@@ -348,6 +366,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "zfac",
           "native_type": "double",
@@ -359,6 +378,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "co",
           "native_type": "double",
@@ -370,6 +390,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "cg",
           "native_type": "double",
@@ -381,6 +402,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "cw",
           "native_type": "double",
@@ -399,6 +421,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "ierr",
           "native_type": "int",
@@ -410,6 +433,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "iwarn",
           "native_type": "int",
@@ -421,6 +445,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "nitpvt",
           "native_type": "int",
@@ -432,6 +457,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "lunprt",
           "native_type": "int",
@@ -443,6 +469,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "lundbg",
           "native_type": "int",
@@ -454,6 +481,7 @@
           "is_const": false,
           "is_mutable_buffer": false,
           "is_optional": false,
+          "is_scalar_ref": false,
           "length_param": null,
           "name": "idbglv",
           "native_type": "int",

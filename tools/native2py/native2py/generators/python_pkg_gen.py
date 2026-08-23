@@ -713,6 +713,14 @@ def _endpoints_for_class(
         # two calls, so the constructor's copy is renamed. Every name is also
         # escaped against Python's keywords (B4).
         method_params = [_renamed(p, _py(p.name)) for p in method.parameters]
+        # Same treatment buffer arguments get on free functions: the length is
+        # read off the array the caller sent, so it is not asked over HTTP,
+        # and a buffer the native code writes through comes back in the
+        # response — the array it wrote into does not outlive the request.
+        buffers = [p for p in method_params if getattr(p, "length_param", None)]
+        length_names = {p.length_param for p in buffers}
+        method_params = [p for p in method_params if p.name not in length_names]
+        mutable_buffers = [p for p in buffers if getattr(p, "is_mutable_buffer", False)]
         method_names = {p.name for p in method_params}
         ctor_names = [
             f"{_py(p.name)}_init" if _py(p.name) in method_names else _py(p.name)
@@ -742,6 +750,10 @@ def _endpoints_for_class(
         )
         lines.extend(guard)
         body: list[str] = []
+        for buf in buffers:
+            body.append(
+                f"    {buf.name} = np.array({buf.name}, dtype=np.{_BUFFER_DTYPE[buf.type]})"
+            )
         if method.is_static:
             call = f"{_attr(_py(cls.name), method.name)}({', '.join(call_args)})"
         else:
@@ -750,7 +762,22 @@ def _endpoints_for_class(
             # simulation object is stateful by definition.
             body.append(f"    instance = {_py(cls.name)}({', '.join(ctor_args)})")
             call = f"{_attr('instance', method.name)}({', '.join(call_args)})"
-        if method.returns == "None":
+        if mutable_buffers:
+            written = ", ".join(
+                f'"{p.name}": {p.name}.tolist()' for p in mutable_buffers
+            )
+            if method.returns == "None":
+                body.append(f"    {call}")
+                lines.extend(_serialised(body) if serialise else body)
+                lines.append(f"    return {{{written}}}")
+            else:
+                body.append(f"    result = {call}")
+                lines.extend(_serialised(body) if serialise else body)
+                lines.append(
+                    f'    return {{"result": '
+                    f'{_wrap_result("result", method.returns, structs)}, {written}}}'
+                )
+        elif method.returns == "None":
             body.append(f"    {call}")
             lines.extend(_serialised(body) if serialise else body)
             lines.append('    return {"ok": True}')
@@ -807,6 +834,17 @@ def _endpoint_for_cpp_function(
     call_args = [p.name for p in exposed]
     call = f"{_py(fn.name)}({', '.join(call_args)})"
 
+    # extern "C" scalars passed by reference: non-const ones are OUTPUTS, and
+    # the binding returns their final values f2py-style — result first, then
+    # each output in declaration order, a bare value when there is only one.
+    # The endpoint unpacks that shape so an output like an error code reaches
+    # the caller instead of dying with the lambda's locals.
+    scalar_outputs = [
+        p.name
+        for p in exposed
+        if getattr(p, "is_scalar_ref", False) and p.intent != "in"
+    ]
+
     route, py_name = names.take(fn.name)
     lines = [f'@router.post("/{route}")', f"def {py_name}_endpoint({signature}):"]
     if not buffers:
@@ -820,6 +858,20 @@ def _endpoint_for_cpp_function(
         lines.append(
             f"    {buf.name} = np.array({buf.name}, dtype=np.{_BUFFER_DTYPE[buf.type]})"
         )
+
+    if scalar_outputs:
+        named = ", ".join(f'"{n}": {n}' for n in scalar_outputs)
+        if fn.returns == "None" and len(scalar_outputs) == 1:
+            lines.append(f"    {scalar_outputs[0]} = {call}")
+            lines.append(f"    return {{{named}}}")
+        elif fn.returns == "None":
+            lines.append(f"    {', '.join(scalar_outputs)} = {call}")
+            lines.append(f"    return {{{named}}}")
+        else:
+            lines.append(f"    result, {', '.join(scalar_outputs)} = {call}")
+            lines.append(f'    return {{"result": result, {named}}}')
+        lines.append("")
+        return lines
 
     if not mutable_buffers:
         # Inline, exactly as before: naming an intermediate would churn every

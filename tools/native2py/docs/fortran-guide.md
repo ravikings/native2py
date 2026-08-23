@@ -291,6 +291,54 @@ and the `THOMAS` tridiagonal solver checked against NumPy:
 max |THOMAS - numpy.linalg.solve| = 2.2e-16
 ```
 
+### Preprocessed Fortran: `.F90`, `.F`, and `#ifdef`
+
+An uppercase suffix means "run the C preprocessor first" — the file is not
+Fortran yet, it is *input* to cpp. native2py used to warn about these and then
+read every `#ifdef` branch as simultaneously live, which silently binds
+whichever branch happens to lex. Worse, `.F90` was not in the discovery table
+at all, so a directory of preprocessed Fortran reported "No Fortran sources
+found".
+
+They are handled now: `generate` runs **gfortran's own preprocessor**
+(`-cpp -E -P`) into `native/_expanded/` before anything parses, so discovery,
+intent inference and f2py all see the code gfortran would have compiled.
+gfortran's preprocessor rather than a bare `cpp`, because Fortran is not C — a
+traditional cpp mangles `//` concatenation and fixed-form columns.
+
+Which branch is live is the build's decision, so it comes from the config:
+
+```yaml
+fortran:
+  defines:
+    - DOUBLE_IT
+```
+
+Verified end to end: a `.F90` with an `#ifdef` generated, compiled through
+f2py, and returned the configured branch's value. If gfortran is missing,
+generation **stops with an error** rather than falling back to the old
+misreading.
+
+### Statement functions no longer widen intents
+
+`DBL(X) = X*2.0*B` is a declaration wearing an assignment's clothes. The
+intent inferencer used to count its right-hand side as a read, marking an
+output like `B` as `intent(inout)` — never a wrong answer (widening keeps the
+argument in the signature), but a signature demanding a value the routine
+never consumes.
+
+fparser2 is no help here — without a symbol table it classifies the line as a
+plain assignment, same as a real array write (measured). The disambiguation is
+semantic and exact: a *subscripted* assignment target that is never declared
+as an array cannot be an array-element write, so it is a statement function.
+Character substrings (`STR(1:3) = ...`) and dummy arguments are excluded, so
+a real write is never skipped — skipping one would lose reads, and a lost
+read can flip a genuinely-read argument to `intent(out)`, which f2py then
+drops from the call.
+
+The regex fallback backend keeps the old widening (safe, just noisier); the
+fix rides the fparser2 default.
+
 ### Known limitation: source that doesn't compile
 
 Two files in `libraries/petro` do not compile with modern `gfortran`, for
