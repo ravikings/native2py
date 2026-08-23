@@ -22,9 +22,22 @@ _DEPENDENCIES = {
 }
 
 
-def generate_pyproject(service_name: str, language: str) -> str:
+def generate_pyproject(
+    service_name: str, language: str, needs_numpy: bool = False
+) -> str:
+    """The generated service's pyproject.toml.
+
+    `needs_numpy` is set for a C++ service that binds a raw `T*` as a numpy
+    buffer: pybind11/numpy.h needs numpy's headers to build and numpy to
+    import. A C++ service with no such pointer does not get the dependency —
+    declaring it unconditionally would put numpy in every image for the
+    benefit of the services that do not use it.
+    """
     build_requires = _BUILD_REQUIRES.get(language, _BUILD_REQUIRES["cpp"])
     dependencies = _DEPENDENCIES.get(language, _DEPENDENCIES["cpp"])
+    if needs_numpy and '"numpy"' not in dependencies:
+        build_requires = build_requires.rstrip("]") + ', "numpy"]'
+        dependencies = dependencies.rstrip("]") + ', "numpy"]'
 
     return f"""[build-system]
 requires = {build_requires}

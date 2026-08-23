@@ -26,99 +26,99 @@
   ],
   "language": "cpp",
   "name": "FortranBridge",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [
     {
       "name": "pvtini_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "pvtrs_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "pvtbo_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "pvtvis_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "pvtz_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "pvtbub_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "pvtset_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "pvterr_",
-      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'char *' is a non-const 'char*': an output buffer with no length convention. Binding it as a Python str would have C++ write through a temporary. Return std::string (or take 'const char*' for input), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "krini_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "krload_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "krwat_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "krow_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "krgas_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "kroil_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "pcow_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "bbdpdz_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "traver_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "cmpset_",
-      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "flash2_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "simini_",
-      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "grdset_",
-      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'int *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "equili_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "step_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "weladd_",
@@ -126,11 +126,11 @@
     },
     {
       "name": "iprvog_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     },
     {
       "name": "nodal_",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct), pass its length in an argument named after it (`n`, `n_values`, `values_len`, ...), or exclude the symbol in native2py.yaml."
     }
   ],
   "source_file": "libraries/petro/cpp/include/FortranBridge.hpp",
@@ -141,7 +141,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "api",
           "native_type": "double",
           "type": "float"
@@ -150,7 +152,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "sgg",
           "native_type": "double",
           "type": "float"
@@ -159,7 +163,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "sgw",
           "native_type": "double",
           "type": "float"
@@ -168,7 +174,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "tres",
           "native_type": "double",
           "type": "float"
@@ -177,7 +185,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "pb",
           "native_type": "double",
           "type": "float"
@@ -186,7 +196,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "psep",
           "native_type": "double",
           "type": "float"
@@ -195,7 +207,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "tsep",
           "native_type": "double",
           "type": "float"
@@ -204,7 +218,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "ncomp",
           "native_type": "int",
           "type": "int"
@@ -220,7 +236,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "bo",
           "native_type": "double",
           "type": "float"
@@ -229,7 +247,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "bg",
           "native_type": "double",
           "type": "float"
@@ -238,7 +258,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "bw",
           "native_type": "double",
           "type": "float"
@@ -247,7 +269,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "rsol",
           "native_type": "double",
           "type": "float"
@@ -256,7 +280,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "viso",
           "native_type": "double",
           "type": "float"
@@ -265,7 +291,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "visg",
           "native_type": "double",
           "type": "float"
@@ -274,7 +302,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "visw",
           "native_type": "double",
           "type": "float"
@@ -283,7 +313,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "rhoo",
           "native_type": "double",
           "type": "float"
@@ -292,7 +324,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "rhog",
           "native_type": "double",
           "type": "float"
@@ -301,7 +335,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "rhow",
           "native_type": "double",
           "type": "float"
@@ -310,7 +346,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "zfac",
           "native_type": "double",
           "type": "float"
@@ -319,7 +357,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "co",
           "native_type": "double",
           "type": "float"
@@ -328,7 +368,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "cg",
           "native_type": "double",
           "type": "float"
@@ -337,7 +379,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "cw",
           "native_type": "double",
           "type": "float"
@@ -353,7 +397,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "ierr",
           "native_type": "int",
           "type": "int"
@@ -362,7 +408,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "iwarn",
           "native_type": "int",
           "type": "int"
@@ -371,7 +419,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "nitpvt",
           "native_type": "int",
           "type": "int"
@@ -380,7 +430,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "lunprt",
           "native_type": "int",
           "type": "int"
@@ -389,7 +441,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "lundbg",
           "native_type": "int",
           "type": "int"
@@ -398,7 +452,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "idbglv",
           "native_type": "int",
           "type": "int"

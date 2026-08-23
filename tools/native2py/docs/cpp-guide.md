@@ -31,6 +31,12 @@ pip install "native2py[clang]"
 - overloads (same name, different signature)
 - `const` / reference qualifiers stripped: `const double&` → `float`
 - `const char*` and `std::string` (in any spelling) → `str`
+- **a raw `T*` paired with a length argument** — `double sum(const double*
+  data, int n)`, `void scale(double* data, int n, double k)`. The pairing is
+  inferred from the names (`n`, `n_data`, `data_len`, ...) and the length then
+  **disappears from the Python signature**, because it is read off the array
+  the caller actually passed. A length the caller cannot state is a length
+  that cannot disagree with the data
 - **`std::vector<T>`** as a parameter (by value or `const&`) and as a return,
   for numeric elements and `std::string` — converted to and from a Python
   `list` by `<pybind11/stl.h>`. The generated endpoint annotates it
@@ -78,12 +84,103 @@ pip install "native2py[clang]"
 - inheriting from a class the service does not bind: reported, and the
   relationship dropped — expose the base too if Python needs its methods
 - operator overloading, destructors
-- raw numeric pointers (`double*`) — no length information
+- raw numeric pointers whose length **nothing in the signature names**. See
+  below — a pointer paired with a length argument *is* now bindable
 - pointer *returns* of class types — ownership ambiguity
 - types that are only forward-declared and never defined in the service
 
 The last four are pybind11 constraints, not parser limits: they stay refused
 no matter how good the parser gets.
+
+### Array arguments: raw pointers
+
+A C numerical API passes arrays as a pointer plus a count:
+
+```cpp
+double sum(const double* data, int n);
+void   scale(double* data, int n, double k);   // writes in place
+```
+
+Both bind. The pointer becomes a numpy array and **the length argument is not
+part of the Python signature** — it is read off the array you passed:
+
+```python
+>>> arr.sum([1.0, 2.0, 3.0])
+6.0
+>>> import numpy as np
+>>> d = np.array([1.0, 2.0, 3.0])
+>>> arr.scale(d, 10.0)      # no `n`
+>>> d
+array([10., 20., 30.])      # written in place
+```
+
+Dropping the length is the point: a count the caller cannot state is a count
+that cannot disagree with the data, which is the whole failure mode of a C
+array API.
+
+#### When the pairing is refused
+
+The length is inferred from argument names — `n`, `n_values`, `values_len`,
+`count`, `size` and similar, matched against the array's name. Where that is
+ambiguous the function is **skipped with a reason** rather than guessed:
+
+```cpp
+double dot(const double* a, const double* b, int n);   // refused
+double first(const double* data);                      // refused
+```
+
+`dot` has one integer and two arrays. A human reads `n` as the length of both;
+the inference will not, because a false pairing binds the wrong argument as an
+extent and reads past the end of a buffer. Give the arguments matching names
+(`n_a`, `n_b`), take `std::vector`, or expose a wrapper.
+
+Buffer arguments on **class methods** are also refused for now — the generated
+lambda that reads the length off the array is emitted for free functions only.
+
+#### Read-only and writable buffers are bound differently
+
+This is not a style choice, and it is worth knowing before you debug a
+"why did my array not change" report.
+
+A **`const T*`** is input. pybind11 may convert a list or a wrong-dtype array
+into a temporary, because nothing is written back — so these endpoints accept
+plain Python lists.
+
+A **`T*`** is one the native code writes through. Conversion there is
+catastrophic *and silent*: pybind11 writes into the temporary and discards it.
+Measured, with a real module — `py::array_t<double>` handed an `int64` array
+accepted it, converted, and lost every write; and a plain `request()` wrote
+straight through an array with `writeable=False`. So a writable buffer refuses
+rather than converts:
+
+```python
+>>> arr.scale(np.array([1, 2, 3]), 10.0)          # int64
+TypeError: scale(): 'data' must be a numpy array of dtype double; native2py
+will not convert it because this function writes through the buffer and a
+converted array is a temporary whose writes would be discarded.
+
+>>> ro = np.array([1.0, 2.0]); ro.flags.writeable = False
+>>> arr.scale(ro, 10.0)
+ValueError: buffer source array is read-only
+```
+
+Over HTTP the same rule applies from the other side: an endpoint whose
+argument is a writable buffer **returns it in the response**, because the
+array it wrote into does not outlive the request.
+
+```
+POST /scale  {"data": [1.0, 2.0, 3.0], "k": 10.0}
+      ->     {"data": [10.0, 20.0, 30.0]}
+```
+
+#### It costs a numpy dependency
+
+`pybind11/numpy.h` needs numpy's headers to build and numpy to import, so a
+C++ service that binds a raw pointer needs `numpy` in its `pyproject.toml` —
+in `[build-system] requires` and `[project] dependencies`. `generate` warns
+when a binding needs it and the file does not declare it; it does not edit
+`pyproject.toml`, which is yours to hand-edit. A C++ service that binds no
+pointers does not acquire the dependency.
 
 ### Telling the parser what your build knows
 

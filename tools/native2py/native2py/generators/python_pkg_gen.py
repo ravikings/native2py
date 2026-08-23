@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import dataclasses
 
-from ..ir import FunctionDef, ModuleIR, Parameter, python_identifier
+from ..ir import (
+    FunctionDef,
+    ModuleIR,
+    Parameter,
+    python_identifier,
+    size_pairings as _size_pairings,
+)
 from .error_gen import ERROR_HANDLER_IMPORTS, generate_error_handler
 
 
@@ -218,83 +224,6 @@ ARRAY_CAP_COMMENT = [
 # num_x, len_x, size_x, count_x, x_n, x_len, x_size, x_count. Anything else is
 # not paired — a wrong pairing rejects valid calls, which is worse than the
 # status quo for that routine.
-_SIZE_PREFIXES = ("n", "n_", "num", "num_", "len", "len_", "size", "size_", "count", "count_")
-_SIZE_SUFFIXES = ("_n", "_len", "_size", "_count", "_dim", "_num")
-
-# Bare integer names that mean "a length" in Fortran by near-universal
-# convention. The fallback below pairs one of these with a lone array; an
-# integer named anything else is left alone, because `PRZFAC(IPHASE, X)` takes
-# a *phase selector* and an array, and pairing those rejects every valid call.
-_SIZE_WORDS = frozenset(
-    {"n", "m", "num", "len", "length", "size", "count", "npts", "ndim", "nelem"}
-)
-
-
-def _names_a_size_of(int_name: str, array_name: str) -> bool:
-    int_name, array_name = int_name.lower(), array_name.lower()
-    for prefix in _SIZE_PREFIXES:
-        if int_name == f"{prefix}{array_name}":
-            return True
-    for suffix in _SIZE_SUFFIXES:
-        if int_name == f"{array_name}{suffix}":
-            return True
-    return False
-
-
-def _size_pairings(inputs: list) -> list[tuple[str, str]]:
-    """(integer parameter, array parameter) pairs where the integer is the length.
-
-    A Fortran routine takes its extents explicitly — `PVTSTATE(P, PROPS, N)` —
-    and f2py passes whatever `n` the request supplied straight through. When
-    `n > len(props)` the routine indexes past the end of the buffer: an
-    out-of-bounds read or write, not merely a wrong answer.
-
-    The IR has no link between a size argument and the array it sizes, so the
-    pairing is inferred, and only where it is unambiguous:
-
-    1. by name — `n`, `nprops`, `n_props`, `num_props`, `len_props`,
-       `props_len`, ... matched case-insensitively against exactly one array;
-    2. failing that, structurally — exactly one array input and exactly one
-       integer whose bare name is a conventional length (`N`, `LEN`, `SIZE`,
-       ...). Both halves are required. "One array, one integer" alone is not
-       enough: `PRZFAC(IPHASE, X)` takes a phase selector and an array, and
-       pairing those would reject every valid call to it.
-
-    Anything else — several arrays sharing one `N`, two integers with unhelpful
-    names, an integer matching two arrays — yields NO pairing. A false pairing
-    rejects valid calls; a missed one leaves that endpoint exactly as unsafe as
-    it was before.
-    """
-    arrays = [p for p in inputs if p.is_array]
-    integers = [p for p in inputs if not p.is_array and p.type == "int"]
-    if not arrays or not integers:
-        return []
-
-    by_int: dict[str, list[str]] = {}
-    for i in integers:
-        matches = [a.name for a in arrays if _names_a_size_of(i.name, a.name)]
-        if matches:
-            by_int[i.name] = matches
-
-    named = [
-        (int_name, matches[0])
-        for int_name, matches in by_int.items()
-        if len(matches) == 1
-    ]
-    # An array claimed by two integers is ambiguous in the other direction.
-    claimed: dict[str, int] = {}
-    for _, array_name in named:
-        claimed[array_name] = claimed.get(array_name, 0) + 1
-    named = [pair for pair in named if claimed[pair[1]] == 1]
-    if named:
-        return named
-
-    size_named = [i for i in integers if i.name.lower() in _SIZE_WORDS]
-    if len(arrays) == 1 and len(size_named) == 1:
-        return [(size_named[0].name, arrays[0].name)]
-    return []
-
-
 def _size_guard_lines(pairings: list[tuple[str, str]]) -> list[str]:
     """Reject a size/array mismatch before the value reaches native code."""
     lines: list[str] = []
@@ -848,6 +777,12 @@ def _renamed(param, name: str):
     return dataclasses.replace(param, name=name)
 
 
+# numpy dtype for a buffer parameter, matching what pybind_gen's lambda
+# demands. A mutable buffer of the wrong dtype is REFUSED by the binding
+# rather than converted, so these two tables have to agree.
+_BUFFER_DTYPE = {"float": "float64", "int": "intc", "bool": "bool_"}
+
+
 def _endpoint_for_cpp_function(
     fn, structs: dict, class_names: set, names: "_EndpointNames | None" = None
 ) -> list[str]:
@@ -857,19 +792,67 @@ def _endpoint_for_cpp_function(
         return [f"# {fn.name}: no endpoint — {reason}.", ""]
 
     parameters = [_renamed(p, _py(p.name)) for p in fn.parameters]
+
+    # A `T*` bound as a buffer takes its length from the array itself, so the
+    # length argument is not part of the binding's signature and must not be
+    # asked of an HTTP caller either.
+    buffers = [p for p in parameters if getattr(p, "length_param", None)]
+    length_names = {p.length_param for p in buffers}
+    exposed = [p for p in parameters if p.name not in length_names]
+    mutable_buffers = [p for p in buffers if getattr(p, "is_mutable_buffer", False)]
+
     signature = ", ".join(
-        f"{p.name}: {_annotation(p, structs, bounded=True)}" for p in parameters
+        f"{p.name}: {_annotation(p, structs, bounded=True)}" for p in exposed
     )
-    call = f"{_py(fn.name)}({', '.join(_call_arguments(parameters, structs))})"
+    call_args = [p.name for p in exposed]
+    call = f"{_py(fn.name)}({', '.join(call_args)})"
 
     route, py_name = names.take(fn.name)
     lines = [f'@router.post("/{route}")', f"def {py_name}_endpoint({signature}):"]
-    lines.extend(_size_guard_lines(_size_pairings(parameters)))
+    if not buffers:
+        lines.extend(_size_guard_lines(_size_pairings(parameters)))
+
+    # The binding wants a real ndarray, and for a mutable buffer specifically a
+    # writable one of the exact dtype — it refuses to convert, because a
+    # converted array is a temporary whose writes are discarded. JSON gives us
+    # a list, so the array is built here with the dtype the binding demands.
+    for buf in buffers:
+        lines.append(
+            f"    {buf.name} = np.array({buf.name}, dtype=np.{_BUFFER_DTYPE[buf.type]})"
+        )
+
+    if not mutable_buffers:
+        # Inline, exactly as before: naming an intermediate would churn every
+        # generated router for the benefit of the few that write back.
+        if fn.returns == "None":
+            lines.append(f"    {call}")
+            lines.append('    return {"ok": True}')
+        else:
+            lines.append(
+                f'    return {{"result": {_wrap_result(call, fn.returns, structs)}}}'
+            )
+        lines.append("")
+        return lines
+
     if fn.returns == "None":
         lines.append(f"    {call}")
+    else:
+        lines.append(f"    result = {_wrap_result(call, fn.returns, structs)}")
+
+    if mutable_buffers:
+        # Whatever the native call wrote goes back to the caller. Without this
+        # the endpoint would run, return 200, and silently discard the entire
+        # point of an in-place routine — the HTTP-layer version of the
+        # std::vector& trap this codebase refuses at the binding layer.
+        written = ", ".join(f'"{p.name}": {p.name}.tolist()' for p in mutable_buffers)
+        if fn.returns == "None":
+            lines.append(f"    return {{{written}}}")
+        else:
+            lines.append(f'    return {{"result": result, {written}}}')
+    elif fn.returns == "None":
         lines.append('    return {"ok": True}')
     else:
-        lines.append(f'    return {{"result": {_wrap_result(call, fn.returns, structs)}}}')
+        lines.append('    return {"result": result}')
     lines.append("")
     return lines
 

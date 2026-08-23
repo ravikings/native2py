@@ -891,9 +891,33 @@ def _restore_scaffold(service_dir: Path, config: ServiceConfig) -> None:
         click.echo(f"Restored missing {pyproject}")
 
 
+def _warn_if_numpy_is_undeclared(service_dir: Path, module) -> None:
+    """Say so when a binding needs numpy and pyproject.toml does not declare it.
+
+    A raw `T*` is bound through pybind11/numpy.h, which needs numpy's headers
+    to build and numpy to import. pyproject.toml is written once at scaffold
+    time — before any header has been parsed — and is explicitly a file you may
+    hand-edit, so `generate` will not rewrite it. Telling you exactly what to
+    add beats either clobbering your edits or letting the build fail with a
+    missing-header error three layers down in CMake.
+    """
+    if not cmake_gen.uses_numpy_buffers(module):
+        return
+    pyproject = service_dir / "pyproject.toml"
+    if pyproject.exists() and '"numpy"' in pyproject.read_text():
+        return
+    click.echo(
+        "WARNING: this service binds a raw pointer argument as a numpy buffer, "
+        "which needs numpy at build and run time, but pyproject.toml does not "
+        'declare it. Add "numpy" to [build-system] requires and to '
+        "[project] dependencies."
+    )
+
+
 def _write_package(service_dir: Path, config: ServiceConfig, module) -> None:
     _validate_module(module)
     _restore_scaffold(service_dir, config)
+    _warn_if_numpy_is_undeclared(service_dir, module)
 
     # A machine-readable record of exactly what was bound. `golden record`
     # reads it instead of re-parsing: recording happens against an installed

@@ -16,7 +16,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "system",
               "native_type": "int",
               "type": "int"
@@ -44,7 +46,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "value",
               "native_type": "double",
               "type": "float"
@@ -63,7 +67,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "value",
               "native_type": "double",
               "type": "float"
@@ -82,7 +88,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "value",
               "native_type": "double",
               "type": "float"
@@ -101,7 +109,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "value",
               "native_type": "double",
               "type": "float"
@@ -120,7 +130,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "value",
               "native_type": "double",
               "type": "float"
@@ -139,7 +151,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "value",
               "native_type": "double",
               "type": "float"
@@ -158,7 +172,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "value",
               "native_type": "double",
               "type": "float"
@@ -186,7 +202,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "psi",
           "native_type": "double",
           "type": "float"
@@ -206,7 +224,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "bar",
           "native_type": "double",
           "type": "float"
@@ -226,7 +246,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "f",
           "native_type": "double",
           "type": "float"
@@ -246,7 +268,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "c",
           "native_type": "double",
           "type": "float"
@@ -266,7 +290,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "stb",
           "native_type": "double",
           "type": "float"
@@ -286,7 +312,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "m3",
           "native_type": "double",
           "type": "float"
@@ -306,7 +334,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "md",
           "native_type": "double",
           "type": "float"
@@ -326,7 +356,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "ft",
           "native_type": "double",
           "type": "float"
@@ -346,7 +378,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "m",
           "native_type": "double",
           "type": "float"
@@ -366,7 +400,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "api",
           "native_type": "double",
           "type": "float"
@@ -386,7 +422,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "sg",
           "native_type": "double",
           "type": "float"
@@ -398,11 +436,11 @@
   ],
   "language": "cpp",
   "name": "Units",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [
     {
       "name": "UnitConverter::convert_array",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'convert_array' takes a raw pointer argument whose length is carried by another argument. native2py binds that shape for free functions, but not yet for class methods. Wrap it in a free function, take a std::vector, or exclude the symbol in native2py.yaml."
     }
   ],
   "source_file": "libraries/petro/cpp/include/Units.hpp",

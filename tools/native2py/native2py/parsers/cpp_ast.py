@@ -60,6 +60,7 @@ from ..ir import (
     Parameter,
     SkippedSymbol,
     StructDef,
+    size_pairings,
 )
 
 # --- libclang loading ---------------------------------------------------
@@ -395,6 +396,22 @@ def _is_incomplete_record(t) -> bool:
     return not decl.is_definition()
 
 
+class PointerLengthUnknown(NativeTypeError):
+    """A pointer to a scalar, whose length is not knowable from the type alone.
+
+    Still a NativeTypeError, so every existing caller keeps refusing it. What
+    the subclass adds is the information `_parameters` needs to reconsider:
+    the element type, and whether the callee may write through it. If another
+    argument of the same function turns out to be this pointer's length, the
+    pair becomes a bindable array; otherwise this propagates unchanged.
+    """
+
+    def __init__(self, message: str, *, element: str, is_mutable: bool) -> None:
+        super().__init__(message)
+        self.element = element
+        self.is_mutable = is_mutable
+
+
 def _refuse_mutable_vector_ref(t, *, is_return: bool) -> None:
     """Refuse `std::vector<T>&` — pybind11 discards writes through it, silently.
 
@@ -544,6 +561,27 @@ def _map_type(t, known_records: frozenset[str], *, is_return: bool) -> tuple[str
                 "directory, or exclude the symbol in native2py.yaml."
             )
 
+        # A pointer to a scalar MIGHT still be bindable — as an array, if some
+        # other parameter of the same function carries its length. That cannot
+        # be decided here, one type at a time, so the decision is deferred to
+        # _parameters, which can see the whole signature. Raising a distinct
+        # exception (carrying what was learned about the pointee) is how the
+        # information gets there without _map_type growing a second job.
+        element = _builtin_map().get(canonical_pointee.kind)
+        if element in ("float", "int", "bool"):
+            raise PointerLengthUnknown(
+                f"'{spelling}' is a pointer; native2py cannot infer its length. "
+                "Wrap it in a type that carries its own size (std::vector, a "
+                "span, or a struct), pass its length in an argument named after "
+                "it (`n`, `n_values`, `values_len`, ...), or exclude the symbol "
+                "in native2py.yaml.",
+                element=element,
+                is_mutable=not (
+                    pointee.is_const_qualified()
+                    or canonical_pointee.is_const_qualified()
+                ),
+            )
+
         raise NativeTypeError(
             f"'{spelling}' is a pointer; native2py cannot infer its length. "
             "Wrap it in a type that carries its own size (std::vector, a span, "
@@ -596,18 +634,67 @@ def _declared_as_array(cursor) -> bool:
 
 
 def _parameters(cursor, known_records: frozenset[str]) -> list[Parameter]:
-    params = []
+    """Map every argument, resolving bare pointers against the whole signature.
+
+    A `double*` carries no length, so it cannot be bound from its type alone.
+    But `void scale(double* data, int n, double k)` does say how long `data`
+    is — in another argument. That is only visible with the full parameter
+    list in hand, so `_map_type` defers the decision by raising
+    PointerLengthUnknown and it is settled here.
+
+    The pairing uses `ir.size_pairings`, the same inference the Fortran router
+    uses to validate `n == len(props)`. Deliberately shared: two heuristics
+    that drifted would mean the same signature read differently depending on
+    which language it came from. It is conservative by design — an ambiguous
+    case yields no pairing and the pointer stays refused, because a false
+    pairing silently binds the wrong argument as a length.
+    """
+    params: list[Parameter] = []
+    deferred: dict[str, PointerLengthUnknown] = {}
+
     for index, arg in enumerate(cursor.get_arguments()):
-        py_type, is_array = _map_type(arg.type, known_records, is_return=False)
+        name = arg.spelling or f"arg{index}"
+        try:
+            py_type, is_array = _map_type(arg.type, known_records, is_return=False)
+        except PointerLengthUnknown as exc:
+            # Provisional: typed from the pointee so the pairing below can see
+            # it as an array candidate. Replaced or re-raised before returning.
+            deferred[name] = exc
+            params.append(
+                Parameter(
+                    name=name,
+                    type=exc.element,
+                    is_array=True,
+                    native_type=_native_spelling(arg.type),
+                    is_const=_is_const_type(arg.type),
+                )
+            )
+            continue
         params.append(
             Parameter(
-                name=arg.spelling or f"arg{index}",
+                name=name,
                 type=py_type,
                 is_array=is_array or _declared_as_array(arg),
                 native_type=_native_spelling(arg.type),
                 is_const=_is_const_type(arg.type),
             )
         )
+
+    if not deferred:
+        return params
+
+    by_name = {p.name: p for p in params}
+    paired = {array: length for length, array in size_pairings(params)}
+    for name, exc in deferred.items():
+        length = paired.get(name)
+        if length is None:
+            # Nothing in the signature names this pointer's length. Refuse it
+            # exactly as before — guessing here is how a service binds the
+            # wrong argument as an extent and reads past the end of a buffer.
+            raise exc
+        by_name[name].length_param = length
+        by_name[name].is_mutable_buffer = exc.is_mutable
+
     return params
 
 
@@ -824,6 +911,25 @@ def _parse_record(
             except NativeTypeError as exc:
                 module.skipped.append(
                     SkippedSymbol(f"{name}::{child.spelling}", str(exc))
+                )
+                continue
+            # A raw `T*` bound as a numpy buffer needs a generated lambda that
+            # reads the length off the array and drops it from the signature.
+            # pybind_gen emits that for free functions only; a method would be
+            # bound with `&Cls::m`, handing pybind11 a bare pointer it cannot
+            # convert. Refused with a reason rather than emitted broken —
+            # binding a method whose buffer argument does not work is worse
+            # than not binding it.
+            if any(p.length_param for p in parameters):
+                module.skipped.append(
+                    SkippedSymbol(
+                        f"{name}::{child.spelling}",
+                        f"'{child.spelling}' takes a raw pointer argument whose "
+                        "length is carried by another argument. native2py binds "
+                        "that shape for free functions, but not yet for class "
+                        "methods. Wrap it in a free function, take a "
+                        "std::vector, or exclude the symbol in native2py.yaml.",
+                    )
                 )
                 continue
             methods.append(

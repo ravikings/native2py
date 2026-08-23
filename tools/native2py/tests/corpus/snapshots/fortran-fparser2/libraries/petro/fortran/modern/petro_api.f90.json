@@ -14,7 +14,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "api_gravity",
           "native_type": null,
           "type": "float"
@@ -23,7 +25,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "gas_gravity",
           "native_type": null,
           "type": "float"
@@ -32,7 +36,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "temp_f",
           "native_type": null,
           "type": "float"
@@ -41,7 +47,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "icorr",
           "native_type": null,
           "type": "int"
@@ -61,7 +69,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "pressure",
           "native_type": null,
           "type": "float"
@@ -81,7 +91,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "pressure",
           "native_type": null,
           "type": "float"
@@ -101,7 +113,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "pressure",
           "native_type": null,
           "type": "float"
@@ -121,7 +135,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "pressure",
           "native_type": null,
           "type": "float"
@@ -141,7 +157,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "target_gor",
           "native_type": null,
           "type": "float"
@@ -161,7 +179,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "pressure",
           "native_type": null,
           "type": "float"
@@ -170,7 +190,9 @@
           "intent": "inout",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "props",
           "native_type": null,
           "type": "float"
@@ -179,7 +201,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "n",
           "native_type": null,
           "type": "int"
@@ -199,7 +223,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "wellhead_p",
           "native_type": null,
           "type": "float"
@@ -208,7 +234,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "q_oil",
           "native_type": null,
           "type": "float"
@@ -217,7 +245,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "q_water",
           "native_type": null,
           "type": "float"
@@ -226,7 +256,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "q_gas",
           "native_type": null,
           "type": "float"
@@ -235,7 +267,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "diameter",
           "native_type": null,
           "type": "float"
@@ -244,7 +278,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "roughness",
           "native_type": null,
           "type": "float"
@@ -253,7 +289,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "tvd",
           "native_type": null,
           "type": "float"
@@ -262,7 +300,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "md",
           "native_type": null,
           "type": "float"
@@ -271,7 +311,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "nseg",
           "native_type": null,
           "type": "int"
@@ -291,7 +333,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "res_pressure",
           "native_type": null,
           "type": "float"
@@ -300,7 +344,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "flowing_bhp",
           "native_type": null,
           "type": "float"
@@ -309,7 +355,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "q_max",
           "native_type": null,
           "type": "float"
@@ -331,7 +379,7 @@
   ],
   "language": "fortran",
   "name": "petro_api",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [],
   "source_file": "libraries/petro/fortran/modern/petro_api.f90",
   "structs": []

@@ -16,7 +16,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "radius",
               "native_type": "double",
               "type": "float"
@@ -35,7 +37,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "a",
               "native_type": "double",
               "type": "float"
@@ -44,7 +48,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "b",
               "native_type": "double",
               "type": "float"
@@ -63,7 +69,7 @@
   "functions": [],
   "language": "cpp",
   "name": "geometry",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [],
   "source_file": "libraries/geometry/geometry.hpp",
   "structs": []

@@ -1264,3 +1264,65 @@ def test_the_bounded_router_still_compiles_and_is_byte_deterministic():
 
     compile(first, "router.py", "exec")
     assert first.encode() == second.encode()
+
+
+# --- raw-pointer buffers over HTTP ---------------------------------------
+
+
+def _buffer_cpp_module(mutable: bool, returns: str = "None"):
+    data = Parameter(
+        name="data", type="float", is_array=True,
+        length_param="n", is_mutable_buffer=mutable,
+    )
+    return ModuleIR(
+        name="arr",
+        language="cpp",
+        source_file="arr.hpp",
+        functions=[
+            FunctionDef(
+                name="scale",
+                parameters=[data, Parameter(name="n", type="int"), Parameter(name="k", type="float")],
+                returns=returns,
+            )
+        ],
+    )
+
+
+def test_the_length_argument_is_not_asked_of_an_http_caller():
+    # The binding derives it from the array. Asking for it again over HTTP
+    # would reintroduce exactly the disagreement the binding removed.
+    router = python_pkg_gen.generate_router_py(_buffer_cpp_module(mutable=False), "arr")
+
+    assert "def scale_endpoint(data:" in router
+    assert "n: int" not in router
+
+
+def test_a_written_buffer_comes_back_in_the_response():
+    # THE HTTP-layer version of the std::vector& trap. The native call writes
+    # into the array, the request ends, the array is garbage — and without
+    # this the endpoint returns 200 having silently discarded the entire point
+    # of an in-place routine.
+    router = python_pkg_gen.generate_router_py(_buffer_cpp_module(mutable=True), "arr")
+
+    assert 'return {"data": data.tolist()}' in router
+
+
+def test_a_read_only_buffer_is_not_echoed_back():
+    # Nothing was written, so returning the input would just be noise.
+    router = python_pkg_gen.generate_router_py(
+        _buffer_cpp_module(mutable=False, returns="float"), "arr"
+    )
+
+    assert '"data"' not in router.split("def scale_endpoint")[1]
+    assert 'return {"result":' in router
+
+
+def test_the_endpoint_builds_the_dtype_the_binding_demands():
+    # A mutable buffer is REFUSED by the binding if the dtype is wrong — it
+    # will not convert, because a converted array is a temporary. JSON gives a
+    # list, so the endpoint has to build the exact array the binding accepts.
+    router = python_pkg_gen.generate_router_py(_buffer_cpp_module(mutable=True), "arr")
+
+    assert "data = np.array(data, dtype=np.float64)" in router
+    # And it still carries the memory-exhaustion cap on the request body.
+    assert "MAX_ARRAY_ITEMS" in router

@@ -16,7 +16,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "nx",
               "native_type": "int",
               "type": "int"
@@ -25,7 +27,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "ny",
               "native_type": "int",
               "type": "int"
@@ -34,7 +38,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "nz",
               "native_type": "int",
               "type": "int"
@@ -53,7 +59,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "filename",
               "native_type": "char *",
               "type": "str"
@@ -108,7 +116,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "value",
               "native_type": "double",
               "type": "float"
@@ -127,7 +137,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "kx",
               "native_type": "double",
               "type": "float"
@@ -136,7 +148,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "ky",
               "native_type": "double",
               "type": "float"
@@ -145,7 +159,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "kz",
               "native_type": "double",
               "type": "float"
@@ -173,7 +189,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "woc_depth",
               "native_type": "double",
               "type": "float"
@@ -182,7 +200,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "goc_depth",
               "native_type": "double",
               "type": "float"
@@ -191,7 +211,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "datum_pressure",
               "native_type": "double",
               "type": "float"
@@ -200,7 +222,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "datum_depth",
               "native_type": "double",
               "type": "float"
@@ -219,7 +243,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "swc",
               "native_type": "double",
               "type": "float"
@@ -228,7 +254,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "sor",
               "native_type": "double",
               "type": "float"
@@ -237,7 +265,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "sgc",
               "native_type": "double",
               "type": "float"
@@ -246,7 +276,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "nw",
               "native_type": "double",
               "type": "float"
@@ -255,7 +287,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "no",
               "native_type": "double",
               "type": "float"
@@ -264,7 +298,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "ng",
               "native_type": "double",
               "type": "float"
@@ -292,7 +328,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "dt_min",
               "native_type": "double",
               "type": "float"
@@ -301,7 +339,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "dt_max",
               "native_type": "double",
               "type": "float"
@@ -320,7 +360,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "dt_days",
               "native_type": "double",
               "type": "float"
@@ -339,7 +381,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "target_days",
               "native_type": "double",
               "type": "float"
@@ -394,7 +438,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "i",
               "native_type": "int",
               "type": "int"
@@ -403,7 +449,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "j",
               "native_type": "int",
               "type": "int"
@@ -412,7 +460,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "k",
               "native_type": "int",
               "type": "int"
@@ -431,7 +481,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "i",
               "native_type": "int",
               "type": "int"
@@ -440,7 +492,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "j",
               "native_type": "int",
               "type": "int"
@@ -449,7 +503,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "k",
               "native_type": "int",
               "type": "int"
@@ -468,7 +524,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "i",
               "native_type": "int",
               "type": "int"
@@ -477,7 +535,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "j",
               "native_type": "int",
               "type": "int"
@@ -486,7 +546,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "k",
               "native_type": "int",
               "type": "int"
@@ -523,35 +585,35 @@
   "functions": [],
   "language": "cpp",
   "name": "Simulator",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [
     {
       "name": "Simulator::set_porosity",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'set_porosity' takes a raw pointer argument whose length is carried by another argument. native2py binds that shape for free functions, but not yet for class methods. Wrap it in a free function, take a std::vector, or exclude the symbol in native2py.yaml."
     },
     {
       "name": "Simulator::set_permeability_x",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'set_permeability_x' takes a raw pointer argument whose length is carried by another argument. native2py binds that shape for free functions, but not yet for class methods. Wrap it in a free function, take a std::vector, or exclude the symbol in native2py.yaml."
     },
     {
       "name": "Simulator::set_permeability_y",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'set_permeability_y' takes a raw pointer argument whose length is carried by another argument. native2py binds that shape for free functions, but not yet for class methods. Wrap it in a free function, take a std::vector, or exclude the symbol in native2py.yaml."
     },
     {
       "name": "Simulator::set_permeability_z",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'set_permeability_z' takes a raw pointer argument whose length is carried by another argument. native2py binds that shape for free functions, but not yet for class methods. Wrap it in a free function, take a std::vector, or exclude the symbol in native2py.yaml."
     },
     {
       "name": "Simulator::set_cell_thickness",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'set_cell_thickness' takes a raw pointer argument whose length is carried by another argument. native2py binds that shape for free functions, but not yet for class methods. Wrap it in a free function, take a std::vector, or exclude the symbol in native2py.yaml."
     },
     {
       "name": "Simulator::set_tops",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'set_tops' takes a raw pointer argument whose length is carried by another argument. native2py binds that shape for free functions, but not yet for class methods. Wrap it in a free function, take a std::vector, or exclude the symbol in native2py.yaml."
     },
     {
       "name": "Simulator::set_active",
-      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+      "reason": "'set_active' takes a raw pointer argument whose length is carried by another argument. native2py binds that shape for free functions, but not yet for class methods. Wrap it in a free function, take a std::vector, or exclude the symbol in native2py.yaml."
     },
     {
       "name": "Simulator::set_fluid",
@@ -574,7 +636,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "time_days",
           "native_type": "double",
           "type": "float"
@@ -583,7 +647,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "timestep_days",
           "native_type": "double",
           "type": "float"
@@ -592,7 +658,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "oil_in_place",
           "native_type": "double",
           "type": "float"
@@ -601,7 +669,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "average_pressure",
           "native_type": "double",
           "type": "float"
@@ -610,7 +680,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "steps_taken",
           "native_type": "int",
           "type": "int"
@@ -619,7 +691,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "cuts_taken",
           "native_type": "int",
           "type": "int"
@@ -628,7 +702,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "converged",
           "native_type": "int",
           "type": "int"

@@ -14,7 +14,9 @@
           "intent": "inout",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "P",
           "native_type": null,
           "type": "float"
@@ -23,7 +25,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "QO",
           "native_type": null,
           "type": "float"
@@ -32,7 +36,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "QW",
           "native_type": null,
           "type": "float"
@@ -41,7 +47,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "QG",
           "native_type": null,
           "type": "float"
@@ -50,7 +58,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "DIA",
           "native_type": null,
           "type": "float"
@@ -59,7 +69,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "THETA",
           "native_type": null,
           "type": "float"
@@ -68,7 +80,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "EPS",
           "native_type": null,
           "type": "float"
@@ -77,7 +91,9 @@
           "intent": "out",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "DPDZ",
           "native_type": null,
           "type": "float"
@@ -86,7 +102,9 @@
           "intent": "out",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "HL",
           "native_type": null,
           "type": "float"
@@ -95,7 +113,9 @@
           "intent": "out",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "IREG",
           "native_type": null,
           "type": "int"
@@ -115,7 +135,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "CL",
           "native_type": null,
           "type": "float"
@@ -124,7 +146,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "NFR",
           "native_type": null,
           "type": "float"
@@ -133,7 +157,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "IREG",
           "native_type": null,
           "type": "int"
@@ -153,7 +179,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "CL",
           "native_type": null,
           "type": "float"
@@ -162,7 +190,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "NLV",
           "native_type": null,
           "type": "float"
@@ -171,7 +201,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "NFR",
           "native_type": null,
           "type": "float"
@@ -180,7 +212,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "IREG",
           "native_type": null,
           "type": "int"
@@ -189,7 +223,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "THETA",
           "native_type": null,
           "type": "float"
@@ -209,7 +245,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "RE",
           "native_type": null,
           "type": "float"
@@ -218,7 +256,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "RELR",
           "native_type": null,
           "type": "float"
@@ -238,7 +278,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "PWH",
           "native_type": null,
           "type": "float"
@@ -247,7 +289,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "QO",
           "native_type": null,
           "type": "float"
@@ -256,7 +300,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "QW",
           "native_type": null,
           "type": "float"
@@ -265,7 +311,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "QG",
           "native_type": null,
           "type": "float"
@@ -274,7 +322,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "DIA",
           "native_type": null,
           "type": "float"
@@ -283,7 +333,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "EPS",
           "native_type": null,
           "type": "float"
@@ -292,7 +344,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "TVD",
           "native_type": null,
           "type": "float"
@@ -301,7 +355,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "MD",
           "native_type": null,
           "type": "float"
@@ -310,7 +366,9 @@
           "intent": "inout",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "NSEG",
           "native_type": null,
           "type": "int"
@@ -319,7 +377,9 @@
           "intent": "out",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "PBH",
           "native_type": null,
           "type": "float"
@@ -331,7 +391,7 @@
   ],
   "language": "fortran",
   "name": "hydrau",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [],
   "source_file": "libraries/petro/fortran/hydrau.f",
   "structs": []

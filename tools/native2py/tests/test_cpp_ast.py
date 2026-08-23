@@ -989,3 +989,108 @@ def test_both_cpp_backends_agree_on_vectors(tmp_path):
         assert [
             (p.type, p.is_array) for p in by_tree[name].parameters
         ] == [(p.type, p.is_array) for p in by_regex[name].parameters], name
+
+
+# --- raw pointers paired with a length argument --------------------------
+#
+# `void scale(double* data, int n, double k)` was refused: a pointer carries no
+# length. But the signature DOES say how long `data` is — in another argument.
+# Pairing them makes the shape bindable, and the length then disappears from
+# the Python signature entirely, so it cannot disagree with the data.
+
+
+def test_a_pointer_paired_with_a_length_becomes_a_buffer(tmp_path):
+    header = tmp_path / "arr.hpp"
+    header.write_text(
+        """
+        double sum(const double* data, int n);
+        void scale(double* data, int n, double k);
+        int count_above(const int* values, int n_values, int threshold);
+        """
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+    by_name = {f.name: f for f in module.functions}
+
+    assert set(by_name) == {"sum", "scale", "count_above"}
+    data = by_name["sum"].parameters[0]
+    assert data.is_array and data.length_param == "n"
+    # const: input only, so the binding may let pybind11 convert freely.
+    assert data.is_mutable_buffer is False
+    # non-const: the callee writes through it. Conversion would write into a
+    # temporary, so the binding has to refuse a wrong dtype instead.
+    assert by_name["scale"].parameters[0].is_mutable_buffer is True
+    # Paired by name, not by position.
+    assert by_name["count_above"].parameters[0].length_param == "n_values"
+
+
+def test_an_unpairable_pointer_is_still_refused(tmp_path):
+    # Conservative on purpose. `dot(a, b, n)` has one integer and two arrays:
+    # a human reads `n` as the length of both, but the inference will not
+    # guess, because a false pairing binds the wrong argument as an extent and
+    # reads past the end of a buffer. No length at all stays refused too.
+    header = tmp_path / "amb.hpp"
+    header.write_text(
+        """
+        double dot(const double* a, const double* b, int n);
+        double first(const double* data);
+        """
+    )
+
+    module = cpp_ast.parse_header(header, ExposeConfig(all=True))
+
+    assert module.functions == []
+    reasons = {s.name: s.reason for s in module.skipped}
+    assert set(reasons) == {"dot", "first"}
+    # The refusal names the way out, rather than only saying no.
+    assert "pass its length in an argument named after it" in reasons["first"]
+
+
+def test_buffer_arguments_on_methods_are_refused(tmp_path):
+    # The generated lambda that reads a length off an array is emitted for free
+    # functions only. A method would be bound with `&Cls::m`, handing pybind11
+    # a bare pointer it cannot convert — so it is refused rather than emitted
+    # broken. Both readers must agree, or a machine without libclang produces
+    # a binding that does not compile.
+    header = tmp_path / "cls.hpp"
+    header.write_text(
+        """
+        class Grid {
+        public:
+            void set_values(double* values, int n);
+            int size() const;
+        };
+        """
+    )
+
+    tree = cpp_ast.parse_header(header, ExposeConfig(all=True))
+    regex = cpp_regex.parse_header(header, ExposeConfig(all=True))
+
+    for module in (tree, regex):
+        assert [m.name for m in module.classes[0].methods] == ["size"]
+        assert "not yet for class methods" in module.skipped[0].reason
+
+
+def test_both_cpp_backends_agree_on_buffers(tmp_path):
+    header = tmp_path / "arr.hpp"
+    header.write_text(
+        """
+        double sum(const double* data, int n);
+        void scale(double* data, int n, double k);
+        double dot(const double* a, const double* b, int n);
+        """
+    )
+
+    tree = cpp_ast.parse_header(header, ExposeConfig(all=True))
+    regex = cpp_regex.parse_header(header, ExposeConfig(all=True))
+
+    assert sorted(f.name for f in tree.functions) == sorted(
+        f.name for f in regex.functions
+    ) == ["scale", "sum"]
+    assert sorted(s.name for s in tree.skipped) == sorted(
+        s.name for s in regex.skipped
+    ) == ["dot"]
+    for name in ("sum", "scale"):
+        t = next(f for f in tree.functions if f.name == name).parameters[0]
+        r = next(f for f in regex.functions if f.name == name).parameters[0]
+        assert (t.length_param, t.is_mutable_buffer) == (r.length_param, r.is_mutable_buffer)

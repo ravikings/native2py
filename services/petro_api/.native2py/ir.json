@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "native2py_version": "0.1.0",
   "name": "petro_api",
   "language": "fortran",
@@ -16,7 +16,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "gas_gravity",
@@ -25,7 +27,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "temp_f",
@@ -34,7 +38,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "icorr",
@@ -43,7 +49,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "void",
@@ -63,7 +71,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "float",
@@ -83,7 +93,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "float",
@@ -103,7 +115,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "float",
@@ -123,7 +137,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "float",
@@ -143,7 +159,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "float",
@@ -163,7 +181,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "props",
@@ -172,7 +192,9 @@
           "intent": "inout",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "n",
@@ -181,7 +203,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "void",
@@ -201,7 +225,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "q_oil",
@@ -210,7 +236,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "q_water",
@@ -219,7 +247,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "q_gas",
@@ -228,7 +258,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "diameter",
@@ -237,7 +269,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "roughness",
@@ -246,7 +280,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "tvd",
@@ -255,7 +291,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "md",
@@ -264,7 +302,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "nseg",
@@ -273,7 +313,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "float",
@@ -293,7 +335,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "flowing_bhp",
@@ -302,7 +346,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         },
         {
           "name": "q_max",
@@ -311,7 +357,9 @@
           "intent": "in",
           "native_type": null,
           "is_const": false,
-          "is_optional": false
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false
         }
       ],
       "returns": "float",

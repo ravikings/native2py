@@ -375,11 +375,16 @@ at the same time.
 ### Parser/type coverage (also see [Exposing C++](cpp-guide.md), [Exposing Fortran](fortran-guide.md))
 
 - C++: overloads, public inheritance, typedefs, enums, macros, `#include`d
-  types and **`std::vector<T>`** are handled. Still unsupported: templates, and
-  raw numeric pointers (`double*`) carry no length so they're refused — a
-  numerical C++ API built on bare pointers still needs a wrapper that carries
-  its own size. A non-const `std::vector<T>&` is refused on purpose: pybind11
-  silently discards writes through it (see [Exposing C++](cpp-guide.md)). See
+  types, **`std::vector<T>`**, and **a raw `T*` paired with a length argument**
+  are handled — so an ordinary C numerical API (`void scale(double*, int,
+  double)`) binds, writes in place, and returns the written array over HTTP.
+  Still unsupported: templates; a pointer whose length nothing in the
+  signature names (`dot(a, b, n)` is ambiguous and refused rather than
+  guessed); and buffer arguments on class methods. Two refusals are
+  deliberate and worth knowing: a non-const `std::vector<T>&`, and a
+  wrong-dtype or read-only array for a writable buffer — pybind11 would
+  silently discard the writes in both cases. See
+  [Exposing C++](cpp-guide.md). See
   [Exposing C++](cpp-guide.md#what-the-parser-supports).
 - No C language support at all, despite being in the project name/design.md
   scope.

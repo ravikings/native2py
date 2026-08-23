@@ -147,12 +147,115 @@ def _emit_record(lines: list[str], record: ClassDef | StructDef) -> None:
         lines.append(line + (";" if i == len(body) - 1 else ""))
 
 
+def _buffer_parameters(func: FunctionDef) -> list[Parameter]:
+    """Parameters bound from a bare `T*` whose length another argument carries."""
+    return [p for p in func.parameters if getattr(p, "length_param", None)]
+
+
+# numpy dtype for each element type native2py binds through a raw pointer.
+_NUMPY_DTYPE = {"float": "double", "int": "int", "bool": "bool"}
+
+
+def _buffer_lambda(func: FunctionDef) -> str:
+    """A lambda binding `f(T* data, int n, ...)` as `f(data, ...)`.
+
+    THE LENGTH DISAPPEARS FROM THE PYTHON SIGNATURE, on purpose. It is read off
+    the buffer the caller actually passed, so `n` cannot disagree with the data
+    — which is the entire failure mode of a C array API. The Fortran side has
+    to keep its `n` (f2py fixes the signature) and validates it instead; here
+    the generator controls the signature, so the mismatch is made unspellable.
+
+    Mutable and read-only buffers are bound differently, and the difference is
+    load-bearing rather than stylistic:
+
+    * A **read-only** `const T*` is input. pybind11 may freely convert a list
+      or a wrong-dtype array into a temporary, because nothing is written back.
+      `forcecast` makes the endpoint convenient.
+
+    * A **mutable** `T*` is one the callee writes through. Conversion there is
+      catastrophic and silent: pybind11 would write into a temporary and
+      discard it. Measured, before this was written — `py::array_t<double>`
+      handed an int64 array accepted it, converted, and lost every write; and
+      `request()` without `true` wrote straight through a `writeable=False`
+      array. So a mutable buffer takes an untyped `py::array`, checks the dtype
+      itself, and calls `request(true)`, which raises on a read-only array.
+    """
+    namespace = getattr(func, "namespace", None)
+    target = _qualified(func.name, namespace)
+    buffers = {p.name for p in _buffer_parameters(func)}
+    lengths = {p.length_param for p in _buffer_parameters(func)}
+
+    sig: list[str] = []
+    body: list[str] = []
+    call_args: list[str] = []
+    arg_names: list[str] = []
+
+    for param in func.parameters:
+        if param.name in lengths:
+            # Supplied from the buffer's own size; never asked of the caller.
+            continue
+        if param.name in buffers:
+            dtype = _NUMPY_DTYPE[param.type]
+            arg_names.append(param.name)
+            if param.is_mutable_buffer:
+                sig.append(f"py::array {param.name}")
+                body.append(
+                    f'            if (!{param.name}.dtype().is(py::dtype::of<{dtype}>()))\n'
+                    f'                throw py::type_error("{func.name}(): \'{param.name}\' must be a '
+                    f'numpy array of dtype {dtype}; native2py will not convert it because '
+                    f'this function writes through the buffer and a converted array is a '
+                    f'temporary whose writes would be discarded.");'
+                )
+                body.append(
+                    f'            if ({param.name}.ndim() != 1)\n'
+                    f'                throw py::value_error("{func.name}(): \'{param.name}\' must be 1-D.");'
+                )
+                # request(true) raises on a read-only array. Without it,
+                # pybind11 writes straight through `writeable=False`.
+                body.append(f"            auto {param.name}_info = {param.name}.request(true);")
+            else:
+                sig.append(
+                    f"py::array_t<{dtype}, py::array::c_style | py::array::forcecast> "
+                    f"{param.name}"
+                )
+                body.append(f"            auto {param.name}_info = {param.name}.request();")
+            continue
+        sig.append(f"{_param_spelling(param, namespace)} {param.name}")
+        arg_names.append(param.name)
+
+    for param in func.parameters:
+        if param.name in buffers:
+            const = "" if param.is_mutable_buffer else "const "
+            dtype = _NUMPY_DTYPE[param.type]
+            call_args.append(f"static_cast<{const}{dtype}*>({param.name}_info.ptr)")
+        elif param.name in lengths:
+            owner = next(p for p in _buffer_parameters(func) if p.length_param == param.name)
+            call_args.append(
+                f"static_cast<{param.cpp_spelling('int')}>({owner.name}_info.size)"
+            )
+        else:
+            call_args.append(param.name)
+
+    invocation = f"{target}({', '.join(call_args)})"
+    body.append(
+        f"            {invocation};" if func.returns == "None" else f"            return {invocation};"
+    )
+
+    py_args = "".join(f', py::arg("{n}")' for n in arg_names)
+    lines = [f"[]({', '.join(sig)}) {{"]
+    lines += body
+    lines.append("        }")
+    return "\n".join(lines) + py_args
+
+
 def _function_target(func: FunctionDef) -> str:
     """`&f` for a free function, qualified by its own namespace.
 
     Free functions used to be emitted unqualified, so anything outside the
     global namespace failed with "use of undeclared identifier".
     """
+    if _buffer_parameters(func):
+        return _buffer_lambda(func)
     namespace = getattr(func, "namespace", None)
     target = _qualified(func.name, namespace)
     if getattr(func, "is_overloaded", False):
@@ -204,6 +307,11 @@ def generate_bindings(module: ModuleIR, header_names: str | list[str]) -> str:
 
     module_symbol = f"{module.name}_cpp"
 
+    # Only when something is actually bound through a raw pointer: numpy.h
+    # pulls in numpy's headers at build time and numpy at runtime, and a C++
+    # service that binds no buffers should not acquire that dependency.
+    needs_numpy = any(_buffer_parameters(fn) for fn in module.functions)
+
     lines = [
         "// Generated by native2py. Do not edit by hand — re-run `native2py generate`.",
         "#include <pybind11/pybind11.h>",
@@ -212,6 +320,7 @@ def generate_bindings(module: ModuleIR, header_names: str | list[str]) -> str:
         # `std::vector<T>&`: writes through one land in the temporary and are
         # discarded. See parsers/cpp_ast._refuse_mutable_vector_ref.
         "#include <pybind11/stl.h>",
+        *(["#include <pybind11/numpy.h>"] if needs_numpy else []),
         "#include <cstdint>",
         "#include <string>",
         "#include <vector>",

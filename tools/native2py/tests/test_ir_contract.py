@@ -61,6 +61,8 @@ def every_field_module() -> ModuleIR:
         native_type="std::uint64_t",
         is_const=True,
         is_optional=True,
+        length_param="n",
+        is_mutable_buffer=True,
     )
     other = Parameter(name="lambda", type="float", native_type="double")
     return ModuleIR(

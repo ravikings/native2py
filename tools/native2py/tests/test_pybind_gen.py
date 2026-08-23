@@ -410,3 +410,83 @@ def test_native_type_from_another_namespace_is_not_re_qualified():
     assert ".def(py::init<Color, paint::Shade>())" in source
     assert "ui::Color" not in source
     assert "ui::paint::Shade" not in source
+
+
+# --- raw pointers bound as numpy buffers ---------------------------------
+#
+# Verified end to end elsewhere by compiling and running: the generated module
+# scales a float64 array in place, refuses an int64 array, refuses a read-only
+# array, and refuses a 2-D array. These pin the emitted C++ that makes those
+# outcomes happen, because each one is a specific line that is easy to drop.
+
+
+def _buffer_module(mutable: bool):
+    from native2py.ir import FunctionDef, ModuleIR, Parameter
+
+    data = Parameter(
+        name="data", type="float", is_array=True,
+        length_param="n", is_mutable_buffer=mutable,
+    )
+    return ModuleIR(
+        name="arr",
+        language="cpp",
+        source_file="arr.hpp",
+        functions=[
+            FunctionDef(
+                name="scale" if mutable else "sum",
+                parameters=[data, Parameter(name="n", type="int")],
+                returns="None" if mutable else "float",
+            )
+        ],
+    )
+
+
+def test_a_mutable_buffer_refuses_conversion_rather_than_converting():
+    # The whole safety argument. pybind11 handed an int64 array where double
+    # was wanted will CONVERT it — into a temporary — and every write the
+    # native code makes is then discarded when that temporary dies. Measured.
+    # So the binding checks the dtype itself and throws instead.
+    bindings = pybind_gen.generate_bindings(_buffer_module(mutable=True), "arr.hpp")
+
+    assert "py::array data" in bindings          # untyped: no implicit conversion
+    assert "data.dtype().is(py::dtype::of<double>())" in bindings
+    assert "py::type_error" in bindings
+    # request(true) is what raises on a read-only array. Without the `true`,
+    # pybind11 writes straight through a writeable=False buffer.
+    assert "data.request(true)" in bindings
+    assert "data.ndim() != 1" in bindings
+
+
+def test_a_read_only_buffer_may_convert_freely():
+    # Nothing is written back, so a copy is harmless and forcecast makes the
+    # endpoint accept a plain list as well as an array.
+    bindings = pybind_gen.generate_bindings(_buffer_module(mutable=False), "arr.hpp")
+
+    assert "py::array::forcecast" in bindings
+    assert "static_cast<const double*>(data_info.ptr)" in bindings
+    assert "request(true)" not in bindings
+
+
+def test_the_length_argument_is_supplied_from_the_buffer_not_the_caller():
+    # A length the caller cannot state is a length that cannot disagree with
+    # the data — which is the entire failure mode of a C array API.
+    bindings = pybind_gen.generate_bindings(_buffer_module(mutable=False), "arr.hpp")
+
+    assert "static_cast<int>(data_info.size)" in bindings
+    assert 'py::arg("data")' in bindings
+    assert 'py::arg("n")' not in bindings
+
+
+def test_numpy_is_included_only_when_a_buffer_is_bound():
+    from native2py.ir import FunctionDef, ModuleIR, Parameter
+
+    with_buffer = pybind_gen.generate_bindings(_buffer_module(mutable=False), "a.hpp")
+    assert "#include <pybind11/numpy.h>" in with_buffer
+
+    # numpy.h costs numpy headers at build time and numpy at runtime; a service
+    # that binds no buffers should not acquire either.
+    plain = ModuleIR(
+        name="s", language="cpp", source_file="s.hpp",
+        functions=[FunctionDef(name="f", parameters=[Parameter("x", "float")], returns="float")],
+    )
+    assert "#include <pybind11/numpy.h>" not in pybind_gen.generate_bindings(plain, "s.hpp")

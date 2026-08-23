@@ -16,7 +16,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "filename",
               "native_type": null,
               "type": "str"
@@ -143,7 +145,7 @@
   "functions": [],
   "language": "cpp",
   "name": "DeckReader",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [],
   "source_file": "libraries/petro/cpp/include/DeckReader.hpp",
   "structs": []

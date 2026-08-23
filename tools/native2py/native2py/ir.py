@@ -101,6 +101,18 @@ class Parameter:
     # Fortran `optional` attribute. Without it an optional argument is
     # generated as required and the caller cannot express "absent".
     is_optional: bool = False
+    # For a C++ parameter bound from a bare `T*`: the name of the integer
+    # parameter of the same function that carries this array's length. The
+    # generated binding derives the length from the buffer the caller passed
+    # and supplies it positionally, so that argument disappears from the Python
+    # signature — a length the caller cannot state is a length that cannot
+    # disagree with the data.
+    length_param: str | None = None
+    # True when the callee may WRITE through this pointer (a non-const `T*`).
+    # The binding then has to refuse a read-only or wrong-dtype buffer rather
+    # than let pybind11 convert it, because a converted buffer is a temporary
+    # and the writes are discarded with it.
+    is_mutable_buffer: bool = False
 
     def cpp_spelling(self, fallback: str) -> str:
         """The C++ type to emit, preferring the recorded native spelling."""
@@ -380,7 +392,7 @@ def validate(module: "ModuleIR") -> list[Problem]:
 # hand-edited, and quietly ignoring them is how a typo'd "is_cosnt: true"
 # becomes a wrong binding.
 SCHEMA_VERSION_MAJOR = 1
-SCHEMA_VERSION_MINOR = 1
+SCHEMA_VERSION_MINOR = 2
 SCHEMA_VERSION = f"{SCHEMA_VERSION_MAJOR}.{SCHEMA_VERSION_MINOR}"
 
 # What a document with no `schema_version` at all is treated as: everything
@@ -453,7 +465,17 @@ def _check_version(data: dict) -> tuple[int, int]:
 # dataclasses deliberately: adding a field without listing it here makes the
 # round-trip test fail, which is the reminder to bump SCHEMA_VERSION_MINOR.
 _PARAMETER_KEYS = frozenset(
-    {"name", "type", "is_array", "intent", "native_type", "is_const", "is_optional"}
+    {
+        "name",
+        "type",
+        "is_array",
+        "intent",
+        "native_type",
+        "is_const",
+        "is_optional",
+        "length_param",
+        "is_mutable_buffer",
+    }
 )
 _METHOD_KEYS = frozenset(
     {
@@ -551,6 +573,8 @@ def module_from_dict(data: dict) -> ModuleIR:
                 name=check_keys(item, _PARAMETER_KEYS, "a parameter")["name"],
                 type=item["type"],
                 is_array=item.get("is_array", False),
+                length_param=item.get("length_param"),
+                is_mutable_buffer=item.get("is_mutable_buffer", False),
                 intent=item.get("intent", "in"),
                 native_type=item.get("native_type"),
                 is_const=item.get("is_const", False),
@@ -632,3 +656,87 @@ def module_from_dict(data: dict) -> ModuleIR:
             stacklevel=2,
         )
     return module
+
+
+# --- inferring which integer argument is an array's length ----------------
+#
+# Shared by the Fortran router (which validates `n == len(props)` before the
+# call) and the C++ parser (which needs the length to bind a bare `double*`).
+# One implementation on purpose: two heuristics that drift would mean the same
+# signature is read differently depending on which language it came from.
+
+_SIZE_PREFIXES = ("n", "n_", "num", "num_", "len", "len_", "size", "size_", "count", "count_")
+_SIZE_SUFFIXES = ("_n", "_len", "_size", "_count", "_dim", "_num")
+
+# Bare integer names that mean "a length" in Fortran by near-universal
+# convention. The fallback below pairs one of these with a lone array; an
+# integer named anything else is left alone, because `PRZFAC(IPHASE, X)` takes
+# a *phase selector* and an array, and pairing those rejects every valid call.
+_SIZE_WORDS = frozenset(
+    {"n", "m", "num", "len", "length", "size", "count", "npts", "ndim", "nelem"}
+)
+
+
+def names_a_size_of(int_name: str, array_name: str) -> bool:
+    int_name, array_name = int_name.lower(), array_name.lower()
+    for prefix in _SIZE_PREFIXES:
+        if int_name == f"{prefix}{array_name}":
+            return True
+    for suffix in _SIZE_SUFFIXES:
+        if int_name == f"{array_name}{suffix}":
+            return True
+    return False
+
+
+def size_pairings(inputs: list) -> list[tuple[str, str]]:
+    """(integer parameter, array parameter) pairs where the integer is the length.
+
+    A Fortran routine takes its extents explicitly — `PVTSTATE(P, PROPS, N)` —
+    and f2py passes whatever `n` the request supplied straight through. When
+    `n > len(props)` the routine indexes past the end of the buffer: an
+    out-of-bounds read or write, not merely a wrong answer.
+
+    The IR has no link between a size argument and the array it sizes, so the
+    pairing is inferred, and only where it is unambiguous:
+
+    1. by name — `n`, `nprops`, `n_props`, `num_props`, `len_props`,
+       `props_len`, ... matched case-insensitively against exactly one array;
+    2. failing that, structurally — exactly one array input and exactly one
+       integer whose bare name is a conventional length (`N`, `LEN`, `SIZE`,
+       ...). Both halves are required. "One array, one integer" alone is not
+       enough: `PRZFAC(IPHASE, X)` takes a phase selector and an array, and
+       pairing those would reject every valid call to it.
+
+    Anything else — several arrays sharing one `N`, two integers with unhelpful
+    names, an integer matching two arrays — yields NO pairing. A false pairing
+    rejects valid calls; a missed one leaves that endpoint exactly as unsafe as
+    it was before.
+    """
+    arrays = [p for p in inputs if p.is_array]
+    integers = [p for p in inputs if not p.is_array and p.type == "int"]
+    if not arrays or not integers:
+        return []
+
+    by_int: dict[str, list[str]] = {}
+    for i in integers:
+        matches = [a.name for a in arrays if names_a_size_of(i.name, a.name)]
+        if matches:
+            by_int[i.name] = matches
+
+    named = [
+        (int_name, matches[0])
+        for int_name, matches in by_int.items()
+        if len(matches) == 1
+    ]
+    # An array claimed by two integers is ambiguous in the other direction.
+    claimed: dict[str, int] = {}
+    for _, array_name in named:
+        claimed[array_name] = claimed.get(array_name, 0) + 1
+    named = [pair for pair in named if claimed[pair[1]] == 1]
+    if named:
+        return named
+
+    size_named = [i for i in integers if i.name.lower() in _SIZE_WORDS]
+    if len(arrays) == 1 and len(size_named) == 1:
+        return [(size_named[0].name, arrays[0].name)]
+    return []

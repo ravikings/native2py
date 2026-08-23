@@ -52,6 +52,7 @@ from ..ir import (
     SkippedSymbol,
     StructDef,
     map_type,
+    size_pairings,
 )
 
 _EXPOSE_ATTR = "[[native2py::expose]]"
@@ -201,6 +202,32 @@ def _strip_inline_bodies(text: str) -> str:
 # --- type mapping -------------------------------------------------------
 
 
+class PointerLengthUnknown(NativeTypeError):
+    """A pointer to a scalar whose length is not knowable from the type alone.
+
+    Mirrors cpp_ast.PointerLengthUnknown so both C++ readers defer the same
+    decision to the same place. Still a NativeTypeError, so any caller that
+    does not know about the deferral keeps refusing it.
+    """
+
+    def __init__(self, message: str, *, element: str, is_mutable: bool) -> None:
+        super().__init__(message)
+        self.element = element
+        self.is_mutable = is_mutable
+
+
+# Pointee spellings that map to a scalar native2py can bind as a buffer.
+_SCALAR_POINTER_ELEMENTS = {
+    "double": "float", "float": "float", "long double": "float",
+    "int": "int", "short": "int", "long": "int", "long long": "int",
+    "unsigned": "int", "unsigned int": "int", "unsigned short": "int",
+    "unsigned long": "int", "size_t": "int", "std::size_t": "int",
+    "int8_t": "int", "int16_t": "int", "int32_t": "int", "int64_t": "int",
+    "uint8_t": "int", "uint16_t": "int", "uint32_t": "int", "uint64_t": "int",
+    "bool": "bool",
+}
+
+
 # `std::vector<T>` in the spellings a header actually uses, tolerating the
 # spaces a formatter may leave inside the angle brackets.
 _VECTOR_RE = re.compile(r"\bstd::vector\s*<\s*(.+)\s*>\s*$")
@@ -309,6 +336,20 @@ def _normalize_type(
                 f"Add the header that defines '{base}' to this service's native/ "
                 "directory, or exclude the symbol in native2py.yaml."
             )
+        # A pointer to a scalar may still be bindable as an array, if another
+        # parameter of the same function carries its length. That needs the
+        # whole signature, so the decision is deferred to _parse_params — the
+        # same shape as cpp_ast.PointerLengthUnknown, and for the same reason.
+        if base in _SCALAR_POINTER_ELEMENTS:
+            raise PointerLengthUnknown(
+                f"'{raw.strip()}' is a pointer; native2py cannot infer its "
+                "length. Wrap it in a type that carries its own size "
+                "(std::vector, a span, or a struct), pass its length in an "
+                "argument named after it (`n`, `n_values`, `values_len`, ...), "
+                "or exclude the symbol in native2py.yaml.",
+                element=_SCALAR_POINTER_ELEMENTS[base],
+                is_mutable="const" not in raw.split("*")[0].split(),
+            )
         raise NativeTypeError(
             f"'{raw.strip()}' is a pointer; native2py cannot infer its length. "
             "Wrap it in a type that carries its own size (std::vector, a span, "
@@ -323,7 +364,8 @@ def _parse_params(raw: str, known_records: frozenset[str] = frozenset()) -> list
     if not raw or raw == "void":
         return []
 
-    params = []
+    params: list[Parameter] = []
+    deferred: dict[str, PointerLengthUnknown] = {}
     for index, part in enumerate(_split_top_level(raw)):
         # Drop a default argument: `int n = 4` -> `int n`.
         part = part.split("=", 1)[0].strip()
@@ -341,10 +383,27 @@ def _parse_params(raw: str, known_records: frozenset[str] = frozenset()) -> list
             # Unnamed parameter: `double` / `const char*`.
             type_text, name = part, f"arg{index}"
 
-        py_type, pointer_array = _normalize_type(type_text, known_records)
+        try:
+            py_type, pointer_array = _normalize_type(type_text, known_records)
+        except PointerLengthUnknown as exc:
+            deferred[name] = exc
+            params.append(Parameter(name=name, type=exc.element, is_array=True))
+            continue
         params.append(
             Parameter(name=name, type=py_type, is_array=is_array or pointer_array)
         )
+
+    if deferred:
+        by_name = {p.name: p for p in params}
+        paired = {array: length for length, array in size_pairings(params)}
+        for name, exc in deferred.items():
+            length = paired.get(name)
+            if length is None:
+                # Nothing names this pointer's length; refuse it as before.
+                raise exc
+            by_name[name].length_param = length
+            by_name[name].is_mutable_buffer = exc.is_mutable
+
     return params
 
 
@@ -506,6 +565,23 @@ def _parse_record(
             parameters = _parse_params(decl.params, known_records)
         except NativeTypeError as exc:
             module.skipped.append(SkippedSymbol(f"{name}::{decl.name}", str(exc)))
+            continue
+        # Same refusal as cpp_ast: a raw `T*` bound as a numpy buffer needs a
+        # generated lambda, which pybind_gen emits for free functions only. A
+        # method would be bound with `&Cls::m`, handing pybind11 a bare pointer
+        # it cannot convert. Refusing in only one of the two readers would mean
+        # a machine without libclang emits a binding that does not compile.
+        if any(p.length_param for p in parameters):
+            module.skipped.append(
+                SkippedSymbol(
+                    f"{name}::{decl.name}",
+                    f"'{decl.name}' takes a raw pointer argument whose length is "
+                    "carried by another argument. native2py binds that shape for "
+                    "free functions, but not yet for class methods. Wrap it in a "
+                    "free function, take a std::vector, or exclude the symbol in "
+                    "native2py.yaml.",
+                )
+            )
             continue
         methods.append(
             Method(

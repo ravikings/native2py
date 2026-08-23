@@ -14,7 +14,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "A",
           "native_type": null,
           "type": "float"
@@ -23,7 +25,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "B",
           "native_type": null,
           "type": "float"
@@ -32,7 +36,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "C",
           "native_type": null,
           "type": "float"
@@ -41,7 +47,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "D",
           "native_type": null,
           "type": "float"
@@ -50,7 +58,9 @@
           "intent": "out",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "X",
           "native_type": null,
           "type": "float"
@@ -59,7 +69,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "N",
           "native_type": null,
           "type": "int"
@@ -79,7 +91,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AE",
           "native_type": null,
           "type": "float"
@@ -88,7 +102,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AW",
           "native_type": null,
           "type": "float"
@@ -97,7 +113,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AN",
           "native_type": null,
           "type": "float"
@@ -106,7 +124,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AS",
           "native_type": null,
           "type": "float"
@@ -115,7 +135,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AT",
           "native_type": null,
           "type": "float"
@@ -124,7 +146,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AB",
           "native_type": null,
           "type": "float"
@@ -133,7 +157,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AD",
           "native_type": null,
           "type": "float"
@@ -142,7 +168,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "RHS",
           "native_type": null,
           "type": "float"
@@ -151,7 +179,9 @@
           "intent": "inout",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "X",
           "native_type": null,
           "type": "float"
@@ -160,7 +190,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "OMEGA",
           "native_type": null,
           "type": "float"
@@ -169,7 +201,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "TOL",
           "native_type": null,
           "type": "float"
@@ -178,7 +212,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "ITMAX",
           "native_type": null,
           "type": "int"
@@ -187,7 +223,9 @@
           "intent": "out",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "ITUSED",
           "native_type": null,
           "type": "int"
@@ -196,7 +234,9 @@
           "intent": "out",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "RESID",
           "native_type": null,
           "type": "float"
@@ -216,7 +256,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AE",
           "native_type": null,
           "type": "float"
@@ -225,7 +267,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AW",
           "native_type": null,
           "type": "float"
@@ -234,7 +278,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AN",
           "native_type": null,
           "type": "float"
@@ -243,7 +289,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AS",
           "native_type": null,
           "type": "float"
@@ -252,7 +300,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AT",
           "native_type": null,
           "type": "float"
@@ -261,7 +311,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AB",
           "native_type": null,
           "type": "float"
@@ -270,7 +322,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "AD",
           "native_type": null,
           "type": "float"
@@ -279,7 +333,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "RHS",
           "native_type": null,
           "type": "float"
@@ -288,7 +344,9 @@
           "intent": "in",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "X",
           "native_type": null,
           "type": "float"
@@ -308,7 +366,9 @@
           "intent": "inout",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "A",
           "native_type": null,
           "type": "float"
@@ -317,7 +377,9 @@
           "intent": "inout",
           "is_array": true,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "B",
           "native_type": null,
           "type": "float"
@@ -326,7 +388,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "N",
           "native_type": null,
           "type": "int"
@@ -335,7 +399,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "LDA",
           "native_type": null,
           "type": "int"
@@ -344,7 +410,9 @@
           "intent": "out",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "INFO",
           "native_type": null,
           "type": "int"
@@ -356,7 +424,7 @@
   ],
   "language": "fortran",
   "name": "matsol",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [],
   "source_file": "libraries/petro/fortran/matsol.f",
   "structs": []

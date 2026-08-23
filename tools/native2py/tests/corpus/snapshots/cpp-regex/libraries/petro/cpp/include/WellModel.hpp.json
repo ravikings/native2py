@@ -8,7 +8,9 @@
             "intent": "in",
             "is_array": false,
             "is_const": false,
+            "is_mutable_buffer": false,
             "is_optional": false,
+            "length_param": null,
             "name": "name",
             "native_type": null,
             "type": "str"
@@ -17,7 +19,9 @@
             "intent": "in",
             "is_array": false,
             "is_const": false,
+            "is_mutable_buffer": false,
             "is_optional": false,
+            "length_param": null,
             "name": "control",
             "native_type": null,
             "type": "int"
@@ -55,7 +59,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "control",
               "native_type": null,
               "type": "int"
@@ -74,7 +80,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "radius_ft",
               "native_type": null,
               "type": "float"
@@ -83,7 +91,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "skin",
               "native_type": null,
               "type": "float"
@@ -102,7 +112,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "id_ft",
               "native_type": null,
               "type": "float"
@@ -111,7 +123,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "roughness_ft",
               "native_type": null,
               "type": "float"
@@ -120,7 +134,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "tvd_ft",
               "native_type": null,
               "type": "float"
@@ -129,7 +145,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "md_ft",
               "native_type": null,
               "type": "float"
@@ -148,7 +166,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "psia",
               "native_type": null,
               "type": "float"
@@ -167,7 +187,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "fraction",
               "native_type": null,
               "type": "float"
@@ -186,7 +208,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "scf_per_stb",
               "native_type": null,
               "type": "float"
@@ -250,7 +274,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "avg_pressure",
               "native_type": null,
               "type": "float"
@@ -259,7 +285,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "q_max",
               "native_type": null,
               "type": "float"
@@ -278,7 +306,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "flowing_bhp",
               "native_type": null,
               "type": "float"
@@ -297,7 +327,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "liquid_rate",
               "native_type": null,
               "type": "float"
@@ -325,7 +357,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "i",
               "native_type": null,
               "type": "int"
@@ -334,7 +368,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "j",
               "native_type": null,
               "type": "int"
@@ -343,7 +379,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "k1",
               "native_type": null,
               "type": "int"
@@ -352,7 +390,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "k2",
               "native_type": null,
               "type": "int"
@@ -380,7 +420,9 @@
               "intent": "in",
               "is_array": false,
               "is_const": false,
+              "is_mutable_buffer": false,
               "is_optional": false,
+              "length_param": null,
               "name": "perforation",
               "native_type": null,
               "type": "int"
@@ -408,7 +450,7 @@
   "functions": [],
   "language": "cpp",
   "name": "WellModel",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "skipped": [],
   "source_file": "libraries/petro/cpp/include/WellModel.hpp",
   "structs": [
@@ -418,7 +460,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "liquid_rate",
           "native_type": null,
           "type": "float"
@@ -427,7 +471,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "flowing_bhp",
           "native_type": null,
           "type": "float"
@@ -436,7 +482,9 @@
           "intent": "in",
           "is_array": false,
           "is_const": false,
+          "is_mutable_buffer": false,
           "is_optional": false,
+          "length_param": null,
           "name": "converged",
           "native_type": null,
           "type": "int"
