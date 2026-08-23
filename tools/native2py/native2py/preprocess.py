@@ -19,6 +19,7 @@ bindings compile, import, and return plausible-looking wrong numbers.
 from __future__ import annotations
 
 import re
+import warnings
 from pathlib import Path
 
 _INCLUDE_RE = re.compile(r"^\s*INCLUDE\s+['\"]([^'\"]+)['\"]", re.IGNORECASE)
@@ -28,6 +29,57 @@ MAX_INCLUDE_DEPTH = 25
 
 class IncludeError(ValueError):
     """An INCLUDE could not be resolved against the configured search path."""
+
+
+class EncodingError(ValueError):
+    """A source file could not be decoded with the encoding the user named."""
+
+
+class SourceEncodingWarning(UserWarning):
+    """A source file was not valid UTF-8 and was decoded as latin-1 instead."""
+
+
+# Comment styles for the marker lines expand_includes writes around an inlined
+# file. A `C` in column 1 is a comment in FIXED-form Fortran only; in free-form
+# it is a syntax error, so free-form callers need `!`.
+COMMENT_STYLES = {"fixed": "C     ", "free": "! "}
+
+DEFAULT_FALLBACK_ENCODING = "latin-1"
+
+
+def read_source(path: Path, encoding: str | None = None) -> str:
+    """Decode `path` honestly.
+
+    UTF-8 is tried first. If it fails, the file is decoded as latin-1 — which
+    never fails, and is the right guess for decks with VMS/mainframe lineage —
+    and the fallback is reported as a `SourceEncodingWarning` rather than
+    swallowed. Passing `encoding` states the real encoding; a decode failure
+    with an explicit encoding is an error, never a silent substitution.
+
+    Undecodable bytes are never replaced with U+FFFD.
+    """
+    raw = path.read_bytes()
+    if encoding is not None:
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, LookupError) as exc:
+            raise EncodingError(
+                f"{path}: cannot decode as '{encoding}': {exc}. "
+                "Set the correct encoding for this source."
+            ) from exc
+
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        text = raw.decode(DEFAULT_FALLBACK_ENCODING)
+        warnings.warn(
+            f"{path}: not valid UTF-8 ({exc.reason} at byte {exc.start}); "
+            f"decoded as {DEFAULT_FALLBACK_ENCODING} instead. If that is wrong, "
+            "state the real encoding explicitly.",
+            SourceEncodingWarning,
+            stacklevel=2,
+        )
+        return text
 
 
 def _resolve(name: str, search_paths: list[Path]) -> Path | None:
@@ -49,8 +101,23 @@ def expand_includes(
     search_paths: list[Path] | None = None,
     _depth: int = 0,
     _stack: tuple[str, ...] = (),
+    *,
+    comment_style: str = "fixed",
+    encoding: str | None = None,
 ) -> str:
-    """Return the source of `source_path` with every INCLUDE inlined."""
+    """Return the source of `source_path` with every INCLUDE inlined.
+
+    `comment_style` selects the marker-line comment character: "fixed" (the
+    default, `C` in column 1) for fixed-form sources, "free" (`!`) for
+    free-form, where a column-1 `C` is a syntax error.
+    """
+    if comment_style not in COMMENT_STYLES:
+        raise ValueError(
+            f"Unknown comment_style {comment_style!r}; expected one of "
+            f"{sorted(COMMENT_STYLES)}."
+        )
+    marker = COMMENT_STYLES[comment_style]
+
     if _depth > MAX_INCLUDE_DEPTH:
         raise IncludeError(
             f"INCLUDE nesting deeper than {MAX_INCLUDE_DEPTH} while expanding "
@@ -63,7 +130,7 @@ def expand_includes(
     local_paths = [source_path.parent, *search_paths]
 
     lines: list[str] = []
-    for line in source_path.read_text(errors="replace").splitlines():
+    for line in read_source(source_path, encoding).splitlines():
         match = _INCLUDE_RE.match(line)
         if not match:
             lines.append(line)
@@ -78,16 +145,18 @@ def expand_includes(
                 f"Searched: {searched}. Add the directory to `include_paths:` in native2py.yaml."
             )
 
-        lines.append(f"C     --- native2py: expanded INCLUDE '{include_name}' ---")
+        lines.append(f"{marker}--- native2py: expanded INCLUDE '{include_name}' ---")
         lines.append(
             expand_includes(
                 resolved,
                 search_paths,
                 _depth + 1,
                 _stack + (source_path.name,),
+                comment_style=comment_style,
+                encoding=encoding,
             )
         )
-        lines.append(f"C     --- native2py: end INCLUDE '{include_name}' ---")
+        lines.append(f"{marker}--- native2py: end INCLUDE '{include_name}' ---")
 
     return "\n".join(lines)
 

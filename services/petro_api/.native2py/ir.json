@@ -11,29 +11,43 @@
           "name": "api_gravity",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "gas_gravity",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "temp_f",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "icorr",
           "type": "int",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "void",
       "is_subroutine": true,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -43,11 +57,16 @@
           "name": "pressure",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "float",
       "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -57,11 +76,16 @@
           "name": "pressure",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "float",
       "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -71,11 +95,16 @@
           "name": "pressure",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "float",
       "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -85,11 +114,16 @@
           "name": "pressure",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "float",
       "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -99,11 +133,16 @@
           "name": "target_gor",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "float",
       "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -113,23 +152,34 @@
           "name": "pressure",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "props",
           "type": "float",
           "is_array": true,
-          "intent": "inout"
+          "intent": "inout",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "n",
           "type": "int",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "void",
       "is_subroutine": true,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -139,59 +189,88 @@
           "name": "wellhead_p",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "q_oil",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "q_water",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "q_gas",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "diameter",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
-          "name": "&\n                        roughness",
+          "name": "roughness",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "tvd",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "md",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "nseg",
           "type": "int",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "float",
       "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -201,23 +280,34 @@
           "name": "res_pressure",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "flowing_bhp",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         },
         {
           "name": "q_max",
           "type": "float",
           "is_array": false,
-          "intent": "in"
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false
         }
       ],
       "returns": "float",
       "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     },
     {
@@ -225,6 +315,8 @@
       "parameters": [],
       "returns": "int",
       "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
       "fortran_module": "petro_api"
     }
   ],

@@ -3,6 +3,18 @@
 #   pip install -e ".[docs,build,test]"
 # Prefer that form if you only need a subset — see pyproject.toml for the
 # [build]/[test]/[docs] groups broken out individually.
+#
+# REPRODUCIBILITY: the ranges below are the DECLARED requirements. They are
+# deliberately not exact pins — pyproject.toml is a library manifest and
+# over-pinning it propagates conflicts to consumers. For a reproducible,
+# hash-verified development or CI environment install through the lock file
+# instead:
+#
+#   pip install --require-hashes -r constraints.txt
+#   pip install --no-deps -e .
+#
+# constraints.txt pins every direct AND transitive package to an exact version
+# with SHA-256 hashes; see its header for how to regenerate it.
 
 -e .
 

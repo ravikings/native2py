@@ -637,3 +637,179 @@ def test_petro_headers_parse_identically_to_the_regex_reader(
     for expected in expected_methods:
         assert expected in names
     assert "interpolate" not in names  # private helpers stay unbound
+
+
+# --- native type spelling, const-ness, overloads (DEFECTS A3-A5, B1-B3, B5, B7)
+
+
+PROBE = """
+#include <cstdint>
+namespace petro {
+enum class Correlation { Standing, VazquezBeggs, Glaso };
+struct Sample { const double reference_pressure; double value; };
+class PvtModel {
+public:
+    PvtModel(std::uint64_t well_id, float api, Correlation corr);
+    double viscosity(double pressure) const;
+    double viscosity(double pressure, double temperature) const;
+    void   well_name(char* out, int len) const;
+    const char* label() const;
+};
+double bubble_point(double gor, double api);
+}
+"""
+
+
+def probe(tmp_path):
+    return parse(PROBE, tmp_path)
+
+
+def test_constructor_parameters_carry_the_native_type_spelling(tmp_path):
+    # A3: the IR only stored the *Python* name, so py::init<> was reconstructed
+    # from it and emitted py::init<int, double, int> — a truncated 64-bit id,
+    # a changed float precision and an enum that does not convert.
+    module = probe(tmp_path)
+
+    model = {c.name: c for c in module.classes}["PvtModel"]
+    assert len(model.constructors) == 1
+    spellings = [p.native_type for p in model.constructors[0]]
+    assert spellings == ["std::uint64_t", "float", "petro::Correlation"]
+    # B7: the Python-side mapping stays `int`; only the native spelling knows
+    # this is a scoped enum.
+    assert [p.type for p in model.constructors[0]] == ["int", "float", "int"]
+
+
+def test_non_const_char_pointer_is_refused_not_bound_as_str(tmp_path):
+    # A4: `char* out` is an output buffer; binding it as a Python str has C++
+    # writing through a pybind11 temporary.
+    module = probe(tmp_path)
+
+    assert "well_name" not in method_names(module, "PvtModel")
+    reasons = {s.name: s.reason for s in module.skipped}
+    assert "PvtModel::well_name" in reasons
+    assert "char*" in reasons["PvtModel::well_name"]
+
+
+def test_const_char_pointer_is_still_a_string(tmp_path):
+    module = probe(tmp_path)
+
+    label = [m for m in method_names(module, "PvtModel") if m == "label"]
+    assert label == ["label"]
+    methods = {m.name: m for m in module.classes[0].methods}
+    assert methods["label"].returns == "str"
+
+
+def test_free_function_records_its_namespace(tmp_path):
+    # B2: without this the generator emits `&bubble_point` for petro::bubble_point.
+    module = probe(tmp_path)
+
+    functions = {f.name: f for f in module.functions}
+    assert functions["bubble_point"].namespace == "petro"
+
+
+def test_overloaded_methods_are_marked_and_carry_constness(tmp_path):
+    # A5/B1: two `viscosity` overloads make &PvtModel::viscosity ambiguous.
+    module = probe(tmp_path)
+
+    viscosity = [m for m in module.classes[0].methods if m.name == "viscosity"]
+    assert len(viscosity) == 2
+    assert all(m.is_overloaded for m in viscosity)
+    assert all(m.is_const for m in viscosity)
+    assert not [m for m in module.classes[0].methods if m.name == "label"][
+        0
+    ].is_overloaded
+
+
+def test_overloaded_free_functions_are_marked(tmp_path):
+    module = parse(
+        """
+        double area(double r);
+        double area(double w, double h);
+        double volume(double r);
+        """,
+        tmp_path,
+    )
+
+    marked = {f.name: f.is_overloaded for f in module.functions}
+    assert marked == {"area": True, "volume": False}
+
+
+def test_const_field_is_recorded_as_const(tmp_path):
+    # B3: a const member bound with def_readwrite does not compile.
+    module = probe(tmp_path)
+
+    sample = {s.name: s for s in module.structs}["Sample"]
+    fields = {f.name: f for f in sample.fields}
+    assert fields["reference_pressure"].is_const is True
+    assert fields["value"].is_const is False
+    assert fields["value"].native_type == "double"
+
+
+def test_struct_with_a_const_member_has_no_default_constructor(tmp_path):
+    # B5: py::init<>() was emitted unconditionally.
+    module = probe(tmp_path)
+
+    sample = {s.name: s for s in module.structs}["Sample"]
+    assert sample.has_default_constructor is False
+
+
+def test_struct_with_a_reference_member_has_no_default_constructor(tmp_path):
+    module = parse("struct Held { double& slot; double copy; };", tmp_path)
+
+    assert module.structs[0].has_default_constructor is False
+
+
+def test_plain_struct_still_has_a_default_constructor(tmp_path):
+    module = parse("struct Plain { double a; int b; };", tmp_path)
+
+    assert module.structs[0].has_default_constructor is True
+
+
+def test_record_field_native_type_is_qualified(tmp_path):
+    module = parse(
+        """
+        namespace petro {
+        enum class Correlation { Standing };
+        struct Choice { Correlation corr; };
+        }
+        """,
+        tmp_path,
+    )
+
+    field = module.structs[0].fields[0]
+    assert field.type == "int"
+    assert field.native_type == "petro::Correlation"
+
+
+# --- language selection (DEFECTS C4) ------------------------------------
+
+
+def test_clang_options_default_to_cpp():
+    options = cpp_ast.ClangOptions()
+
+    assert options.language == "c++"
+    command = options.command_line(Path("/tmp/x.hpp"))
+    assert command[:2] == ["-x", "c++"]
+    assert "-std=c++17" in command
+
+
+def test_a_c_header_can_be_parsed_as_c(tmp_path):
+    # C4: `-x c++` was hardcoded, so a C-only construct failed as a C++ error.
+    source = "double scale(double* restrict values, int n);\n"
+    path = tmp_path / "legacy.h"
+    path.write_text(source)
+
+    as_cpp = cpp_ast.parse_header(
+        path, ExposeConfig(), options=cpp_ast.ClangOptions()
+    )
+    as_c = cpp_ast.parse_header(
+        path,
+        ExposeConfig(),
+        options=cpp_ast.ClangOptions(language="c", std="c11"),
+    )
+
+    assert as_cpp.diagnostics  # `restrict` is not a C++ keyword
+    assert as_c.diagnostics == []
+    command = cpp_ast.ClangOptions(language="c", std="c11").command_line(path)
+    assert command[:2] == ["-x", "c"]
+    assert "-std=c11" in command

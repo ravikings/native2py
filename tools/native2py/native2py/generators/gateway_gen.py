@@ -9,8 +9,21 @@ generation at all, just routing config. See docs/deployment-topologies.md.
 
 from __future__ import annotations
 
+from ..ir import is_valid_python_name
+
 
 def generate_gateway_app(gateway_name: str, service_names: list[str]) -> str:
+    for name in service_names:
+        # `from lambda.router import ...` is a SyntaxError, and so is any
+        # service name that is not an identifier — say so here rather than
+        # writing a gateway that cannot be imported.
+        if not is_valid_python_name(name):
+            raise ValueError(
+                f"Service name '{name}' cannot be imported from a gateway: it is "
+                "not a valid Python module name (a keyword, or not an identifier). "
+                "Rename the service."
+            )
+
     imports = "\n".join(
         f"from {name}.router import router as {name}_router" for name in service_names
     )

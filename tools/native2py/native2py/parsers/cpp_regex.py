@@ -228,7 +228,18 @@ def _normalize_type(
         raise NativeTypeError("empty type")
 
     if pointer_depth == 1 and base in ("char", "signed char", "unsigned char"):
-        return "str", False
+        # Only `const char*` is a C string. A non-const `char*` is an output
+        # buffer with no length convention: bound as a Python str, pybind11
+        # materialises a temporary that C++ then writes through, and the write
+        # is lost or corrupts freed memory. (Same refusal as cpp_ast.)
+        if "const" in text.split("*")[0].split():
+            return "str", False
+        raise NativeTypeError(
+            f"'{raw.strip()}' is a non-const 'char*': an output buffer with no "
+            "length convention. Binding it as a Python str would have C++ write "
+            "through a temporary. Return std::string (or take 'const char*' for "
+            "input), or exclude the symbol in native2py.yaml."
+        )
 
     if base in known_records:
         if pointer_depth == 0:

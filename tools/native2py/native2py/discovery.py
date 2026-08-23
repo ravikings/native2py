@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 # Fixed-form (.f/.for/.f77) vs free-form (.f90+) matters beyond discovery:
@@ -28,6 +29,60 @@ def detect_language(path: Path) -> str | None:
 def is_fixed_form(path: Path) -> bool:
     """True for FORTRAN 77 fixed-form source (comment in col 1, continuation in col 6)."""
     return path.suffix.lower() in _FIXED_FORM_SUFFIXES
+
+
+# --- C-preprocessed Fortran (.F90/.F/.FOR) ------------------------------
+#
+# By convention an UPPERCASE Fortran suffix means the file is run through the
+# C preprocessor before the compiler sees it. native2py has no preprocessor,
+# so parsing such a file treats every #ifdef branch as live — the wrong code
+# is bound and nothing says so. detect_language deliberately still maps these
+# by lowercased suffix; these predicates let the caller refuse or warn.
+
+_PREPROCESSED_SUFFIXES = {".F", ".FOR", ".F77", ".F90", ".F95", ".F03", ".F08", ".FPP"}
+
+_CPP_DIRECTIVE_RE = re.compile(
+    r"^\s*#\s*(include|define|undef|if|ifdef|ifndef|elif|else|endif|error|pragma|line)\b",
+    re.MULTILINE,
+)
+
+
+def has_uppercase_preprocessed_suffix(path: Path) -> bool:
+    """True for the `.F90`/`.F`/`.FOR` spelling that means "run cpp first"."""
+    return path.suffix in _PREPROCESSED_SUFFIXES
+
+
+def find_cpp_directives(source: str) -> list[str]:
+    """Report which C-preprocessor directives appear in `source`.
+
+    Returns the directive names in order of first appearance ("ifdef",
+    "include", ...), so a caller can say exactly what it cannot handle.
+    """
+    found: list[str] = []
+    for match in _CPP_DIRECTIVE_RE.finditer(source):
+        name = match.group(1).lower()
+        if name not in found:
+            found.append(name)
+    return found
+
+
+def requires_preprocessing(path: Path, source: str | None = None) -> bool:
+    """True if `path` needs the C preprocessor before it can be parsed correctly.
+
+    Either the uppercase suffix convention or the actual presence of cpp
+    directives is enough — lowercase `.f90` files with `#ifdef` in them are
+    common, and mis-parse identically.
+    """
+    if detect_language(path) != "fortran":
+        return False
+    if has_uppercase_preprocessed_suffix(path):
+        return True
+    if source is None:
+        try:
+            source = path.read_text(errors="replace")
+        except OSError:
+            return False
+    return bool(find_cpp_directives(source))
 
 
 # native2py writes INCLUDE-expanded copies under native/_expanded/. They must

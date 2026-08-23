@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
-from ..ir import ModuleIR
+from ..ir import ModuleIR, python_identifier
+
+
+def _py(name: str) -> str:
+    """Python spelling of a native name (B4) — see python_pkg_gen._py."""
+    return python_identifier(name)
+
+
+def _attr(target: str, native_name: str) -> str:
+    """`target.native_name`, via getattr when the native name is a keyword."""
+    if _py(native_name) == native_name:
+        return f"{target}.{native_name}"
+    return f'getattr({target}, "{native_name}")'
 
 _DEFAULT_SCALARS = {"float": "1.0", "int": "1", "bool": "True", "str": '"x"'}
 
@@ -19,12 +31,12 @@ def _sample_arg(param, structs: dict | None = None, classes: dict | None = None)
     if param.type in classes:
         cls = classes[param.type]
         args = _constructor_args(cls, structs, classes)
-        return None if args is None else f"{param.type}({args})"
+        return None if args is None else f"{_py(param.type)}({args})"
     if param.type in structs:
         # A struct argument needs a real instance: pybind11 binds structs with
         # a default constructor and read/write fields, so building one here
         # also proves that binding works.
-        return f"{param.type}()"
+        return f"{_py(param.type)}()"
     if param.is_array:
         return "np.array([1.0, 2.0, 3.0], dtype=np.float64)"
     return _DEFAULT_SCALARS.get(param.type, "1.0")
@@ -97,8 +109,10 @@ def generate_python_api_test(module: ModuleIR, package_name: str) -> str:
     classes = {cls.name: cls for cls in module.classes}
 
     for cls in module.classes:
-        imported = ", ".join([cls.name, *_referenced_types(cls, structs, classes)])
-        lines.append(f"def test_{cls.name.lower()}_importable():")
+        imported = ", ".join(
+            _py(n) for n in [cls.name, *_referenced_types(cls, structs, classes)]
+        )
+        lines.append(f"def test_{_py(cls.name).lower()}_importable():")
         lines.append(f"    from {package_name} import {imported}")
         lines.append("")
 
@@ -107,16 +121,16 @@ def generate_python_api_test(module: ModuleIR, package_name: str) -> str:
             # An abstract class, or one whose only constructors are private:
             # `instance = Cls()` here fails the generated test suite on a
             # class that is bound correctly and usable as a base.
-            lines.append(f"    assert {cls.name} is not None")
+            lines.append(f"    assert {_py(cls.name)} is not None")
             for method in (m for m in cls.methods if m.is_static):
                 args = _sample_args(method.parameters, structs, classes)
                 if args is None:
                     continue
-                lines.append(f"    {cls.name}.{method.name}({args})")
+                lines.append(f"    {_attr(_py(cls.name), method.name)}({args})")
             lines.append("")
             continue
 
-        lines.append(f"    instance = {cls.name}({constructible})")
+        lines.append(f"    instance = {_py(cls.name)}({constructible})")
         for method in cls.methods:
             args = _sample_args(method.parameters, structs, classes)
             if args is None:
@@ -127,8 +141,8 @@ def generate_python_api_test(module: ModuleIR, package_name: str) -> str:
                     "cannot construct"
                 )
                 continue
-            target = cls.name if method.is_static else "instance"
-            lines.append(f"    {target}.{method.name}({args})")
+            target = _py(cls.name) if method.is_static else "instance"
+            lines.append(f"    {_attr(target, method.name)}({args})")
         lines.append("")
 
     for func in module.functions:
@@ -136,11 +150,11 @@ def generate_python_api_test(module: ModuleIR, package_name: str) -> str:
         if args is None:
             continue
         referenced = _named_types(func.parameters, structs, classes)
-        imported = ", ".join([func.name, *referenced])
-        lines.append(f"def test_{func.name}_importable():")
+        imported = ", ".join(_py(n) for n in [func.name, *referenced])
+        lines.append(f"def test_{_py(func.name)}_importable():")
         lines.append(f"    from {package_name} import {imported}")
         lines.append("")
-        lines.append(f"    {func.name}({args})")
+        lines.append(f"    {_py(func.name)}({args})")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

@@ -1,0 +1,12 @@
+# Every change needs a review from the owner.
+# Syntax: https://docs.github.com/articles/about-code-owners
+*                       @ravikings
+
+# The generator and its tests are the core of the project.
+/tools/native2py/       @ravikings
+
+# CI, governance, and the commit-gating hooks.
+/.github/               @ravikings
+/.claude/hooks/         @ravikings
+/SECURITY.md            @ravikings
+/CONTRIBUTING.md        @ravikings

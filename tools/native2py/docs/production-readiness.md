@@ -84,9 +84,106 @@ timeout, or process-per-call isolation exists here.
   generated Pydantic models; a signature that cannot be serialised (a bound
   class as a parameter or return) gets no endpoint and a comment saying why,
   instead of failing route registration for the whole service.
+- ✅ fixed — generated Fortran routers serialise every native call through a
+  process-wide lock, so concurrent requests can no longer interleave inside a
+  routine that reads and writes a COMMON block. See
+  [Concurrency and Fortran COMMON blocks](#concurrency-and-fortran-common-blocks)
+  for what that does *not* cover.
 - Still open: constructing a fresh native object per request is correct but
   not free. A class that is expensive to build (a simulator reading a deck)
   needs an explicit session/handle API rather than one object per HTTP call.
+
+### Concurrency and Fortran COMMON blocks
+
+**Read this before touching anything about threading or the GIL.** Getting the
+order of the two changes below wrong is worse than doing neither.
+
+#### The hazard
+
+Fortran COMMON blocks are process-global storage. `libraries/petro`'s
+`PETRO.INC` declares
+
+```fortran
+COMMON /FLUID/ API, SGG, SGW, TRES, PB, PSEP, TSEP, NCOMP
+```
+
+and states the contract in a comment: *"CALL PVTSET(P) THEN USE THE COMMON. DO
+NOT ADD ARGUMENTS."* `PVTINI` writes it; `PVTRS`, `PVTBO` and `PVTVIS` read it.
+
+native2py exposes those faithfully, as independent endpoints — `/pvt_set_fluid`
+writes the state, `/solution_gor` reads it. FastAPI runs synchronous `def`
+endpoints in a threadpool, so two callers configuring different fluids can
+interleave. Nothing crashes and nothing logs; each caller just receives numbers
+computed from the other caller's fluid.
+
+Per-request objects — the fix that works for a stateful C++ class — cannot
+reach this. COMMON belongs to the process, not to any instance.
+
+#### What ships today: a process-wide lock
+
+Generated **Fortran** routers declare
+
+```python
+_NATIVE_LOCK = threading.RLock()
+```
+
+and hold it across every native call. It is `RLock` so that one generated
+endpoint calling another cannot deadlock a request against itself, and it is
+held around the call only — argument marshalling and JSON shaping stay outside
+the critical section.
+
+This is the conservative option on purpose: correct by construction, and it
+caps native execution at **one concurrent call per process**. Scale with more
+processes/replicas, not by deleting the lock.
+
+C++ routers get no lock. They already construct an instance per request, and a
+C++ free function has no equivalent of COMMON that the parser can see — locking
+every C++ service would trade real concurrency for a hazard that isn't there.
+If you bind C++ that uses file-scope statics or a singleton, that is your
+hazard to assess; native2py cannot detect it.
+
+#### What the lock does not fix
+
+The lock is held for **one native call**. A client that POSTs `/pvt_set_fluid`
+and then POSTs `/solution_gor` releases it in between, so another client can
+reconfigure COMMON in the gap. Closing that needs one of:
+
+- **process affinity per session** — pin a session to one worker process, so
+  its configure and its read reach the same COMMON;
+- **detecting the write→read COMMON dependency at parse time** and generating a
+  session-shaped (or combined configure+compute) API instead of independent
+  endpoints.
+
+Both are out of scope for the lock and neither is implemented.
+`tests/test_service_gen.py::test_the_lock_does_not_make_a_configure_then_compute_pair_atomic`
+pins this gap so nobody reads the lock as a complete fix.
+
+#### The sequencing constraint — COMMON safety before GIL release
+
+The pybind11 bindings never release the GIL (no
+`py::call_guard<py::gil_scoped_release>`), and the f2py path emits no
+`threadsafe` directive. Every native call therefore holds the GIL for its full
+duration.
+
+That is a throughput ceiling. It is **also** the reason the COMMON race is
+silent rather than a crash: the GIL prevents two threads from being inside
+Fortran simultaneously, so you never get memory corruption. The race is *across*
+calls, and the GIL is released between them.
+
+So: if someone profiles this, finds the GIL bottleneck, and adds
+`gil_scoped_release` (or a `threadsafe` f2py directive) to fix throughput
+**without first making COMMON access safe, they convert a silent logical race
+into genuine memory corruption** — two threads writing the same COMMON storage
+at the same time.
+
+**COMMON safety must land before GIL release.** In order:
+
+1. the per-call lock (done);
+2. session affinity or a session-shaped API for write→read COMMON pairs (not
+   done);
+3. only then, releasing the GIL for throughput — and at that point the lock
+   above becomes load-bearing against memory corruption, not just wrong
+   numbers, so it must not be removed in the same change.
 
 ### CI/CD, versioning, deployment (design.md §19, §20, §23)
 

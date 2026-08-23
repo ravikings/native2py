@@ -1,0 +1,211 @@
+{
+  "format": 2,
+  "service": "petro_api",
+  "language": "fortran",
+  "tolerance": {
+    "rtol": 1e-09,
+    "atol": 1e-12
+  },
+  "provenance": {
+    "platform": "Darwin 24.6.0",
+    "machine": "arm64",
+    "python": "3.11.5",
+    "python_implementation": "CPython",
+    "numpy": "2.4.6",
+    "fortran_compiler": "GNU Fortran (Homebrew GCC 16.2.0) 16.2.0",
+    "cxx_compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)",
+    "native2py": "0.1.0",
+    "sources": {
+      "libraries/petro/fortran/flash.f": "7f82aa7da4db1f65baedb0820a16ae65de8cd1d2fe74f9da9d51a6d0a69fd6b1",
+      "libraries/petro/fortran/hydrau.f": "53fff83b165efa47c32441fc09487b6afbaf86f9bd9f6b8be18f3acbb2880fbc",
+      "libraries/petro/fortran/include/GRID.INC": "0fde9f5a6f8f0f7621197440ae68974e635f93ace60a396aea732ac33ee27372",
+      "libraries/petro/fortran/include/PETRO.INC": "abd531800126cb71feccb28f14aaf20c9bedf31c4f06737e6885ba185c4fabb2",
+      "libraries/petro/fortran/matsol.f": "fa32aa09d02e2c2a0f30facbf46dc7d0afbdcf4b3694aa072b19b5eaae7b6fff",
+      "libraries/petro/fortran/pvtcor.f": "3674ccbc48a422a33c54754c2c2f153ae4a9e118226512da23fda36a1b5491f0",
+      "libraries/petro/fortran/relperm.f": "fd03dee962d6310e74f6131395a11dab7f058a08842c5f4261e29bae7291994f",
+      "libraries/petro/fortran/simcor.f": "4e763756f7e4927ff329f474437d457752592b0664ff0b996b44ea65e07a60e1",
+      "libraries/petro/fortran/wellib.f": "f1ab2016c9c7f44379de3468884ee2759e1ba44d825bd30df4fdb846a307c2d5",
+      "services/petro_api/native/petro_api.f90": "dbb552032a7cd4afa8d9e01d9737b1cff83f786829115a545781520ff2b3b513"
+    }
+  },
+  "entries": {
+    "pvt_set_fluid": {
+      "kind": "function",
+      "class": null,
+      "name": "pvt_set_fluid",
+      "constructor_arguments": [],
+      "arguments": [
+        35.0,
+        0.65,
+        180.0,
+        2
+      ],
+      "result": null,
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    },
+    "solution_gor": {
+      "kind": "function",
+      "class": null,
+      "name": "solution_gor",
+      "constructor_arguments": [],
+      "arguments": [
+        2000.0
+      ],
+      "result": 355.0764805578969,
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    },
+    "oil_fvf": {
+      "kind": "function",
+      "class": null,
+      "name": "oil_fvf",
+      "constructor_arguments": [],
+      "arguments": [
+        2000.0
+      ],
+      "result": 1.2376603049350903,
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    },
+    "oil_viscosity": {
+      "kind": "function",
+      "class": null,
+      "name": "oil_viscosity",
+      "constructor_arguments": [],
+      "arguments": [
+        2000.0
+      ],
+      "result": 0.7693058330673301,
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    },
+    "gas_z_factor": {
+      "kind": "function",
+      "class": null,
+      "name": "gas_z_factor",
+      "constructor_arguments": [],
+      "arguments": [
+        2000.0
+      ],
+      "result": 0.8821195397407416,
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    },
+    "bubble_point": {
+      "kind": "function",
+      "class": null,
+      "name": "bubble_point",
+      "constructor_arguments": [],
+      "arguments": [
+        1000.0
+      ],
+      "result": 4784.822092740284,
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    },
+    "pvt_state": {
+      "kind": "function",
+      "class": null,
+      "name": "pvt_state",
+      "constructor_arguments": [],
+      "arguments": [
+        2000.0,
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        9
+      ],
+      "result": null,
+      "argument_effects": {
+        "1": [
+          1.2376603049350903,
+          0.0014210347131269228,
+          0.9940793505687715,
+          355.0764805578969,
+          0.7693058330673301,
+          0.01650745389948176,
+          45.33883597248819,
+          34.94636657448389,
+          0.8821195397407416
+        ]
+      },
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    },
+    "tubing_bhp": {
+      "kind": "function",
+      "class": null,
+      "name": "tubing_bhp",
+      "constructor_arguments": [],
+      "arguments": [
+        250.0,
+        2000.0,
+        350.0,
+        1200.0,
+        0.201,
+        0.0006,
+        8000.0,
+        8400.0,
+        20
+      ],
+      "result": 2964.7917938859628,
+      "tolerance": {
+        "rtol": 1e-06,
+        "atol": 1e-12,
+        "reason": "TRAVER marches 20 segments, iterating each segment's midpoint pressure to a fixed-point test of 1e-4 relative (hydrau.f:279). A libm difference can put that test on the other side of its threshold, so the answer is reproducible to the solver's own tolerance, not to machine precision."
+      }
+    },
+    "vogel_rate": {
+      "kind": "function",
+      "class": null,
+      "name": "vogel_rate",
+      "constructor_arguments": [],
+      "arguments": [
+        4000.0,
+        2500.0,
+        6000.0
+      ],
+      "result": 3375.0,
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    },
+    "last_error": {
+      "kind": "function",
+      "class": null,
+      "name": "last_error",
+      "constructor_arguments": [],
+      "arguments": [],
+      "result": 0,
+      "tolerance": {
+        "rtol": 1e-09,
+        "atol": 1e-12
+      }
+    }
+  },
+  "skipped": {}
+}

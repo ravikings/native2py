@@ -146,3 +146,440 @@ def test_generates_array_aware_smoke_test(reservoir_source):
 
     assert "import numpy as np" in test_py
     assert "np.array(" in test_py
+
+
+# --- free-form parity with the fixed-form parser -------------------------
+#
+# Each source below is written for one defect and owns its own fixture text.
+
+MODERN_F90 = """module petro_api
+    implicit none
+
+    type :: pvt_state
+        real(8) :: pressure
+        real(8) :: rs
+    end type pvt_state
+
+contains
+
+    function state_at(p) result(st)
+        real(8), intent(in) :: p
+        type(pvt_state) :: st
+
+        st%pressure = p
+        st%rs = 0.0d0
+    end function state_at
+
+    subroutine configure(api, salinity)
+        real(8), intent(in) :: api
+        real(8), intent(in), optional :: salinity
+
+        continue
+    end subroutine configure
+
+    subroutine reset
+        continue
+    end subroutine reset
+
+end module petro_api
+"""
+
+
+@pytest.fixture
+def modern_source(tmp_path):
+    source = tmp_path / "modern.f90"
+    source.write_text(MODERN_F90)
+    return source
+
+
+def test_derived_type_result_is_skipped_not_bound_as_float(modern_source):
+    # A1. f2py cannot return a `type(...)` at all. The old code's declaration
+    # lookup simply missed and fell through to "float", so the generated
+    # router emitted {"result": state_at(p)} on a value that is not a float —
+    # a service that builds, imports, and returns a wrong answer.
+    module = fortran_parser.parse_source(modern_source, ExposeConfig(functions=["state_at"]))
+
+    assert [fn.name for fn in module.functions] == []
+    assert [s.name for s in module.skipped] == ["state_at"]
+    assert "pvt_state" in module.skipped[0].reason
+
+
+def test_derived_type_argument_is_skipped_not_bound_as_float(tmp_path):
+    # A1, parameter half: the same defaulting sat on the parameter path.
+    source = tmp_path / "derived_arg.f90"
+    source.write_text(
+        """
+    subroutine apply(st, factor)
+        type(pvt_state), intent(inout) :: st
+        real(8), intent(in) :: factor
+
+        st%rs = st%rs * factor
+    end subroutine apply
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["apply"]))
+
+    assert module.functions == []
+    assert [s.name for s in module.skipped] == ["apply"]
+    assert "st" in module.skipped[0].reason
+
+
+def test_optional_attribute_is_carried_into_the_ir(modern_source):
+    # A2. `optional` was never read off the attribute list, so the generated
+    # endpoint demanded a value the Fortran does not require.
+    module = fortran_parser.parse_source(modern_source, ExposeConfig(functions=["configure"]))
+
+    params = {p.name: p for p in module.functions[0].parameters}
+    assert params["salinity"].is_optional
+    assert not params["api"].is_optional
+    # The attribute must not disturb the intent parsed off the same line.
+    assert params["salinity"].intent == "in"
+
+
+def test_free_form_applies_implicit_typing_to_undeclared_arguments(tmp_path):
+    # A7. No `implicit none` here, so `n` is INTEGER by the I-N rule and `x`
+    # is REAL. Both used to default to float.
+    source = tmp_path / "transitional.f90"
+    source.write_text(
+        """
+    subroutine accumulate(n, x)
+        x = x * n
+    end subroutine accumulate
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["accumulate"]))
+
+    assert [(p.name, p.type) for p in module.functions[0].parameters] == [
+        ("n", "int"),
+        ("x", "float"),
+    ]
+
+
+def test_free_form_honours_an_implicit_statement(tmp_path):
+    # A7. An explicit IMPLICIT statement overrides the default letter rules.
+    source = tmp_path / "explicit_implicit.f90"
+    source.write_text(
+        """
+    implicit integer (x-z)
+
+    subroutine accumulate(x)
+        x = x + 1
+    end subroutine accumulate
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["accumulate"]))
+
+    assert module.functions[0].parameters[0].type == "int"
+
+
+def test_undeclared_argument_under_implicit_none_is_skipped(tmp_path):
+    # A7. Under IMPLICIT NONE there is no type to fall back to, so the routine
+    # is reported rather than guessed at.
+    source = tmp_path / "strict.f90"
+    source.write_text(
+        """
+    implicit none
+
+    subroutine accumulate(x)
+        x = x + 1
+    end subroutine accumulate
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["accumulate"]))
+
+    assert module.functions == []
+    assert [s.name for s in module.skipped] == ["accumulate"]
+    assert "IMPLICIT NONE" in module.skipped[0].reason
+
+
+def test_argument_less_routine_is_discovered_and_extracted(modern_source):
+    # C1. Discovery and extraction failed together — `reset` was missing from
+    # list_routine_names AND unfindable by name — so they are fixed together.
+    assert "reset" in fortran_parser.list_routine_names(modern_source)
+
+    module = fortran_parser.parse_source(modern_source, ExposeConfig(functions=["reset"]))
+
+    fn = module.functions[0]
+    assert fn.name == "reset"
+    assert fn.is_subroutine
+    assert fn.parameters == []
+
+
+def test_argument_less_routine_does_not_swallow_a_longer_name(tmp_path):
+    # C1 guard: making "(" optional must not let `reset` match `reset_all`.
+    source = tmp_path / "prefixes.f90"
+    source.write_text(
+        """
+    subroutine reset_all(x)
+        real(8), intent(inout) :: x
+        x = 0.0d0
+    end subroutine reset_all
+
+    subroutine reset
+        continue
+    end subroutine reset
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["reset"]))
+
+    assert module.functions[0].parameters == []
+
+
+def test_bare_end_terminates_a_routine(tmp_path):
+    # C2. The trailing keyword and name are both optional in the standard.
+    source = tmp_path / "bare_end.f90"
+    source.write_text(
+        """
+    function scale_rate(q) result(r)
+        real(8), intent(in) :: q
+        real(8) :: r
+
+        r = q * 2.0d0
+    end
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["scale_rate"]))
+
+    assert module.functions[0].returns == "float"
+
+
+def test_bare_end_does_not_stop_at_a_nested_construct(tmp_path):
+    # C2's trap: `end if` / `end do` must not be mistaken for the routine's
+    # own bare `end`, or the declarations after them are never seen and the
+    # parameter types silently regress to the implicit default.
+    source = tmp_path / "nested.f90"
+    source.write_text(
+        """
+    subroutine clamp(n, x)
+        integer :: n
+        integer :: i
+
+        do i = 1, n
+            if (i > 0) then
+                i = i
+            end if
+        end do
+
+        real(8), intent(inout) :: x
+        x = x + n
+    end
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["clamp"]))
+
+    # `x` is declared *after* the nested constructs; finding it proves the
+    # block did not terminate on `end if` or `end do`.
+    params = {p.name: p for p in module.functions[0].parameters}
+    assert params["x"].intent == "inout"
+    assert params["n"].type == "int"
+
+
+def test_bare_end_function_terminates_a_routine(tmp_path):
+    source = tmp_path / "bare_end_function.f90"
+    source.write_text(
+        """
+    function scale_rate(q) result(r)
+        real(8), intent(in) :: q
+        real(8) :: r
+
+        r = q * 2.0d0
+    end function
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["scale_rate"]))
+
+    assert module.functions[0].name == "scale_rate"
+
+
+def test_bare_end_module_still_attributes_the_enclosing_module(tmp_path):
+    # C2. A bare `end module` used to leave fortran_module unset, which sends
+    # generate_init_py looking for the symbol at the extension's top level
+    # where f2py has not put it.
+    source = tmp_path / "bare_module.f90"
+    source.write_text(
+        """
+module physics
+contains
+
+    function double_it(x) result(y)
+        real(8), intent(in) :: x
+        real(8) :: y
+
+        y = x * 2.0d0
+    end function double_it
+
+end module
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["double_it"]))
+
+    assert module.fortran_module == "physics"
+
+
+# --- free-form line continuations ----------------------------------------
+#
+# Regression cover for the continuation fix. A wrapped argument list used to
+# yield a parameter literally named "&\n roughness", which reached the
+# generated router as `diameter: float, &` — a SyntaxError, so the service
+# could not even be imported.
+
+CONTINUED_F90 = """module flow
+    implicit none
+contains
+
+    function tubing_bhp(wellhead_p, q_oil, q_water, q_gas, diameter, &
+                        roughness, tvd, md, nseg) result(pbh)
+        real(8), intent(in) :: wellhead_p, q_oil, q_water, q_gas
+        real(8), intent(in) :: diameter, roughness, tvd, md
+        integer, intent(in) :: nseg
+        real(8) :: pbh
+
+        pbh = wellhead_p + tvd
+    end function tubing_bhp
+
+end module flow
+"""
+
+
+@pytest.fixture
+def continued_source(tmp_path):
+    source = tmp_path / "flow.f90"
+    source.write_text(CONTINUED_F90)
+    return source
+
+
+def test_wrapped_argument_list_yields_clean_parameter_names(continued_source):
+    module = fortran_parser.parse_source(continued_source, ExposeConfig(functions=["tubing_bhp"]))
+
+    fn = module.functions[0]
+    assert [p.name for p in fn.parameters] == [
+        "wellhead_p",
+        "q_oil",
+        "q_water",
+        "q_gas",
+        "diameter",
+        "roughness",
+        "tvd",
+        "md",
+        "nseg",
+    ]
+    # The declarations on the continued half must be found too, or the
+    # wrapped arguments come back with a guessed type.
+    assert {p.name: p.type for p in fn.parameters}["nseg"] == "int"
+    assert {p.name: p.type for p in fn.parameters}["roughness"] == "float"
+
+
+def test_generated_router_from_a_wrapped_signature_is_valid_python(continued_source):
+    module = fortran_parser.parse_source(continued_source, ExposeConfig(functions=["tubing_bhp"]))
+    router = python_pkg_gen.generate_router_py(module, "flow")
+
+    assert "&" not in router
+    # The failure this guards was a SyntaxError at import, so compiling is
+    # the assertion that actually matters.
+    compile(router, "router.py", "exec")
+
+
+def test_continuation_line_may_reopen_with_its_own_ampersand(tmp_path):
+    source = tmp_path / "reopened.f90"
+    source.write_text(
+        """
+    function joined(alpha, &
+        &          beta) result(total)
+        real(8), intent(in) :: alpha, beta
+        real(8) :: total
+
+        total = alpha + beta
+    end function joined
+"""
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["joined"]))
+
+    assert [p.name for p in module.functions[0].parameters] == ["alpha", "beta"]
+
+
+def test_bang_inside_a_character_literal_is_not_a_comment():
+    normalized = fortran_parser.normalize_free_form(
+        "        write (*,*) 'rate ! per day'   ! trailing note\n"
+    )
+
+    assert "'rate ! per day'" in normalized
+    assert "trailing note" not in normalized
+
+
+def test_discovery_sees_routines_with_continued_signatures(continued_source):
+    # quickstart populates `expose:` from this, so discovery has to normalize
+    # for the same reason extraction does.
+    assert fortran_parser.list_routine_names(continued_source) == ["tubing_bhp"]
+
+
+# --- code-review findings [3][4][5]: free-form normalization edge cases ------
+
+def test_whole_line_comment_between_continuations_does_not_end_the_statement():
+    """A comment line is legal *between* continuation lines.
+
+    `_strip_inline_comment` reduces it to blank; flushing the pending
+    continuation on that blank closed the statement early and truncated the
+    argument list, so `q_gas` was lost from the signature entirely.
+    """
+    normalized = fortran_parser.normalize_free_form(
+        "    function bhp(wellhead_p, q_oil, &\n"
+        "        ! flow rates, stb/d\n"
+        "        q_gas) result(pbh)\n"
+    )
+
+    assert normalized.splitlines()[0].strip() == (
+        "function bhp(wellhead_p, q_oil, q_gas) result(pbh)"
+    )
+
+
+def test_character_literal_continued_across_lines_keeps_its_bang():
+    """Quote state must carry across a `&` continuation.
+
+    Resetting it per physical line made the `!` inside a still-open literal
+    look like a comment, silently truncating the string.
+    """
+    normalized = fortran_parser.normalize_free_form(
+        "        msg = 'rate&\n     &! per day'\n"
+    )
+
+    assert "per day" in normalized
+
+
+def test_internal_procedure_declarations_do_not_retype_the_outer_routine(tmp_path):
+    """`contains` opens internal procedures whose declarations are not ours.
+
+    The body capture runs to the routine's end and swallows them, and
+    `_parse_declarations` keeps the last match for a name — so a helper
+    declaring `integer :: a` inside a function whose own `a` is `real(8)`
+    silently retyped the binding to int. It compiles, it runs, and it hands
+    Fortran the wrong thing.
+    """
+    source = tmp_path / "inner.f90"
+    source.write_text(
+        """function outer(a) result(r)
+    real(8), intent(in) :: a
+    real(8) :: r
+    r = a
+contains
+    subroutine helper(a)
+        integer :: a
+    end
+end function outer
+"""
+    )
+
+    fn = fortran_parser.parse_source(
+        source, ExposeConfig(functions=["outer"])
+    ).functions[0]
+
+    assert fn.parameters[0].type == "float"
