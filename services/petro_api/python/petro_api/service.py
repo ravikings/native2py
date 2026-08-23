@@ -6,15 +6,26 @@ import uuid
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI, Request
 
+from .middleware import install_middleware, readiness
 from .router import router
 
 app = FastAPI(title="petro_api")
 app.include_router(router)
 
+# Auth, rate limiting, body-size limits, request ids and access logging. Called
+# here AND in the gateway app: middleware attaches to an app, and a router
+# mounted into a gateway runs under the gateway's app.
+install_middleware(app, "petro_api")
+readiness(app, "petro_api")
+
 
 @app.get("/healthz", tags=["health"])
 def healthz():
-    """Liveness: the process is up and the native extension imported."""
+    """Liveness: the process is up and the native extension imported.
+
+    Deliberately NOT readiness — see /readyz. A liveness probe that fails
+    during startup gets the container killed and restarted forever.
+    """
     return {"status": "ok", "service": "petro_api"}
 
 

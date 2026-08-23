@@ -39,6 +39,7 @@ from .generators import (
     cmake_gen,
     docker_gen,
     f2py_gen,
+    middleware_gen,
     gateway_gen,
     golden_gen,
     pybind_gen,
@@ -734,8 +735,18 @@ def gateway(name: str, services: tuple[str, ...]) -> None:
     package_dir.mkdir(parents=True, exist_ok=True)
 
     (package_dir / "__init__.py").write_text("")
+    # The gateway is its own FastAPI app, so it needs its own middleware —
+    # a mounted router runs under THIS app, not under the service's. Its auth
+    # mode is the strictest of the services it mounts: composing an
+    # authenticated service into an open gateway would publish it unprotected.
+    auths = {_load_config(_service_dir(s)).api.auth for s in services}
+    gateway_auth = "api_key" if "api_key" in auths else "none"
+    _write_python(
+        package_dir / middleware_gen.MIDDLEWARE_FILENAME,
+        middleware_gen.generate_middleware_py(package_name, auth=gateway_auth),
+    )
     try:
-        app_source = gateway_gen.generate_gateway_app(name, list(services))
+        app_source = gateway_gen.generate_gateway_app(name, list(services), package_name)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     _write_python(package_dir / "app.py", app_source)
@@ -745,6 +756,11 @@ def gateway(name: str, services: tuple[str, ...]) -> None:
 
     click.echo(f"Generated gateway '{name}' at {gateway_dir}")
     click.echo(f"Mounts: {', '.join(f'/{s}' for s in services)}")
+    if gateway_auth == "api_key":
+        click.echo(
+            "Auth: api_key (inherited from a mounted service). Set "
+            f"{middleware_gen.ENV_API_KEYS} or the gateway will refuse to start."
+        )
     click.echo(f"Run with: uvicorn {package_name}.app:app")
 
 
@@ -850,6 +866,11 @@ def _write_package(service_dir: Path, config: ServiceConfig, module) -> None:
     _write_python(
         package_dir / "router.py",
         python_pkg_gen.generate_router_py(module, config.name),
+        module,
+    )
+    _write_python(
+        package_dir / middleware_gen.MIDDLEWARE_FILENAME,
+        middleware_gen.generate_middleware_py(config.name, auth=config.api.auth),
         module,
     )
     _write_python(

@@ -63,6 +63,23 @@ class ClangConfig:
 
 
 @dataclass
+class ApiConfig:
+    """How the generated HTTP API authenticates callers.
+
+    Only the *mode* lives here. Keys never do: `native2py.yaml` is committed,
+    and a credential in a committed file is a credential in every clone and
+    every image layer. The generated middleware reads keys from
+    `NATIVE2PY_API_KEYS` at startup, and refuses to start if the mode requires
+    them and none are present — failing closed, because a service that
+    silently drops authentication is discovered by an attacker rather than by
+    whoever deployed it.
+    """
+
+    # "none" (open — logged loudly at startup) or "api_key".
+    auth: str = "none"
+
+
+@dataclass
 class ServiceConfig:
     name: str
     language: str
@@ -78,6 +95,8 @@ class ServiceConfig:
     # Directories searched for Fortran INCLUDE files (.INC), relative to the
     # repo root. Legacy F77 keeps COMMON blocks and IMPLICIT statements there.
     include_paths: list[str] = field(default_factory=list)
+    # Authentication for the generated HTTP API. See ApiConfig.
+    api: ApiConfig = field(default_factory=ApiConfig)
 
     @classmethod
     def load(cls, service_dir: Path) -> "ServiceConfig":
@@ -103,6 +122,7 @@ class ServiceConfig:
             ),
             libraries=list(data.get("libraries") or []),
             include_paths=list(data.get("include_paths") or []),
+            api=_load_api(data.get("api"), config_path),
         )
 
     def save(self, service_dir: Path) -> None:
@@ -134,7 +154,34 @@ class ServiceConfig:
             data["libraries"] = self.libraries
         if self.include_paths:
             data["include_paths"] = self.include_paths
+        # Only written when it differs from the default, so an existing
+        # native2py.yaml does not grow a key that says nothing.
+        if self.api.auth != "none":
+            data["api"] = {"auth": self.api.auth}
         (service_dir / CONFIG_FILENAME).write_text(yaml.dump(data, sort_keys=False))
+
+
+def _load_api(api_data, config_path: Path) -> ApiConfig:
+    """Read the `api:` block.
+
+    An unrecognised auth mode is an error, not a fallback to `none`. Quietly
+    treating `api: {auth: apikey}` (a plausible typo) as "no authentication"
+    would produce exactly the silently-open service this setting exists to
+    prevent.
+    """
+    api_data = api_data or {}
+    if not isinstance(api_data, dict):
+        raise ConfigError(
+            f"{config_path}: `api:` must be a block, got {type(api_data).__name__}."
+        )
+    auth = str(api_data.get("auth") or "none").strip().lower()
+    if auth not in ("none", "api_key"):
+        raise ConfigError(
+            f"{config_path}: `api.auth: {auth}` is not understood. Use "
+            "`none` or `api_key`. Refusing to default to `none`, which would "
+            "leave the service open on a typo."
+        )
+    return ApiConfig(auth=auth)
 
 
 def _load_expose(expose_data, config_path: Path) -> ExposeConfig:

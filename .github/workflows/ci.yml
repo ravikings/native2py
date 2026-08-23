@@ -112,3 +112,26 @@ jobs:
       - name: Run the test suite
         working-directory: tools/native2py
         run: python -m pytest -q
+
+  # Separate job, not a step: a vulnerability disclosed upstream must not turn
+  # every test leg red and hide a genuine test failure behind six identical
+  # audit errors. One leg, latest supported Python.
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: python -m pip install --upgrade pip pip-audit
+
+      # Audits the RESOLVED, hash-pinned set rather than the ranges in
+      # pyproject.toml: the ranges say what is allowed, constraints.txt says
+      # what is actually installed, and only the second can be vulnerable.
+      - name: Audit the pinned dependency set
+        working-directory: tools/native2py
+        run: pip-audit --strict --requirement constraints.txt --disable-pip

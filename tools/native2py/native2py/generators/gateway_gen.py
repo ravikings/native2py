@@ -13,7 +13,9 @@ from ..ir import is_valid_python_name
 from .error_gen import ERROR_HANDLER_IMPORTS, generate_error_handler
 
 
-def generate_gateway_app(gateway_name: str, service_names: list[str]) -> str:
+def generate_gateway_app(
+    gateway_name: str, service_names: list[str], package_name: str | None = None
+) -> str:
     for name in service_names:
         # `from lambda.router import ...` is a SyntaxError, and so is any
         # service name that is not an identifier — say so here rather than
@@ -32,6 +34,9 @@ def generate_gateway_app(gateway_name: str, service_names: list[str]) -> str:
         f'app.include_router({name}_router, prefix="/{name}")' for name in service_names
     )
     listed = ", ".join(f'"{name}"' for name in service_names)
+    # The distribution name may be hyphenated ("platform-api"); the logger
+    # and middleware need the importable spelling.
+    package_name = package_name or gateway_name.replace("-", "_")
     # The mounted routers run under THIS app, so the gateway needs its own copy
     # of the handler — a handler on a service's own `service.py` app is not
     # reached in this topology. Same generator, so the two cannot drift.
@@ -48,11 +53,19 @@ routers are unchanged either way.
 {error_imports}
 from fastapi import FastAPI, Request
 
+from .middleware import install_middleware, readiness
 {imports}
 
 app = FastAPI(title="{gateway_name}")
 
 {includes}
+
+# The mounted routers run under THIS app, so the gateway installs its own
+# middleware and readiness probe. Its auth mode is the strictest of the
+# services it mounts — composing an authenticated service into an open gateway
+# would publish it unprotected.
+install_middleware(app, "{package_name}")
+readiness(app, "{package_name}")
 
 
 @app.get("/healthz", tags=["health"])

@@ -17,7 +17,7 @@ set(F2PY_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/petro_api${PY_EXT_SUFFIX}")
 
 add_custom_command(
     OUTPUT "${F2PY_OUTPUT}"
-    COMMAND "${Python_EXECUTABLE}" -m numpy.f2py -c -m petro_api ${F2PY_SOURCES} only: pvt_set_fluid solution_gor oil_fvf oil_viscosity gas_z_factor bubble_point pvt_state tubing_bhp vogel_rate last_error :
+    COMMAND "${Python_EXECUTABLE}" -m numpy.f2py -c --backend meson -m petro_api ${F2PY_SOURCES} only: pvt_set_fluid solution_gor oil_fvf oil_viscosity gas_z_factor bubble_point pvt_state tubing_bhp vogel_rate last_error :
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     DEPENDS ${F2PY_SOURCES}
 )

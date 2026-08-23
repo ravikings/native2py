@@ -40,7 +40,7 @@ for what "verified" means elsewhere in these docs.
 | Minimal runtime image | ✅ multi-stage build, compiler toolchain stays in the builder stage |
 | Pin compiler/toolchain versions | ✅ fixed — the generated Dockerfile digest-pins its base image for both stages, and the tool's own install is hash-pinned via `constraints.txt`. Still open: the generated service's `apt-get`/`pip`/system-gfortran steps are not reproducible — see [Deployment topologies](deployment-topologies.md) |
 | Generate SBOMs | ✅ fixed — a deterministic CycloneDX SBOM is generated, recording native sources by SHA-256 |
-| Scan dependencies | ❌ no `pip-audit`/vulnerability-scan step anywhere |
+| Scan dependencies | ✅ fixed — `pip-audit` runs in CI against the hash-pinned constraints |
 | Sign container images | ❌ not implemented |
 | Restrict filesystem access | ❌ Dockerfile doesn't set `--read-only` / drop capabilities |
 | Never compile untrusted source in prod | ⚠️ your responsibility — native2py will happily compile and expose anything you point it at; there's no sandboxing |
@@ -49,10 +49,10 @@ for what "verified" means elsewhere in these docs.
 
 | Requirement | Status |
 |---|---|
-| Structured logging | ⚠️ partial — failures are logged with a correlatable `error_id` under a `native2py.<service>` logger (see [Error handling](#error-handling--the-sharpest-edge)). There is still no request logging for the successful path, and no request id threaded through it |
+| Structured logging | ✅ fixed — one access-log line per request on `native2py.<service>.access` with structured `request_id` / `method` / `path` / `status` / `duration_ms`, plus a correlatable `error_id` on failures |
 | OpenTelemetry traces/metrics/logs | ❌ not implemented |
-| Separate native execution time from HTTP overhead | ❌ not implemented |
-| Health endpoint | ⚠️ generated services expose `/healthz`, and importing the package proves the native extension loaded — but it is liveness only. There is no readiness check, and nothing verifies the extension still *computes correctly* (e.g. after a COMMON-block corruption in stateful Fortran) |
+| Separate native execution time from HTTP overhead | ⚠️ partial — total request duration is measured and returned as `X-Response-Time-Ms`, but it is not split between the native call and HTTP/marshalling overhead |
+| Health endpoint | ✅ `/healthz` liveness and a separate `/readyz` that reports 503 while draining on SIGTERM (see [Readiness and draining](#readiness-and-draining)). Still true: nothing verifies the extension *computes correctly* — e.g. after COMMON-block corruption in stateful Fortran |
 
 ### Error handling — the sharpest edge
 
@@ -139,7 +139,12 @@ stateful Fortran, correctness wins that trade; for C++ it doesn't have to.
 
 ### API surface
 
-- No auth, no rate limiting, no CORS configuration.
+- ✅ fixed — **authentication, rate limiting, body limits, request ids and
+  access logging** are generated into every service as `middleware.py`, and
+  installed by both the standalone app and the gateway. See
+  [Securing the generated API](#securing-the-generated-api) below.
+- Still missing: CORS configuration, and any notion of per-caller
+  authorization (a valid key can call every endpoint).
 - ✅ fixed — array parameters carry a `MAX_ARRAY_ITEMS` cap
   (`NATIVE2PY_MAX_ARRAY_ITEMS`, default 65536) instead of accepting a body of
   any length, and where a size argument can be paired unambiguously with the
@@ -164,6 +169,93 @@ stateful Fortran, correctness wins that trade; for C++ it doesn't have to.
 - Still open: constructing a fresh native object per request is correct but
   not free. A class that is expensive to build (a simulator reading a deck)
   needs an explicit session/handle API rather than one object per HTTP call.
+
+### Securing the generated API
+
+Generated services carry a `middleware.py`, installed by both `service.py` and
+the gateway app. Every layer below was verified against a real app making real
+requests, not asserted on the generated text — see
+`tests/test_middleware_gen.py`.
+
+#### Authentication
+
+Set it in `native2py.yaml`:
+
+```yaml
+api:
+  auth: api_key        # or: none
+```
+
+Keys are read at startup from `NATIVE2PY_API_KEYS` (comma-separated), and
+accepted as either `X-API-Key: <key>` or `Authorization: Bearer <key>`.
+
+Three decisions worth knowing about, because each was the alternative to a
+worse default:
+
+- **Keys never live in `native2py.yaml`.** That file is committed. A
+  credential in it is a credential in every clone and every image layer.
+- **It fails closed.** `auth: api_key` with no keys in the environment makes
+  the service **refuse to start**. A misconfiguration that silently disables
+  authentication is found by an attacker; one that refuses to boot is found by
+  whoever deployed it.
+- **The mode is baked in at generate time**, not read from the environment. A
+  service generated to require authentication cannot be downgraded by the
+  environment it happens to start in. An unrecognised mode (`apikey`, a
+  plausible typo) is a config error rather than a silent fall back to `none`.
+
+`auth: none` remains valid for a genuinely internal service, but it logs a
+warning at every startup naming what it means.
+
+`/healthz` and `/readyz` never require a key — an orchestrator has no
+credentials, and a liveness probe that 401s is a service that looks dead and
+gets restarted forever.
+
+#### Limits
+
+| Env var | Default | What it does |
+|---|---|---|
+| `NATIVE2PY_RATE_LIMIT_PER_MINUTE` | `0` (off) | Per-client sliding window, keyed by API key when there is one and client address otherwise |
+| `NATIVE2PY_MAX_REQUEST_BYTES` | `1048576` | Rejects an oversized body with 413 *before* it is read into memory |
+
+**The rate limiter is per process, and that matters.** Generated images run
+several gunicorn workers, so a limit of N is really N x `WEB_CONCURRENCY`
+across the service, and it resets when a worker is recycled. It is a crude
+backstop against one client melting one worker — not a quota system. Real
+global rate limiting belongs at the ingress, where there is one place to
+count. An in-process counter presented as a global limit is the kind of
+control that is trusted right up until the day it matters.
+
+#### Request identity and access logs
+
+Every response carries `X-Request-ID` and `X-Response-Time-Ms`. An inbound
+`X-Request-ID` is honoured so a trace survives the hop from a gateway or
+service mesh — but it is bounded to 64 printable ASCII characters first,
+because the value is attacker-controlled and ends up in log lines, where an
+unbounded one is log injection.
+
+Access logs go to `native2py.<service>.access` with structured `extra` fields
+(`request_id`, `method`, `path`, `status`, `duration_ms`), so a JSON formatter
+picks them up while the default formatter still prints something readable.
+
+#### Readiness and draining
+
+`/readyz` is separate from `/healthz`, and not for the obvious reason. "Has the
+app started?" is worth nothing here: `service.py` imports `router.py`, which
+imports the native extension at module scope, so any response at all is proof
+the extension loaded. A started/not-started probe would just be a slower
+liveness check.
+
+What readiness actually buys is **draining**. On SIGTERM — a rolling deploy or
+a scale-down — `/readyz` starts reporting 503 while the service keeps serving
+in-flight work. That takes the worker out of the load balancer *before* it
+stops accepting, which is the difference between a clean deploy and a burst of
+502s. The SIGTERM handler is chained rather than replaced, because gunicorn and
+uvicorn install their own to run graceful shutdown and clobbering one would
+turn a graceful drain into an abrupt exit.
+
+Liveness deliberately does not do this: a draining process is not ready but is
+perfectly alive, and a liveness probe failing here would get it killed
+mid-request instead of drained.
 
 ### Concurrency and Fortran COMMON blocks
 

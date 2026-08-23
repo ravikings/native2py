@@ -79,10 +79,16 @@ def _app_from(source: str):
     router is mounted instead; the app, the handler and the middleware stack
     are exactly as generated.
     """
+    # The middleware layer is stripped too, not just the routers: these tests
+    # are about the error handler, and auth/limits/request-ids in front of it
+    # would change what reaches it. tests/test_middleware_gen.py covers those
+    # against a real generated middleware module.
+    dropped = (".router import", ".middleware import")
+    called = ("app.include_router(", "install_middleware(", "readiness(")
     kept = [
         line
         for line in source.splitlines()
-        if ".router import" not in line and "app.include_router(" not in line
+        if not any(d in line for d in dropped) and not line.startswith(called)
     ]
     namespace: dict = {}
     exec(compile("\n".join(kept), "app.py", "exec"), namespace)  # noqa: S102

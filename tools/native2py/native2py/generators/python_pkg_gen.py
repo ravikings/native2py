@@ -883,14 +883,25 @@ def generate_service_py(service_name: str) -> str:
 {error_imports}
 from fastapi import FastAPI, Request
 
+from .middleware import install_middleware, readiness
 from .router import router
 
 app = FastAPI(title="{service_name}")
 app.include_router(router)
 
+# Auth, rate limiting, body-size limits, request ids and access logging. Called
+# here AND in the gateway app: middleware attaches to an app, and a router
+# mounted into a gateway runs under the gateway's app.
+install_middleware(app, "{service_name}")
+readiness(app, "{service_name}")
+
 
 @app.get("/healthz", tags=["health"])
 def healthz():
-    """Liveness: the process is up and the native extension imported."""
+    """Liveness: the process is up and the native extension imported.
+
+    Deliberately NOT readiness — see /readyz. A liveness probe that fails
+    during startup gets the container killed and restarted forever.
+    """
     return {{"status": "ok", "service": "{service_name}"}}
 {generate_error_handler(service_name)}'''
