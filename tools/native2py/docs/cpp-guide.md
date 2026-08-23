@@ -59,8 +59,12 @@ pip install "native2py[clang]"
 
 - templates: `template <typename T> class Buffer` and
   `template <typename T> T clamp(...)` have no single instantiation to bind.
-  Add a non-template wrapper (or a typedef for the instantiation) and expose
-  that.
+  **A typedef does not help**, which is worth stating because it is the
+  obvious thing to reach for: measured, libclang reports `Buffer<double>` with
+  *no members* — both from a bare `typedef Buffer<double> DoubleBuffer;` and
+  from an explicit `template class Buffer<double>;` — so there is nothing for
+  a binding to enumerate. Write a non-template class, or free functions, over
+  the instantiation you need and expose those.
 - **non-const `std::vector<T>&`** — refused deliberately, and this is the one
   worth understanding. pybind11 converts the caller's list into a *temporary*
   vector, so a function that writes through the reference writes into the

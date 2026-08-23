@@ -1392,9 +1392,13 @@ def parse_header(
                 module.skipped.append(
                     SkippedSymbol(
                         cursor.spelling,
-                        "is a class template; pybind11 binds instantiations, not "
-                        "templates. Add a typedef for the instantiation you need "
-                        "(and expose that), or exclude it in native2py.yaml.",
+                        "is a class template; pybind11 binds instantiations, "
+                        "not templates. A typedef does NOT help — measured: "
+                        "libclang reports Buffer<double> with no members, both "
+                        "with and without an explicit instantiation, so there "
+                        "is nothing to bind. Write a non-template class or free "
+                        "functions over the instantiation you need and expose "
+                        "those, or exclude it in native2py.yaml.",
                     )
                 )
             return
