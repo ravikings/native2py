@@ -686,7 +686,15 @@ def docker(name: str, build: bool) -> None:
     """Generate (and optionally build) the service's Dockerfile."""
     service_dir = _service_dir(name)
     config = _load_config(service_dir)
-    libraries = _validated_libraries(config)
+    # `libraries:` means two different things by language, and the Dockerfile
+    # only has to care about one of them. C++ LINKS a CMake target that lives
+    # outside the service, so the build context has to be the repo root. The
+    # f2py path has no target to link: `generate` already copied those sources
+    # into native/_expanded/, so everything the build needs is under the
+    # service directory and the simpler context still works. Passing the
+    # libraries through here would switch the context and emit a
+    # `COPY libraries/...` for sources that are already vendored.
+    libraries = [] if config.language == "fortran" else _validated_libraries(config)
     # Generated from what is actually there: a lock the user has not created
     # would produce a Dockerfile with a COPY that fails, and silently ignoring
     # one they HAVE created would quietly drop the pinning they asked for.
@@ -1033,6 +1041,69 @@ def _validated_libraries(config: ServiceConfig) -> list[str]:
     return list(config.libraries)
 
 
+def _fortran_library_inputs(config: ServiceConfig) -> tuple[list[Path], list[Path]]:
+    """Fortran sources and INCLUDE directories from this service's `libraries:`.
+
+    THE GAP THIS CLOSES
+
+    `libraries:` was C++-only. The C++ path links a shared library through
+    CMake `add_subdirectory` + `target_link_libraries`; f2py has no equivalent,
+    because `f2py -c` takes a list of SOURCES and compiles them itself. So a
+    Fortran service could name a library and get nothing: `services/petro_api`
+    bound the ten routines of its F90 facade, built an extension, and failed at
+    import with `undefined symbol: iprvog_` — the seven F77 decks the facade
+    calls into were never compiled.
+
+    The fix is the mechanism native2py already uses everywhere else: the
+    library's sources are expanded into `native/_expanded/` alongside the
+    service's own and handed to f2py as ordinary sources. The original tree
+    stays read-only, and the Docker build context stays the service directory,
+    because everything the build needs has been copied under it.
+
+    INCLUDE directories are discovered rather than demanded. A legacy tree
+    keeps its COMMON blocks in `include/*.INC` next to the decks; requiring the
+    user to also spell that out in `include_paths:` would be asking them to
+    restate something the library already says. Explicit `include_paths:` still
+    win — these are added to them, not instead.
+    """
+    sources: list[Path] = []
+    include_dirs: list[Path] = []
+
+    for name in config.libraries:
+        lib_dir = Path(LIBRARIES_DIR) / name
+        if not lib_dir.is_dir():
+            raise click.ClickException(
+                f"Service '{config.name}' declares library '{name}' but "
+                f"{lib_dir} does not exist."
+            )
+
+        # Deliberately NOT requiring a CMakeLists.txt the way the C++ path
+        # does: that file declares a CMake target, and f2py never uses one.
+        found = sorted(
+            path
+            for path in lib_dir.rglob("*")
+            if path.suffix.lower() in (".f", ".f90", ".f77", ".for")
+            and "_expanded" not in path.parts
+        )
+        if not found:
+            raise click.ClickException(
+                f"Service '{config.name}' is Fortran and declares library "
+                f"'{name}', but {lib_dir} contains no Fortran sources. (A C++ "
+                "library cannot be linked into an f2py extension.)"
+            )
+        sources += found
+
+        include_dirs += sorted(
+            {
+                path.parent
+                for path in lib_dir.rglob("*")
+                if path.suffix.lower() == ".inc"
+            }
+        )
+
+    return sources, include_dirs
+
+
 def _report_skipped(source: Path, module) -> None:
     """Print declarations the parser recognised but could not bind.
 
@@ -1233,6 +1304,40 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
                 f"include_paths entry '{p}' is not a directory (relative to the repo root)."
             )
 
+    # Sources from `libraries:` are compiled INTO the extension — f2py links no
+    # external target — so they join the service's own before anything below
+    # classifies or expands them. See _fortran_library_inputs.
+    library_sources, library_includes = _fortran_library_inputs(config)
+    include_paths += [d for d in library_includes if d not in include_paths]
+
+    # A library file whose name matches one the service already has is the
+    # facade-was-copied-in case: services/petro_api/native/petro_api.f90 is the
+    # same routine as libraries/petro/fortran/modern/petro_api.f90. Compiling
+    # both would be a duplicate-symbol link error, so the service's copy wins —
+    # it is the one that was parsed and whose intents were inferred.
+    own_names = {source.name for source in sources}
+    shadowed = [lib for lib in library_sources if lib.name in own_names]
+    library_sources = [lib for lib in library_sources if lib.name not in own_names]
+    for lib in shadowed:
+        click.echo(f"Using native/{lib.name} instead of {lib} (same file name).")
+
+    by_name: dict[str, Path] = {}
+    for lib in library_sources:
+        clash = by_name.get(lib.name)
+        if clash is not None:
+            raise click.ClickException(
+                f"Two library sources are both named '{lib.name}' ({clash} and "
+                f"{lib}). They would collide in native/_expanded/ and produce "
+                "duplicate symbols. Rename one, or expose only one library."
+            )
+        by_name[lib.name] = lib
+
+    if library_sources:
+        click.echo(
+            f"Compiling {len(library_sources)} source(s) from "
+            f"{', '.join(config.libraries)} into the extension."
+        )
+
     # A requested routine may live in any one of several native/*.f90 files
     # (common for large template libraries split across many files); search
     # each source until every requested name is found, rather than requiring
@@ -1295,6 +1400,11 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
     # directives in the text) is parsed here as if every #ifdef branch were
     # live, because neither Fortran parser has a preprocessor. That silently
     # binds whichever branch happens to lex, so say so rather than let it pass.
+    # From here on `sources` means "everything that gets compiled", not "the
+    # files searched for exposed routines" — the routine search above is
+    # deliberately limited to the service's own native/ directory.
+    sources = sources + library_sources
+
     for source in sources:
         directives = find_cpp_directives(read_source(source))
         if requires_preprocessing(source):
@@ -1322,7 +1432,13 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
     ]
 
     rewritten = fixed_form_sources + free_form_include_sources + kind_param_sources
-    if rewritten:
+    # A library source is always copied under the service, even when it needs
+    # no rewriting: it lives outside native/, so referencing it as
+    # `native/<name>` would name a file that is not there — and the Docker
+    # build context is the service directory, so a path outside it could not be
+    # COPYed in anyway.
+    library_set = set(library_sources)
+    if rewritten or library_sources:
         expanded_dir = service_dir / "native" / "_expanded"
         expanded_dir.mkdir(parents=True, exist_ok=True)
         native_sources = []
@@ -1347,6 +1463,10 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
             elif source in kind_param_sources:
                 target = expanded_dir / source.name
                 target.write_text(resolve_kind_parameters(read_source(source)))
+                native_sources.append(f"native/_expanded/{source.name}")
+            elif source in library_set:
+                target = expanded_dir / source.name
+                target.write_text(read_source(source))
                 native_sources.append(f"native/_expanded/{source.name}")
             else:
                 native_sources.append(f"native/{source.name}")

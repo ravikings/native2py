@@ -11,6 +11,13 @@ execute_process(
 
 set(F2PY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/_expanded/petro_api.f90
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/_expanded/flash.f
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/_expanded/hydrau.f
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/_expanded/matsol.f
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/_expanded/pvtcor.f
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/_expanded/relperm.f
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/_expanded/simcor.f
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/_expanded/wellib.f
 )
 
 set(F2PY_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/petro_api${PY_EXT_SUFFIX}")

@@ -19,9 +19,21 @@ WORKDIR /build
 
 COPY . .
 
+# A wheel is a zip, and a zip records a modification time per entry, so two
+# builds of identical sources produced wheels with different SHA-256s. The
+# compiled extension inside was byte-identical both times — measured — but the
+# artifact you actually ship and sign was not. SOURCE_DATE_EPOCH is the
+# reproducible-builds convention every Python packaging tool honours for
+# exactly this. The value is arbitrary and fixed; 1980-01-01 is the earliest a
+# zip can represent.
+ENV SOURCE_DATE_EPOCH=315532800
+
 RUN pip install --no-cache-dir build scikit-build-core numpy meson ninja
 
-RUN pip wheel . -w /dist --no-build-isolation
+# --no-deps, and it is load-bearing: without it `pip wheel` downloads every
+# DEPENDENCY into /dist as well, and the `pip install /dist/*.whl` below then
+# installs those instead of the hash-locked ones — silently defeating the lock.
+RUN pip wheel . -w /dist --no-build-isolation --no-deps
 
 
 

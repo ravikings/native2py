@@ -388,9 +388,6 @@ Ordered by value per hour, not by workstream.
   a design, not a gap.
 - **STL container binding** (`std::vector`, `std::span`) — the highest-value C++
   IR extension, and the largest remaining C++ coverage gap.
-- **The `libraries:` linking gap for f2py.** Fortran services must still copy
-  sources into `native/`; the petro build needs all seven F77 decks alongside the
-  F90 facade.
 - **Migrating off f2py.** It is the constraint behind several IR compromises (no
   CHARACTER outputs, arrays forced to `intent(in,out)` to avoid allocating
   `MXCELL` elements per call). Revisit once 1.4 provides real extents.

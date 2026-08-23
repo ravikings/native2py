@@ -13,3 +13,5 @@ expose:
   - tubing_bhp
   - vogel_rate
   - last_error
+libraries:
+- petro

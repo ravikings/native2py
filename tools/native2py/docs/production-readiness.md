@@ -395,6 +395,12 @@ at the same time.
   [Exposing C++](cpp-guide.md#what-the-parser-supports).
 - No C language support at all, despite being in the project name/design.md
   scope.
+- ✅ fixed — **`libraries:` now works for Fortran.** It was C++-only, so a
+  Fortran service could name a shared library and get nothing: `petro_api`
+  built an extension and failed at import with `undefined symbol: iprvog_`.
+  The decks are compiled into the extension now (f2py links no target, so they
+  are vendored and compiled), and the image builds, runs, and reproduces every
+  golden value exactly.
 - Fortran: derived types aren't parsed. F77 argument direction is *inferred*
   by f2py from the routine body, not declared — usually right, but worth
   checking against the routine's own docs before trusting it. See

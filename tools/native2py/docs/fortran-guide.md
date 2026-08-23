@@ -305,9 +305,53 @@ reasons that predate native2py:
 compiler error rather than working around it — fixing the source ordering
 is the correct remedy.
 
+### Sharing decks between services: `libraries:`
+
+A facade usually calls into decks that are not its own. Name the library and
+they are compiled into the extension:
+
+```yaml
+name: petro_api
+language: fortran
+libraries:
+  - petro          # libraries/petro/**.f, plus its include/ directories
+expose:
+  functions:
+    - solution_gor
+```
+
+This works differently from the C++ side, and the difference is not cosmetic.
+C++ **links** a CMake target through `add_subdirectory`; `f2py -c` has no
+target to link — it takes a list of sources and compiles them itself. So
+native2py copies the library's sources into `native/_expanded/` alongside the
+service's own, expanding their INCLUDEs on the way, and hands the lot to f2py.
+
+Three consequences worth knowing:
+
+- **INCLUDE directories are discovered, not declared.** Any directory under a
+  named library containing `*.INC` joins the search path. Explicit
+  `include_paths:` still apply — these are added to them.
+- **The original tree stays read-only**, as everywhere else in native2py. What
+  gets rewritten is the copy under `native/_expanded/`.
+- **The Docker build context stays the service directory.** Everything the
+  build needs has been copied under it, so unlike a C++ service with
+  `libraries:`, you still build with `docker build -t petro_api:latest .` from
+  `services/petro_api/`.
+
+If the service has its own file with the same name as one in the library — the
+usual case, where the F90 facade was copied in — the service's copy wins and
+`generate` says so. Compiling both would be a duplicate-symbol link error.
+
+#### What this fixed
+
+`services/petro_api` bound its ten routines, produced an extension, and then
+failed at import with `undefined symbol: iprvog_`: the seven F77 decks the
+facade calls into were never compiled, because `libraries:` did nothing for
+Fortran. The image now builds and runs, and every entry point returns its
+recorded golden value exactly — including `tubing_bhp`, which is the one that
+reaches `IPRVOG` in `wellib.f`.
+
 ### Not yet supported
 
-- Shared Fortran libraries (`libraries:` is C++/CMake only — the f2py path
-  doesn't take `add_subdirectory`)
 - Derived types / structs
 - `COMMON` blocks exposed as readable/writable Python attributes
