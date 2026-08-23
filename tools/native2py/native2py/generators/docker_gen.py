@@ -76,6 +76,44 @@ _LANGUAGE_PIP_BUILD_TOOLS = {
     "fortran": ["meson", "ninja"],
 }
 
+# --- Crash containment (ROADMAP 2.2) --------------------------------------
+#
+# Legacy numerical code outside its validated envelope segfaults, calls
+# Fortran STOP, or hangs. None of those raise a Python exception; the process
+# simply dies or stops answering, and no `except` clause anywhere can see it.
+# A bare `uvicorn` is ONE process, so any of the three took the whole service
+# down and left nothing running to restart it.
+#
+# THE TOPOLOGY THAT SHIPS: a supervised worker pool.
+#   gunicorn's master process supervises N uvicorn workers. A worker that
+#   segfaults or STOPs is reaped and respawned; the master keeps the listening
+#   socket, so the service never stops accepting. `--timeout 60` is the part
+#   that covers HANGS: gunicorn kills a worker that has not completed its
+#   request in time, which no amount of exception handling can do.
+#   `--max-requests` recycles workers periodically, bounding the damage from
+#   native code that leaks rather than crashes.
+#
+# WHAT IT DOES NOT DO: per-request isolation. Requests sharing the crashed
+#   worker die with it. Containing a crash to only the request that caused it
+#   needs process-per-call, which puts marshalling cost on every request; that
+#   is a separate, opt-in tier and is not implemented. Anything taking
+#   untrusted input needs it — see docs/production-readiness.md.
+#
+# WHY THE FORTRAN DEFAULT IS ONE WORKER, AND IT IS NOT A THROUGHPUT OVERSIGHT
+#   COMMON blocks are per-PROCESS storage. With one worker, a client's
+#   `/pvt_set_fluid` and its follow-up `/solution_gor` at least reach the same
+#   COMMON. With several, they can land on different processes and the compute
+#   reads a COMMON that was never configured — turning an interleaving race
+#   into a straightforwardly wrong answer. Raising WEB_CONCURRENCY is correct
+#   ONLY for routines that carry no state across calls. gunicorn reads
+#   WEB_CONCURRENCY itself, so this is an env change, not an image rebuild.
+_LANGUAGE_DEFAULT_WORKERS = {
+    # Per-request instances, no process-global state the parser can see.
+    "cpp": 2,
+    # See above: >1 changes the semantics of stateful routines.
+    "fortran": 1,
+}
+
 
 def generate_dockerfile(
     service_name: str,
@@ -99,6 +137,22 @@ def generate_dockerfile(
 
     build_deps_str = " \\\n        ".join(build_deps)
     pip_build_tools = " ".join(["build"] + _LANGUAGE_PIP_BUILD_TOOLS.get(language, []))
+
+    workers = _LANGUAGE_DEFAULT_WORKERS.get(language, 1)
+    worker_note = (
+        "# One worker: COMMON blocks are per-process, so a configure call and\n"
+        "# the compute that reads it must reach the SAME process. Raise this\n"
+        "# only for routines that keep no state between calls.\n"
+        if language == "fortran"
+        else "# Per-request instances and no process-global state, so workers scale freely.\n"
+    )
+    crash_containment = (
+        "# Crash containment: gunicorn supervises the workers, so a segfault or\n"
+        "# Fortran STOP in native code kills one worker instead of the service,\n"
+        "# and --timeout reaps one that hangs. See docker_gen for the full note.\n"
+        f"{worker_note}"
+        f"ENV WEB_CONCURRENCY={workers}\n"
+    )
 
     # A service that links shared libraries needs them inside the build
     # context, and they live outside its own directory — so the context has
@@ -165,7 +219,14 @@ USER appuser
 
 HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')" || exit 1
 
-CMD ["uvicorn", "{package_name}.service:app", "--host", "0.0.0.0", "--port", "8000"]
+{crash_containment}
+CMD ["gunicorn", "{package_name}.service:app", \\
+     "--worker-class", "uvicorn_worker.UvicornWorker", \\
+     "--bind", "0.0.0.0:8000", \\
+     "--timeout", "60", \\
+     "--graceful-timeout", "30", \\
+     "--max-requests", "1000", \\
+     "--max-requests-jitter", "100"]
 """
 
 
@@ -188,8 +249,8 @@ _SERIAL_NAMESPACE = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")  # RFC 412
 # the SBOM should record what the generated pyproject actually declares, and
 # a silent drift between the two is something a reviewer should see as a diff.
 _LANGUAGE_RUNTIME_PYTHON_DEPS = {
-    "cpp": ["fastapi", "uvicorn"],
-    "fortran": ["fastapi", "uvicorn", "numpy"],
+    "cpp": ["fastapi", "uvicorn", "gunicorn", "uvicorn-worker"],
+    "fortran": ["fastapi", "uvicorn", "gunicorn", "uvicorn-worker", "numpy"],
 }
 
 # Files the SBOM treats as "native sources compiled in". A wheel wrapping a

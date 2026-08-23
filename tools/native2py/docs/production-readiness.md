@@ -81,13 +81,61 @@ both measured and pinned by tests in `tests/test_gateway_gen.py`:
   response wins. Do not enable debug on a deployed service.
 - **Python-level failures only.**
 
-Which leaves the real hazard undiminished: **native code that segfaults,
-aborts, or hangs takes down the whole worker process** (or the whole process,
-if you run one worker), not just the one request. FastAPI/Python can't catch a
-SIGSEGV, and no exception handler will ever see it. If your native function
-isn't provably memory-safe for arbitrary input, this is the single biggest
-risk in taking this to production as generated. No sandboxing, timeout, or
-process-per-call isolation exists here.
+Which leaves the real hazard: **native code that segfaults, aborts, or hangs**
+raises no Python exception at all. FastAPI can't catch a SIGSEGV, and no
+`except` clause will ever see one. That is addressed at the process level
+instead — see the next section.
+
+### Crash containment — the topology decision
+
+**Decided (2026-08-23): a supervised worker pool. Not process-per-call.**
+
+Generated images no longer run a bare `uvicorn`. They run **gunicorn**
+supervising `uvicorn-worker` processes:
+
+```dockerfile
+CMD ["gunicorn", "svc.service:app", \
+     "--worker-class", "uvicorn_worker.UvicornWorker", \
+     "--bind", "0.0.0.0:8000", \
+     "--timeout", "60", "--graceful-timeout", "30", \
+     "--max-requests", "1000", "--max-requests-jitter", "100"]
+```
+
+**Verified against a real gunicorn, not asserted from the text.** A genuine
+`SIGSEGV` (`ctypes.string_at(0)`) killed a worker; gunicorn logged
+`Worker (pid:20372) was sent SIGSEGV!`, booted a replacement, and the service
+answered the next request without interruption. A request that slept for 600s
+under `--timeout 5` was reaped and the service stayed up.
+
+What each flag is actually for:
+
+| Flag | Failure mode it covers |
+|---|---|
+| supervision (gunicorn master) | segfault, `abort()`, Fortran `STOP` — worker is reaped and respawned; the master holds the listening socket so the service never stops accepting |
+| `--timeout 60` | **hangs** — the only mechanism here that can address them. A worker stuck inside native code never returns to Python, so nothing in-process can time it out |
+| `--max-requests` | native code that leaks rather than crashes — workers are recycled before it accumulates |
+
+**What this does not do: per-request isolation.** Requests sharing the crashed
+worker die with it. Containing a crash to *only* the request that caused it
+needs process-per-call, which puts marshalling cost on every request. That is
+a deliberate second tier and it is **not implemented**. If your native code
+takes untrusted input, or you can't argue it's memory-safe for arbitrary
+input, you need that tier and this isn't enough.
+
+**Why one worker is the Fortran default.** COMMON blocks are per-*process*
+storage. With one worker, a client's `/pvt_set_fluid` and its follow-up
+`/solution_gor` at least reach the same COMMON. With several, they can land on
+different processes and the compute reads a COMMON that was never configured —
+turning the interleaving race described below into a plainly wrong answer.
+`ENV WEB_CONCURRENCY=1` for Fortran, `2` for C++ (per-request instances, no
+process-global state). gunicorn reads `WEB_CONCURRENCY` itself, so raising it
+is an env change, not an image rebuild — but raise it only for routines that
+keep no state between calls.
+
+The honest cost of that default: with a single worker there is a sub-second
+gap during respawn where the service has no worker. With two or more, the
+survivor serves immediately and the crash is invisible to other callers. For
+stateful Fortran, correctness wins that trade; for C++ it doesn't have to.
 
 ### API surface
 

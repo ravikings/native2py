@@ -7,9 +7,18 @@ _BUILD_REQUIRES = {
     "fortran": '["scikit-build-core", "numpy"]',
 }
 
+# gunicorn supervises the worker processes; see docker_gen's CMD and
+# docs/deployment-topologies.md. It is a RUNTIME dependency, not a dev one:
+# a bare `uvicorn` is a single process, so one segfault in native code takes
+# the whole service down with nothing left to restart it.
+#
+# `uvicorn-worker` rather than `uvicorn.workers.UvicornWorker`: the in-uvicorn
+# worker class is deprecated and slated for removal, and shipping a deprecated
+# import path inside generated code nobody is allowed to hand-edit is how a
+# service breaks on a routine dependency bump.
 _DEPENDENCIES = {
-    "cpp": '["fastapi", "uvicorn"]',
-    "fortran": '["fastapi", "uvicorn", "numpy"]',
+    "cpp": '["fastapi", "uvicorn", "gunicorn", "uvicorn-worker"]',
+    "fortran": '["fastapi", "uvicorn", "gunicorn", "uvicorn-worker", "numpy"]',
 }
 
 

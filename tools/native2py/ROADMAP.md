@@ -9,9 +9,10 @@ The goal is not a better compiler. It is this acceptance test:
 Every item is judged against one of two questions. **Can we ingest more code
 without editing it?** **Is the resulting API safe to operate?**
 
-Status as of the working tree on 2026-08-22 (post-`2380fc7`). Test suite:
-**238 → 555 passing, 1 skipped** with `fparser` installed; without it 30 of
-those skip cleanly. The suite is green under **both** Fortran backends.
+Status as of `00b632f` (2026-08-23). Test suite: **238 → 568 passing, 0
+skipped**, green under both Fortran backends and on Python 3.10–3.12.
+**CI is green on all six legs** — the first fully green run in the project's
+history, and it took three real bugs to get there (see W0).
 
 ---
 
@@ -19,8 +20,8 @@ those skip cleanly. The suite is green under **both** Fortran backends.
 
 | | Status |
 |---|---|
-| **W1** Widen unmodified ingestion | 1.4 seam + fparser2 reader landed at **full parity**; `auto` not yet flipped (your call) |
-| **W2** Make the generated API safe to operate | Concurrency serialised, array bounds capped; crash containment and auth/observability open |
+| **W1** Widen unmodified ingestion | 1.4 done — fparser2 is now the default when installed, on measured evidence |
+| **W2** Make the generated API safe to operate | Concurrency serialised, bounds capped, crash containment tier 1 shipped; auth/observability and per-request isolation open |
 | **W3** Codegen and IR hygiene | IR versioned, differential harness built; `ast` migration still deferred |
 | **W0** Adoption prerequisites (added later) | Done; CI still unproven until first push |
 
@@ -67,16 +68,17 @@ audit; it is now populated.
 | — | Non-const `char*` bound as `str` | Refused — it is an output buffer with no length |
 | — | Overloads, namespaces, const fields, enums, struct ctors | See `DEFECTS.md` Class B |
 
-### In progress — 1.4, replace the regex front end with fparser2
+### Done — 1.4, fparser2 is now the default front end
 
 **The seam has landed.** `parsers/fortran.py` is now a front door that picks a
 backend: `fortran_fparser.py` (a real fparser2 parse tree) or
 `fortran_regex.py` (the original line/regex reader, kept dependency-free and as
 the parity yardstick). Selection is by `backend=` argument,
-`$NATIVE2PY_FORTRAN_PARSER` (`auto` | `fparser2` | `regex`), then config;
-`auto` still resolves to `regex` until the parity harness is green across the
-whole corpus, and asking for `fparser2` on a machine without it is an error,
-not a silent fallback — mirroring the Clang/regex arrangement on the C++ side.
+`$NATIVE2PY_FORTRAN_PARSER` (`auto` | `fparser2` | `regex`), then config.
+**`auto` now resolves to `fparser2` when fparser is importable**, and to the
+regex reader otherwise — the same arrangement the C++ side has with Clang.
+Asking for `fparser2` on a machine without it is an error, not a silent
+fallback.
 
 The original recommendation stands: **`fparser` (fparser2), pinned
 `>=0.2,<0.3`.** BSD-3-Clause, ~116k downloads/month, STFC
@@ -106,13 +108,27 @@ executable statements`, `Unclassifiable statement`). The regex reader accepted
 them because it has no grammar, so the tests had been encoding its quirks as
 requirements. fparser2 was right to refuse.
 
-**What remains before flipping `auto`** is a judgement call rather than more
-evidence. Flipping means a machine with `fparser` installed gets the tree parser
-and one without gets the regex reader — the same arrangement C++ already has
-with Clang. The risk is real though: fparser2 *correctly* refuses invalid
-Fortran that the regex reader silently accepted, so an existing service built on
-technically-invalid source would start failing. That is a migration decision,
-not a technical one.
+**The flip is done, and one argument decided it.** The objection was never
+parse quality — it was that fparser2 *correctly* refuses invalid Fortran the
+regex reader silently accepted, so an existing service could break on upgrade.
+The parity harness cannot answer that: it only compares files both backends
+accept.
+
+What answers it is that native2py **must compile the source with gfortran
+anyway** — `f2py -c` shells out to it. Any file gfortran rejects could never
+have produced a working service, whichever parser read it first. So the
+question reduces to: does fparser2 refuse anything **gfortran accepts**?
+Measured over 180 files — the nine real 1988–1997 decks in `libraries/petro`
+plus numpy's own `f2py/tests/src` corpus, which exists to cover the edge cases
+f2py must survive — each parsed with fparser2 and compiled with
+`gfortran -fsyntax-only`:
+
+    files where fparser2 is STRICTER than gfortran: 0
+
+All 180 accepted by both. `parser: regex` and `NATIVE2PY_FORTRAN_PARSER=regex`
+remain as escape hatches, and a machine without fparser is unaffected.
+
+What the tree parser now unblocks, still to be built on it:
 
 What is still broken without it:
 
@@ -172,11 +188,28 @@ dependency at parse time and generating a **session-shaped** API (`POST /session
 returning a handle). The latter is the only option that honestly describes what
 the native code does, and it depends on 1.4's symbol table.
 
-**2.2 — crash containment.** A Fortran `STOP`, a segfault, or an out-of-bounds
-write takes down the whole worker process, not just the request. Legacy
-numerical code does all three outside its validated envelope. Needs a supervised
-worker pool with request-level isolation — a deployment-topology change, not a
-codegen change, and it needs a decision before anyone writes code.
+**2.2 — crash containment. Tier 1 decided and shipped; tier 2 open.**
+
+Generated images ran a bare `uvicorn` — one process, so a segfault, a Fortran
+`STOP` or a hang took the whole service down with nothing left to restart it.
+They now run **gunicorn supervising uvicorn workers**, with `--timeout` (the
+only thing here that can address a hang, since a worker stuck in native code
+never returns to Python) and `--max-requests` recycling.
+
+Verified against a real gunicorn: a genuine SIGSEGV killed a worker, gunicorn
+logged it and booted a replacement, and the service answered the next request.
+
+Fortran defaults to `WEB_CONCURRENCY=1` because COMMON is per-process — with
+more workers a configure call and the compute that reads it can land on
+different processes, which is worse than the interleaving race in 2.1b, not
+better. C++ defaults to 2.
+
+**Still open — tier 2, per-request isolation.** Requests sharing the crashed
+worker still die with it. Containing a crash to only the request that caused
+it needs process-per-call, which puts marshalling cost on every request.
+Required for untrusted input or any native code whose memory safety cannot be
+argued. Deliberately not implemented: the cost is real and the trade should be
+explicit.
 
 **2.3 — input bounds. Done, with one part deferred.** Array parameters are
 annotated `Field(max_length=MAX_ARRAY_ITEMS)` (`NATIVE2PY_MAX_ARRAY_ITEMS`,
@@ -320,23 +353,24 @@ has been dropped from `pyproject.toml` and `requirements.txt`.
 
 Ordered by value per hour, not by workstream.
 
-1. **Push once so CI actually runs.** Hours, and it is the only way to learn
-   whether the runner assumptions hold. (The security contact is closed —
-   GitHub private vulnerability reporting is enabled and `SECURITY.md` points
-   at it.)
-2. **1.4 — flip `auto` to fparser2.** The seam, the fparser2 reader,
-   `schema_version` and the corpus harness are all in, and the backend's whole
-   suite passes once `fparser` is installed. What remains is judging the parity
-   harness across the corpus and changing the default. This is what stops the
-   *next* unmodified library hitting the `&` class of defect, and it unblocks
-   2.1b and the rest of 2.3.
-3. **2.2 crash containment** — needs a topology decision from you first, and
-   with the error-handling work done it is now unambiguously the largest
-   remaining operational risk: no Python-level handler can see a segfault.
-4. **2.4 auth and rate limiting** — the generated API is still unauthenticated.
-5. **2.1b session-shaped API** — depends on 1.4.
-6. **2.4 observability proper** (request logging, request id, readiness,
-   OpenTelemetry) and **3.3 `ast` migration** — real, deferrable.
+1. **2.4 auth and rate limiting.** The generated API is still completely
+   unauthenticated with no request-rate limit. Generated-code work, so it
+   lands once for every service.
+2. **2.4 observability proper** — request logging with a request id, a
+   readiness probe distinct from `/healthz` liveness, and native-vs-HTTP
+   timing. Failures already carry a correlatable `error_id`; nothing else does.
+3. **2.2 tier 2, per-request isolation** — process-per-call. Required before
+   untrusted input. Deliberately deferred: real per-request cost.
+4. **2.1b session-shaped API** — now unblocked by 1.4's symbol table, and more
+   urgent than it looks: the crash-containment default pins Fortran to one
+   worker precisely because this is unsolved.
+5. **Reproducible generated builds** — `apt-get` is unpinned, the generated
+   `pip install` has no `--require-hashes`, and `f2py` shells out to a system
+   gfortran the SBOM never records.
+6. **Supply chain** — no dependency vulnerability scan, no image signing, no
+   `--read-only`/dropped capabilities.
+7. **3.3 `ast` migration**, **K8s manifests**, **release/versioning story** —
+   real, deferrable.
 
 ## Out of scope
 

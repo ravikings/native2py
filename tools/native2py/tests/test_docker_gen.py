@@ -218,3 +218,70 @@ def test_cpp_builder_does_not_pull_in_meson():
 
     assert "pip install --no-cache-dir build\n" in dockerfile
     assert "meson" not in dockerfile
+
+
+# --- crash containment (ROADMAP 2.2) -------------------------------------
+#
+# Segfaults, Fortran STOP and hangs raise no Python exception — the process
+# dies or stops answering, and no `except` can see it. A bare `uvicorn` is one
+# process, so any of the three took the whole service down.
+#
+# Verified against a real gunicorn, not just asserted on the text: a genuine
+# SIGSEGV (ctypes.string_at(0)) killed a worker, gunicorn logged
+# "Worker (pid:...) was sent SIGSEGV!", booted a replacement, and the service
+# kept answering. A 600s hang under `--timeout 5` likewise left the service up.
+
+
+@pytest.mark.parametrize("language", ["fortran", "cpp"])
+def test_the_service_runs_under_a_supervisor_not_bare_uvicorn(language):
+    dockerfile = docker_gen.generate_dockerfile("svc", language, "svc")
+
+    assert '"gunicorn"' in dockerfile
+    # A bare `uvicorn` entrypoint is exactly the single-process shape this
+    # replaces; if it comes back, crash containment is silently gone.
+    assert 'CMD ["uvicorn"' not in dockerfile
+    # Deprecated in uvicorn and slated for removal — generated code must not
+    # depend on it.
+    assert "uvicorn.workers" not in dockerfile
+    assert "uvicorn_worker.UvicornWorker" in dockerfile
+
+
+@pytest.mark.parametrize("language", ["fortran", "cpp"])
+def test_a_hung_request_is_reaped(language):
+    # The ONLY mechanism here that addresses hangs. Exception handling cannot:
+    # a worker stuck inside native code never returns to Python.
+    dockerfile = docker_gen.generate_dockerfile("svc", language, "svc")
+
+    assert '"--timeout", "60"' in dockerfile
+    assert '"--graceful-timeout", "30"' in dockerfile
+    # Bounds damage from native code that leaks instead of crashing.
+    assert '"--max-requests", "1000"' in dockerfile
+
+
+def test_fortran_defaults_to_one_worker_because_common_is_per_process():
+    # Not a throughput oversight. With several workers a client's configure
+    # call and the compute that reads it can land on DIFFERENT processes, so
+    # the compute reads a COMMON block that was never configured — an
+    # interleaving race becomes a plainly wrong answer.
+    dockerfile = docker_gen.generate_dockerfile("petro_api", "fortran", "petro_api")
+
+    assert "ENV WEB_CONCURRENCY=1" in dockerfile
+    assert "COMMON" in dockerfile  # and the reason travels with the image
+
+
+def test_cpp_scales_workers_freely():
+    dockerfile = docker_gen.generate_dockerfile("calculator", "cpp", "calculator")
+
+    assert "ENV WEB_CONCURRENCY=2" in dockerfile
+
+
+def test_the_supervisor_is_a_declared_runtime_dependency():
+    # A CMD naming gunicorn in an image that never installed it is a container
+    # that exits immediately. The generated pyproject and the SBOM must agree.
+    from native2py.generators import pyproject_gen
+
+    for language in ("cpp", "fortran"):
+        pyproject = pyproject_gen.generate_pyproject("svc", language)
+        assert '"gunicorn"' in pyproject
+        assert '"uvicorn-worker"' in pyproject
+        assert "gunicorn" in docker_gen._LANGUAGE_RUNTIME_PYTHON_DEPS[language]
