@@ -42,6 +42,7 @@ from .generators import (
     middleware_gen,
     gateway_gen,
     golden_gen,
+    k8s_gen,
     pybind_gen,
     pyproject_gen,
     python_pkg_gen,
@@ -702,6 +703,51 @@ def docker(name: str, build: bool) -> None:
             )
     elif build:
         _run(["docker", "build", "-t", f"{name}:latest", "."], cwd=service_dir)
+
+
+@main.command("k8s")
+@click.argument("name")
+@click.option("--image", default=None, help="Image reference to deploy. Defaults to <name>:latest.")
+@click.option("--replicas", default=2, show_default=True, help="Initial replica count.")
+@click.option(
+    "--output",
+    "output",
+    default=None,
+    help="Where to write the manifests. Defaults to infrastructure/kubernetes/<name>.yaml.",
+)
+def k8s(name: str, image: str | None, replicas: int, output: str | None) -> None:
+    """Generate Kubernetes manifests for services/<name>.
+
+    Replicas, resources and the image are starting points. The security
+    context and the probe wiring are not — see generators/k8s_gen.py.
+    """
+    service_dir = _service_dir(name)
+    config = _load_config(service_dir)
+
+    manifests = k8s_gen.generate_k8s_manifests(
+        name,
+        config.language,
+        image,
+        auth=config.api.auth,
+        replicas=replicas,
+    )
+    target = Path(output) if output else Path("infrastructure/kubernetes") / f"{name}.yaml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(manifests)
+
+    click.echo(f"Wrote {target}")
+    click.echo(f"  readiness -> /readyz (drains on SIGTERM), liveness -> /healthz")
+    if config.language == "fortran":
+        click.echo(
+            "  WEB_CONCURRENCY=1 — COMMON blocks are per-process. Scale with "
+            "replicas, not workers."
+        )
+    if config.api.auth == "api_key":
+        click.echo(
+            f"  Create the Secret first, or the pod will refuse to start:\n"
+            f"    kubectl create secret generic {name}-api-keys "
+            '--from-literal=keys="$(openssl rand -hex 32)"'
+        )
 
 
 @main.command()

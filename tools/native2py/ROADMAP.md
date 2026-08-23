@@ -9,7 +9,7 @@ The goal is not a better compiler. It is this acceptance test:
 Every item is judged against one of two questions. **Can we ingest more code
 without editing it?** **Is the resulting API safe to operate?**
 
-Status as of `00b632f` (2026-08-23). Test suite: **238 → 568 passing, 0
+Status as of `fbbd285`+ (2026-08-23). Test suite: **238 → 595 passing, 0
 skipped**, green under both Fortran backends and on Python 3.10–3.12.
 **CI is green on all six legs** — the first fully green run in the project's
 history, and it took three real bugs to get there (see W0).
@@ -353,24 +353,28 @@ has been dropped from `pyproject.toml` and `requirements.txt`.
 
 Ordered by value per hour, not by workstream.
 
-1. **2.4 auth and rate limiting.** The generated API is still completely
-   unauthenticated with no request-rate limit. Generated-code work, so it
-   lands once for every service.
-2. **2.4 observability proper** — request logging with a request id, a
-   readiness probe distinct from `/healthz` liveness, and native-vs-HTTP
-   timing. Failures already carry a correlatable `error_id`; nothing else does.
-3. **2.2 tier 2, per-request isolation** — process-per-call. Required before
-   untrusted input. Deliberately deferred: real per-request cost.
-4. **2.1b session-shaped API** — now unblocked by 1.4's symbol table, and more
+1. **2.2 tier 2, per-request isolation** — process-per-call. Required before
+   untrusted input, and the last thing standing between "supervised" and
+   "contained". Deliberately deferred so far because it costs marshalling on
+   every request; that trade should be made deliberately.
+2. **2.1b session-shaped API** — unblocked by 1.4's symbol table, and more
    urgent than it looks: the crash-containment default pins Fortran to one
-   worker precisely because this is unsolved.
-5. **Reproducible generated builds** — `apt-get` is unpinned, the generated
+   worker, and the Kubernetes manifests pin it to one worker per pod, both
+   *because this is unsolved*. Fixing it lifts a throughput ceiling in two
+   places at once.
+3. **Reproducible generated builds** — `apt-get` is unpinned, the generated
    `pip install` has no `--require-hashes`, and `f2py` shells out to a system
-   gfortran the SBOM never records.
-6. **Supply chain** — no dependency vulnerability scan, no image signing, no
-   `--read-only`/dropped capabilities.
-7. **3.3 `ast` migration**, **K8s manifests**, **release/versioning story** —
-   real, deferrable.
+   gfortran the SBOM never records. Two machines with different gfortran
+   produce an identical SBOM and different binaries, which undercuts the
+   "same answers" claim the golden values exist to support.
+4. **Authorization, not just authentication** — a valid API key today can call
+   every endpoint. Per-key scopes are the obvious next step.
+5. **OpenTelemetry, and splitting native time from HTTP overhead** — request
+   duration is measured; the split is not.
+6. **Image signing** (cosign) and a **release story** (published wheels, a
+   changelog, an API-compat check).
+7. **3.3 `ast` migration**, **CORS**, **C language support** — real,
+   deferrable.
 
 ## Out of scope
 

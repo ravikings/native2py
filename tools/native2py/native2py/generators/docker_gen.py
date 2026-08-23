@@ -213,9 +213,19 @@ COPY --from=builder /dist /dist
 
 RUN pip install --no-cache-dir /dist/*.whl
 
-# design.md section 21: run as non-root.
+# design.md section 21: run as non-root. UID is explicit so a Kubernetes
+# `runAsUser: 1000` and `runAsNonRoot: true` match the image rather than
+# fighting it.
 RUN useradd --create-home --uid 1000 appuser
 USER appuser
+
+# The generated Kubernetes manifests set readOnlyRootFilesystem: true. Python
+# writing .pyc files next to the source would fail against that, so the
+# interpreter is told not to. PYTHONUNBUFFERED so logs reach the collector as
+# they happen rather than when a buffer fills — a service that crashes with
+# its last log lines still buffered is one you cannot debug.
+ENV PYTHONDONTWRITEBYTECODE=1 \\
+    PYTHONUNBUFFERED=1
 
 HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')" || exit 1
 
