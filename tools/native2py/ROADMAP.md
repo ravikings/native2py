@@ -278,9 +278,28 @@ has been dropped from `pyproject.toml` and `requirements.txt`.
 
 ### Open
 
-- **CI has never actually run.** Runner assumptions are untested until first
-  push: apt package names, macOS gfortran availability, libclang wheels on
-  3.10–3.12. Expect to iterate.
+- ~~**CI has never actually run.**~~ **It has now, and it earned its keep on
+  the first run** (`32616648280`). ubuntu/macOS × 3.10/3.11 passed; **both
+  3.12 legs failed**, on two real bugs neither laptop could have shown:
+
+  1. **Every generated Fortran image was unbuildable on Python 3.12.** The
+     generated CMake runs `python -m numpy.f2py -c`; distutils is gone in
+     3.12, so f2py drives its meson backend and shells out to `meson`. The
+     generated Dockerfile installed `build-essential gfortran cmake` and the
+     base image is `python:3.12-slim`, so the build died with
+     `FileNotFoundError: 'meson'`. Reproduced outside CI on a 3.12
+     interpreter — `f2py -c` exits 1 and emits no `.so`; with `meson` and
+     `ninja` installed it exits 0 and the extension imports and computes.
+     Fixed in `docker_gen` (pip, not apt — Debian stable's meson is older
+     than f2py's backend wants) and in the `[build]` extra.
+  2. **`setuptools` is absent from a 3.12 venv**, so the wheel-contents guard
+     in `tests/test_golden.py` errored. Declared in `[test]`.
+
+  Both were invisible to `pytest` on 3.10/3.11 and to every local run. The
+  suite is now **559 passed, 0 skipped on 3.12**, verified on a real 3.12
+  interpreter before pushing.
+
+- **Runner assumptions beyond that are still only proven for one commit.**
 - **A skip is not a pass.** `fparser` was imported by the new Fortran backend
   but declared in no dependency file, so all ~30 of its tests skipped silently
   on every machine — the suite went green with the backend untested. It is now

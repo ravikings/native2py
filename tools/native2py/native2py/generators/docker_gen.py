@@ -59,6 +59,23 @@ _LANGUAGE_RUNTIME_DEPS = {
     "fortran": ["libgfortran5"],
 }
 
+# Extra pip-installed build tools, on top of `build`.
+#
+# WHY MESON IS NOT OPTIONAL FOR FORTRAN
+#   The generated CMake runs `python -m numpy.f2py -c`. distutils was removed
+#   in Python 3.12, so numpy's f2py falls back to its meson backend and shells
+#   out to a `meson` executable. BASE_IMAGE is python:3.12-slim. Without this,
+#   every generated Fortran image fails to build with
+#   `FileNotFoundError: [Errno 2] No such file or directory: 'meson'` — which
+#   is exactly how CI found it, on the first run that ever executed.
+#
+#   Installed with pip rather than apt on purpose: Debian stable's `meson` is
+#   older than what f2py's backend expects, and pinning the toolchain matters
+#   more here than saving a layer. ninja comes along because meson drives it.
+_LANGUAGE_PIP_BUILD_TOOLS = {
+    "fortran": ["meson", "ninja"],
+}
+
 
 def generate_dockerfile(
     service_name: str,
@@ -81,6 +98,7 @@ def generate_dockerfile(
         )
 
     build_deps_str = " \\\n        ".join(build_deps)
+    pip_build_tools = " ".join(["build"] + _LANGUAGE_PIP_BUILD_TOOLS.get(language, []))
 
     # A service that links shared libraries needs them inside the build
     # context, and they live outside its own directory — so the context has
@@ -102,7 +120,7 @@ COPY services/{service_name} ./services/{service_name}
 
 WORKDIR /build/services/{service_name}
 
-RUN pip install --no-cache-dir build
+RUN pip install --no-cache-dir {pip_build_tools}
 
 RUN pip wheel . -w /dist
 """
@@ -111,11 +129,11 @@ RUN pip wheel . -w /dist
             f"# Build from services/{service_name}/:\n"
             f"#   docker build -t {service_name}:latest .\n"
         )
-        build_stage = """WORKDIR /build
+        build_stage = f"""WORKDIR /build
 
 COPY . .
 
-RUN pip install --no-cache-dir build
+RUN pip install --no-cache-dir {pip_build_tools}
 
 RUN pip wheel . -w /dist
 """

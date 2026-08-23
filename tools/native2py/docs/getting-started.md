@@ -31,6 +31,21 @@ a system toolchain — `cmake`, `ninja`, a C++ compiler, and `gfortran` for
 Fortran services. `bootstrap.sh` warns if any are missing; see
 [Troubleshooting](troubleshooting.md) to install them.
 
+!!! warning "Fortran on Python 3.12+ needs `meson`"
+
+    `native2py build` runs `python -m numpy.f2py -c`. Python 3.12 removed
+    `distutils`, so f2py switches to its **meson** backend and shells out to a
+    `meson` executable. Without it the build fails with
+    `FileNotFoundError: [Errno 2] No such file or directory: 'meson'` after
+    printing what looks like a successful wrapper generation — the wrappers
+    really are written, then the compile step dies.
+
+    `meson` and `ninja` are in the `[build]` extra, so
+    `pip install -e ".[build]"` (or `requirements.txt`) covers it. The
+    generated Dockerfile installs them in its builder stage for the same
+    reason. Install with pip rather than apt: Debian stable's `meson` is older
+    than f2py's backend expects.
+
 ## 2. Write some C++
 
 Keep your source outside `services/` — native2py copies it in, and

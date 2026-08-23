@@ -183,3 +183,38 @@ def test_write_sbom_writes_deterministic_file(tmp_path):
     assert path.name == docker_gen.SBOM_FILENAME
     assert path.read_bytes() == first
     assert json.loads(first)["bomFormat"] == "CycloneDX"
+
+
+# --- the meson backend (found by CI's first-ever run) ---------------------
+#
+# The generated CMake runs `python -m numpy.f2py -c`. distutils was removed in
+# Python 3.12, so numpy's f2py switches to its meson backend and shells out to
+# a `meson` executable — and BASE_IMAGE is python:3.12-slim. Before this, every
+# generated Fortran image failed with
+# `FileNotFoundError: [Errno 2] No such file or directory: 'meson'`.
+#
+# Reproduced directly, outside the container: on a 3.12 interpreter with numpy
+# 2.5 and no meson on PATH, `f2py -c` exits 1 and produces no .so; with meson
+# and ninja pip-installed it exits 0 and the extension imports and computes.
+
+
+@pytest.mark.parametrize("libraries", [None, ["petro"]])
+def test_fortran_builder_installs_meson_and_ninja(libraries):
+    # Both build-context shapes: the library-linking branch and the plain one
+    # are separate f-strings, and the first fix patched only one of them.
+    dockerfile = docker_gen.generate_dockerfile(
+        "petro_api", "fortran", "petro_api", libraries=libraries
+    )
+
+    assert "pip install --no-cache-dir build meson ninja" in dockerfile
+    # Must be installed BEFORE the wheel build that invokes f2py, not after.
+    assert dockerfile.index("meson ninja") < dockerfile.index("pip wheel .")
+
+
+def test_cpp_builder_does_not_pull_in_meson():
+    # pybind11/CMake needs nothing from f2py. Installing meson everywhere would
+    # be cargo-culting a Fortran-specific fix into every image.
+    dockerfile = docker_gen.generate_dockerfile("calculator", "cpp", "calculator")
+
+    assert "pip install --no-cache-dir build\n" in dockerfile
+    assert "meson" not in dockerfile

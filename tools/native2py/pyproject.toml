@@ -48,10 +48,27 @@ build = [
     "numpy>=1.26",
     "fastapi>=0.110",
     "uvicorn>=0.29",
+    # `python -m numpy.f2py -c` needs these on Python >= 3.12: distutils is
+    # gone, so f2py uses its meson backend and shells out to a `meson`
+    # executable. Without them every Fortran build dies with
+    # `FileNotFoundError: 'meson'`. Not Fortran-only extras because the build
+    # extra is what CI and the docs both install.
+    "meson>=1.1",
+    "ninja>=1.11",
 ]
 test = [
     "pytest>=8.0",
     "httpx>=0.27",
+    # Python 3.12 venvs no longer ship setuptools. tests/test_golden.py imports
+    # `find_packages` to check the template ships in the wheel; declaring it
+    # keeps that test RUNNING rather than turning it into a skip.
+    "setuptools>=68",
+    # The wheel-contents check in tests/test_golden.py importorskips these.
+    # Declaring them is the difference between verifying the golden template
+    # actually ships and merely intending to — the fparser hole was this same
+    # shape, and CI's first run proved the cost of it.
+    "build>=1.0",
+    "wheel>=0.42",
 ]
 
 [project.scripts]
