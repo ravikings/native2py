@@ -131,6 +131,27 @@ def test_generates_f2py_cmake(reservoir_source):
     assert "${CMAKE_CURRENT_SOURCE_DIR}/native/pressure.f90" in cmake  # must be absolute, not relative
 
 
+def test_f2py_backend_is_pinned_to_meson(reservoir_source):
+    # Left implicit, f2py picks its backend from the Python version — meson on
+    # 3.12+, distutils below — so a generated service would build through two
+    # different toolchains depending on the interpreter. Worse, the distutils
+    # path is broken against modern setuptools: `numpy.distutils` calls a
+    # `Compiler.__init__` signature that no longer exists, and the build dies
+    # with "takes from 1 to 3 positional arguments but 4 were given".
+    #
+    # Reproduced on 3.11 + numpy 2.4 + setuptools 84 (default backend exits 1,
+    # meson exits 0 and the extension computes), and found in CI as a macOS
+    # 3.10/3.11 failure while 3.12 passed.
+    module = fortran_parser.parse_source(
+        reservoir_source, ExposeConfig(functions=["calculate_pressure"])
+    )
+    cmake = f2py_gen.generate_cmake(module, "reservoir", ["native/pressure.f90"])
+
+    assert "--backend meson" in cmake
+    # Before -m, because f2py treats everything after the module name as source.
+    assert cmake.index("--backend meson") < cmake.index("-m pressure")
+
+
 def test_generates_router_without_shadowing_import(reservoir_source):
     module = fortran_parser.parse_source(reservoir_source, ExposeConfig(functions=["calculate_pressure"]))
     router_py = python_pkg_gen.generate_router_py(module, "reservoir")

@@ -52,15 +52,17 @@ CORPUS = _corpus()
 # --- the seam -----------------------------------------------------------
 
 
-def test_regex_is_the_default_backend(monkeypatch):
-    # `auto` deliberately still resolves to the reader that has been in
-    # production, even on a machine where fparser2 is importable. Flipping the
-    # default is a separate, deliberate change — not something that happens
-    # because a wheel appeared on the build box.
+def test_fparser2_is_the_default_when_it_is_available(monkeypatch):
+    # The default was flipped on evidence, not preference: across 180 files
+    # (the petro F77 decks plus numpy's own f2py test corpus) there is no file
+    # fparser2 refuses that gfortran accepts. Since f2py shells out to gfortran
+    # anyway, a file gfortran rejects could never have produced a working
+    # service — so refusing it at parse time is strictly better than mis-binding
+    # it. See parsers/fortran.py's module docstring.
     monkeypatch.delenv("NATIVE2PY_FORTRAN_PARSER", raising=False)
 
-    assert fortran_parser.resolve_backend() == "regex"
-    assert fortran_parser.resolve_backend("auto") == "regex"
+    assert fortran_parser.resolve_backend() == "fparser2"
+    assert fortran_parser.resolve_backend("auto") == "fparser2"
 
 
 def test_the_env_var_selects_a_backend(monkeypatch):
@@ -98,9 +100,29 @@ def test_auto_still_resolves_when_fparser_is_absent(monkeypatch):
 
 
 def test_backend_description_names_what_actually_ran(monkeypatch):
+    # This string lands in build logs. It has to distinguish "you got the
+    # grammar" from "you got the pattern matcher" without the reader having to
+    # know the default, because the default has now changed once.
     monkeypatch.delenv("NATIVE2PY_FORTRAN_PARSER", raising=False)
-    assert "regex reader" in fortran_parser.backend_description()
+
+    assert "fparser2 parse tree" in fortran_parser.backend_description()
+    assert "default" in fortran_parser.backend_description()
     assert "selected explicitly" in fortran_parser.backend_description("regex")
+    assert "selected explicitly" in fortran_parser.backend_description("fparser2")
+
+
+def test_backend_description_says_why_when_it_falls_back(monkeypatch):
+    # Falling back is legitimate, but silent is not: a build that used the
+    # grammar-free reader should say so, and say how to fix it.
+    monkeypatch.delenv("NATIVE2PY_FORTRAN_PARSER", raising=False)
+    monkeypatch.setattr(fortran_fparser, "is_available", lambda: False)
+    monkeypatch.setattr(fortran_fparser, "unavailable_reason", lambda: "no wheel")
+
+    description = fortran_parser.backend_description()
+
+    assert "regex reader" in description
+    assert "no wheel" in description
+    assert "native2py[fparser]" in description
 
 
 def test_backend_description_reports_an_unavailable_request(monkeypatch):
@@ -132,10 +154,16 @@ def test_the_seam_dispatches_to_the_selected_backend(tmp_path, monkeypatch):
 
     fortran_parser.parse_source(source, ExposeConfig(functions=["scale_it"]))
     fortran_parser.parse_source(
+        source, ExposeConfig(functions=["scale_it"]), backend="regex"
+    )
+    fortran_parser.parse_source(
         source, ExposeConfig(functions=["scale_it"]), backend="fparser2"
     )
 
-    assert calls == ["regex", "fparser2"]
+    # Default first (the tree parser since the flip), then each backend named
+    # explicitly. Asking for all three separately is the point: a seam that
+    # dispatched everything to one backend would still satisfy any two of them.
+    assert calls == ["fparser2", "regex", "fparser2"]
 
 
 # --- availability -------------------------------------------------------

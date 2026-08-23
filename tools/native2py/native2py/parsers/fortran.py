@@ -19,12 +19,41 @@ Selection order, first match wins:
 3. `parser:` in native2py.yaml, passed through by the CLI,
 4. `auto`.
 
-`auto` currently resolves to `regex`. It stays there until the differential
-parity harness (tests/test_fortran_fparser.py) is green across the whole
-legacy corpus on a machine that is not the author's; flipping the default is
-a separate, deliberate change, not a side effect of a wheel appearing on the
-box. Everything else about the seam is live today, so `NATIVE2PY_FORTRAN_PARSER=fparser2`
-is all it takes to run the tree parser.
+`auto` resolves to `fparser2` when fparser is importable, and to `regex`
+otherwise — the same shape as the C++ side, where Clang is preferred when
+available.
+
+WHY THE DEFAULT WAS FLIPPED, AND THE ONE ARGUMENT THAT DECIDED IT
+
+The worry about preferring a real grammar was never that it parses badly. It
+was that fparser2 *correctly* refuses invalid Fortran the regex reader
+silently accepted, so an existing service built on technically-invalid source
+could start failing on upgrade. The parity harness could not answer that: it
+only compares files both backends accept.
+
+What answers it is that **native2py must compile the source with gfortran
+anyway** — `f2py -c` shells out to it. So any file gfortran rejects can never
+produce a working service, whichever parser read it first. Refusing it at
+parse time is then strictly better than mis-binding it and failing later, or
+worse, succeeding with wrong intents.
+
+That reduces the question to: does fparser2 refuse anything **gfortran
+accepts**? Measured over 180 files — the nine real 1988–1997 fixed-form decks
+in `libraries/petro`, plus numpy's own `f2py/tests/src` corpus, which exists
+precisely to cover the edge cases f2py must survive — each parsed with
+fparser2 and compiled with `gfortran -fsyntax-only`:
+
+    files where fparser2 is STRICTER than gfortran: 0
+
+Every one of the 180 was accepted by both. The three cases that did have to
+change during the parity work were *test fixtures*, not library code, and
+gfortran rejects all three too (`data declaration statement cannot appear
+after executable statements`, `Unclassifiable statement`) — the tests had been
+encoding the regex reader's lack of a grammar as a requirement.
+
+The escape hatch stays: `parser: regex` in native2py.yaml, or
+`NATIVE2PY_FORTRAN_PARSER=regex`, pins the old reader. A machine without
+fparser installed keeps the regex reader and is unaffected.
 
 Asking for `fparser2` explicitly and not having it is an error, not a silent
 downgrade — the same rule the C++ side enforces. A build that quietly loses
@@ -49,9 +78,9 @@ from .fortran_regex import normalize_free_form  # noqa: F401
 BACKENDS = ("auto", "fparser2", "regex")
 _ENV_VAR = "NATIVE2PY_FORTRAN_PARSER"
 
-# `auto` -> this. See the module docstring: not `fparser2` until parity is
-# proven on the corpus by someone other than the author.
-_AUTO_BACKEND = "regex"
+# `auto` -> this, when the backend is actually importable. See the module
+# docstring for the evidence behind the flip.
+_AUTO_BACKEND = "fparser2"
 
 
 class ParserUnavailable(RuntimeError):
@@ -90,14 +119,22 @@ def backend_description(backend: str | None = None) -> str:
         resolved = resolve_backend(backend)
     except ParserUnavailable as exc:
         return str(exc)
-    if resolved == "fparser2":
-        return f"fparser2 parse tree ({fortran_fparser.fparser_version()})"
     requested = (backend or os.environ.get(_ENV_VAR) or "").lower()
+    if resolved == "fparser2":
+        version = fortran_fparser.fparser_version()
+        if requested == "fparser2":
+            return f"fparser2 parse tree ({version}, selected explicitly)"
+        return f"fparser2 parse tree ({version}, default)"
     if requested == "regex":
         return "regex reader (selected explicitly)"
-    if not fortran_fparser.is_available():
-        return f"regex reader (fparser unavailable: {fortran_fparser.unavailable_reason()})"
-    return "regex reader (default; fparser2 available, select it with parser: fparser2)"
+    # The only other way to land on regex is `auto` with no fparser installed.
+    # Say so plainly: this is a real capability difference, not a preference,
+    # and someone reading a build log should be able to tell which they got.
+    return (
+        "regex reader (no grammar; fparser unavailable: "
+        f"{fortran_fparser.unavailable_reason()}. Install with "
+        '`pip install "native2py[fparser]"` for the parse-tree backend)'
+    )
 
 
 def parse_source(

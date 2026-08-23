@@ -286,8 +286,14 @@ def python_bindings(workspace: Path):
     (build / "petro_api.f90").write_text(
         resolve_kind_parameters(expand_includes(FACADE, [INCLUDE_DIR]))
     )
+    # `--backend meson` for the same reason generators/f2py_gen.py passes it:
+    # f2py's default backend depends on the Python version, and the distutils
+    # one is broken against modern setuptools. The oracle only means something
+    # if it builds the way a generated service builds, so the flag belongs on
+    # both or neither.
     _run(
-        [sys.executable, "-m", "numpy.f2py", "-c", "-m", "petro_oracle",
+        [sys.executable, "-m", "numpy.f2py", "-c", "--backend", "meson",
+         "-m", "petro_oracle",
          "petro_api.f90", *[p.name for p in sorted(build.glob("*.f"))]],
         build,
         "building the f2py extension",
