@@ -64,7 +64,7 @@ jobs:
         working-directory: tools/native2py
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[clang,build,test]"
+          pip install -e ".[clang,fparser,build,test]"
 
       - name: Verify the native2py CLI is on PATH
         run: |
@@ -87,6 +87,26 @@ jobs:
                   + cpp_ast.unavailable_reason()
               )
           print("OK: clang AST backend is active")
+          '
+
+      # Same coverage cliff on the Fortran side. tests/test_fortran_fparser.py
+      # skips wholesale when fparser is missing, so without this the suite goes
+      # green with ~30 tests never run and the parse-tree backend untested.
+      # A skip is not a pass.
+      - name: Verify the Fortran fparser2 backend is importable
+        working-directory: tools/native2py
+        run: |
+          python -c '
+          import sys
+          try:
+              import fparser
+          except ImportError as exc:
+              sys.exit(
+                  "FAIL: fparser is not installed - every test in "
+                  "tests/test_fortran_fparser.py would silently skip. Reason: "
+                  + str(exc)
+              )
+          print("OK: fparser", fparser.__version__, "is importable")
           '
 
       - name: Run the test suite

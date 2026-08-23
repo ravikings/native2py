@@ -1,0 +1,289 @@
+{
+  "classes": [],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "SIMINI",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "MX",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "MY",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "MZ",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "GRDSET",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "IPROP",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "VALS",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "N",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "TRNCAL",
+      "namespace": null,
+      "parameters": [],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "EQUILI",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "WOC",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "GOC",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "inout",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "PDAT",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "DDAT",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "STEP",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "DTIN",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "DTOUT",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "ICONV",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "JACOBI",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AE",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AW",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AN",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AS",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AT",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AB",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AD",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "RHS",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "SATUPD",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "ISAT",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "FIPOIL",
+      "namespace": null,
+      "parameters": [],
+      "returns": "float"
+    }
+  ],
+  "language": "fortran",
+  "name": "simcor",
+  "schema_version": "1.0",
+  "skipped": [],
+  "source_file": "libraries/petro/fortran/simcor.f",
+  "structs": []
+}

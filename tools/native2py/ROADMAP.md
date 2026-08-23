@@ -9,7 +9,9 @@ The goal is not a better compiler. It is this acceptance test:
 Every item is judged against one of two questions. **Can we ingest more code
 without editing it?** **Is the resulting API safe to operate?**
 
-Status as of `2380fc7`. Test suite: **238 → 441, all passing.**
+Status as of the working tree on 2026-08-22 (post-`2380fc7`). Test suite:
+**238 → 555 passing, 1 skipped** with `fparser` installed; without it 30 of
+those skip cleanly. The suite is green under **both** Fortran backends.
 
 ---
 
@@ -17,10 +19,10 @@ Status as of `2380fc7`. Test suite: **238 → 441, all passing.**
 
 | | Status |
 |---|---|
-| **W1** Widen unmodified ingestion | Done except the parser replacement (1.4) |
-| **W2** Make the generated API safe to operate | Concurrency serialised; crash containment, bounds, auth/observability open |
-| **W3** Codegen and IR hygiene | Partially done; `ast` migration still deferred |
-| **W0** Adoption prerequisites (added later) | Done except a real security contact |
+| **W1** Widen unmodified ingestion | 1.4 seam + fparser2 reader landed at **full parity**; `auto` not yet flipped (your call) |
+| **W2** Make the generated API safe to operate | Concurrency serialised, array bounds capped; crash containment and auth/observability open |
+| **W3** Codegen and IR hygiene | IR versioned, differential harness built; `ast` migration still deferred |
+| **W0** Adoption prerequisites (added later) | Done; CI still unproven until first push |
 
 The single most consequential change is not on this list as a line item: the
 generated services now carry **evidence**. `services/petro_api/golden.json`
@@ -65,10 +67,19 @@ audit; it is now populated.
 | — | Non-const `char*` bound as `str` | Refused — it is an output buffer with no length |
 | — | Overloads, namespaces, const fields, enums, struct ctors | See `DEFECTS.md` Class B |
 
-### Open — 1.4, replace the regex front end with fparser2
+### In progress — 1.4, replace the regex front end with fparser2
 
-Still the right call, unchanged in substance. **Recommendation: `fparser`
-(fparser2), pinned `>=0.2,<0.3`.** BSD-3-Clause, ~116k downloads/month, STFC
+**The seam has landed.** `parsers/fortran.py` is now a front door that picks a
+backend: `fortran_fparser.py` (a real fparser2 parse tree) or
+`fortran_regex.py` (the original line/regex reader, kept dependency-free and as
+the parity yardstick). Selection is by `backend=` argument,
+`$NATIVE2PY_FORTRAN_PARSER` (`auto` | `fparser2` | `regex`), then config;
+`auto` still resolves to `regex` until the parity harness is green across the
+whole corpus, and asking for `fparser2` on a machine without it is an error,
+not a silent fallback — mirroring the Clang/regex arrangement on the C++ side.
+
+The original recommendation stands: **`fparser` (fparser2), pinned
+`>=0.2,<0.3`.** BSD-3-Clause, ~116k downloads/month, STFC
 maintained, pure Python so it adds no toolchain to the install.
 
 ```python
@@ -80,6 +91,28 @@ from fparser.two.symbol_table import SYMBOL_TABLES
 One reader handles both dialects and follows `INCLUDE` natively.
 `SYMBOL_TABLES` gives a real per-scoping-unit symbol table, which the current
 code has no equivalent of.
+
+**The parity gate is green.** Three independent measurements:
+
+- `harness.py diff fortran:regex fortran:fparser2` — **no IR differences** across
+  the corpus (8 sources, 69 routines), now committed as a snapshot.
+- The **full suite passes under both backends** — 555 either way.
+- Routine discovery matches file by file.
+
+Getting there required fixing three test fixtures, not the parser. Each put a
+declaration or an `implicit` statement somewhere Fortran does not allow it;
+gfortran rejects all three (`data declaration statement cannot appear after
+executable statements`, `Unclassifiable statement`). The regex reader accepted
+them because it has no grammar, so the tests had been encoding its quirks as
+requirements. fparser2 was right to refuse.
+
+**What remains before flipping `auto`** is a judgement call rather than more
+evidence. Flipping means a machine with `fparser` installed gets the tree parser
+and one without gets the regex reader — the same arrangement C++ already has
+with Clang. The risk is real though: fparser2 *correctly* refuses invalid
+Fortran that the regex reader silently accepted, so an existing service built on
+technically-invalid source would start failing. That is a migration decision,
+not a technical one.
 
 What is still broken without it:
 
@@ -145,17 +178,36 @@ numerical code does all three outside its validated envelope. Needs a supervised
 worker pool with request-level isolation — a deployment-topology change, not a
 codegen change, and it needs a decision before anyone writes code.
 
-**2.3 — input bounds.** Every array endpoint still accepts an unbounded body:
-`def pvt_state_endpoint(pressure: float, n: int, props: list[float])`. That is a
-memory-exhaustion vector. Needs array extents in the IR (from 1.4) for a real
-`Field(max_length=...)`; a configurable global cap works until then. `n` is also
-not validated against `len(props)` — a mismatch goes straight to Fortran, which
-indexes past the end.
+**2.3 — input bounds. Done, with one part deferred.** Array parameters are
+annotated `Field(max_length=MAX_ARRAY_ITEMS)` (`NATIVE2PY_MAX_ARRAY_ITEMS`,
+default 65536), closing the memory-exhaustion vector, and a generated guard
+rejects `n != len(props)` with a 422 before the value reaches Fortran and
+indexes past the end of the buffer.
 
-**2.4 — security and observability.** No authentication, no rate limiting, no
-request-size limit, no structured logging with a request id, no readiness probe
-distinct from `/healthz` liveness, no OpenTelemetry. All are generated-code
-concerns, so fixing them once fixes every service. Also unbuilt: a
+The size/array pairing is *inferred* — by name, then structurally — and only
+where unambiguous, because a false pairing rejects valid calls while a missed
+one merely leaves that endpoint as unsafe as it was. Per-parameter extents from
+the IR (1.4) would replace the inference and the single global cap with a real
+per-array bound; that part is still open.
+
+**2.4 — security and observability.** Partly closed. Generated apps now
+register an unhandled-exception handler (`generators/error_gen.py`, emitted
+into both `service.py` and the gateway app, because a handler binds to an app
+and a mounted router runs under the gateway's). A failure gets a JSON body and
+an `error_id` that also appears in the log line carrying the traceback.
+
+Worth recording why, because the original entry here was based on a false
+premise: this page and `docs/production-readiness.md` both claimed an uncaught
+exception returned a raw traceback to the caller. Building the generated app
+and issuing a real request disproved it — with `debug=False` Starlette answers
+a bare `Internal Server Error` in `text/plain`. The handler is therefore a
+traceability and consistency fix, **not** a leak fix, and it explicitly does
+not protect a service running with `debug=True` (Starlette checks `debug`
+before the handler). Both limits are pinned by tests.
+
+Still open: no authentication, no rate limiting, no request-*rate*/size limit,
+no request logging on the successful path, no request id, no readiness probe
+distinct from `/healthz` liveness, no OpenTelemetry. Also unbuilt: a
 `GET /_unexposed` route returning what the parser skipped and why — that
 information currently exists only in generated comments inside a container.
 
@@ -174,24 +226,24 @@ collisions in the *emitted* namespace.
 
 ### Open
 
-**3.2 — `schema_version` and the differential harness.** Neither exists yet.
-`ir.json` still carries no version, so a file written by a future native2py
-deserialises into a subtly different module with no warning. And there is no
-`tests/corpus/` harness that parses `libraries/petro` and `libraries/geometry`
-under a named backend and snapshots the IR. **That harness is the acceptance
-gate for 1.4b and must exist before the parser swap starts** — it is the only
-thing that can tell you whether a new front end changed an answer. ~1 wk.
+**3.2 — `schema_version` and the differential harness.** Both have landed:
+`ir.py` now writes and checks `schema_version` (a document without one is
+treated as the pre-versioning format), and `tests/corpus/harness.py` parses the
+real libraries under a named backend and compares IR. **The harness is the
+acceptance gate for flipping 1.4's `auto` to `fparser2`** — it is the only
+thing that can tell you whether the new front end changed an answer.
 
 **3.3 — the `ast` migration.** Zero uses of `ast.unparse` today; the generators
 still build text. Worth doing for `generate_router_py`, `generate_init_py` and
 `generate_python_api_test` — explicitly **not** CMake, Dockerfile, pybind11 C++
-or TOML. `golden_gen.TEMPLATE` should become a shipped `.py` file so linting
-covers it. Note the `compile()` gate and identifier validation already graduated
+or TOML. Note the `compile()` gate and identifier validation already graduated
 out of this workstream, which is most of the safety benefit; what remains is
 maintainability. ~3 wks, whenever there is room.
 
-**Also still open:** `jinja2` is a declared runtime dependency used nowhere in
-the codebase. Drop it.
+Done from this workstream: `golden_gen.TEMPLATE` is now a real shipped module
+(`native2py/templates/golden_test_template.py`, asserted present in a built
+wheel by `tests/test_golden.py`), and the unused `jinja2` runtime dependency
+has been dropped from `pyproject.toml` and `requirements.txt`.
 
 ---
 
@@ -217,16 +269,24 @@ the codebase. Drop it.
 - **Supply chain.** `constraints.txt` with 52 hash-pinned packages; the generated
   Dockerfile digest-pins its base for both stages; a deterministic CycloneDX SBOM
   recording native sources by SHA-256.
+- **A working private security channel.** GitHub private vulnerability
+  reporting is enabled on the repository and `SECURITY.md` points at it. No
+  email address was invented: a mailbox on a one-maintainer project is the
+  thing that silently stops being read.
 - `SECURITY.md`, `CONTRIBUTING.md`, `CODEOWNERS`; both review hooks hardened to
   SHA-256 and fail-closed.
 
 ### Open
 
-- **`SECURITY.md` carries a literal `SECURITY-CONTACT-NOT-YET-SET` placeholder.**
-  No address was invented. Fill it in before the repo is public.
 - **CI has never actually run.** Runner assumptions are untested until first
   push: apt package names, macOS gfortran availability, libclang wheels on
   3.10–3.12. Expect to iterate.
+- **A skip is not a pass.** `fparser` was imported by the new Fortran backend
+  but declared in no dependency file, so all ~30 of its tests skipped silently
+  on every machine — the suite went green with the backend untested. It is now
+  an `[fparser]` extra, installed in CI, with a guard step that fails the build
+  if it is missing, mirroring the existing libclang guard. Worth watching for
+  the same shape elsewhere.
 - **The generated service's build is still not reproducible**, even though the
   tool's install and the container base now are. `apt-get` runs unpinned against
   live Debian, the generated Dockerfile's `pip install` has no
@@ -241,16 +301,23 @@ the codebase. Drop it.
 
 Ordered by value per hour, not by workstream.
 
-1. **Fill in the security contact** and push once so CI actually runs. Hours.
-2. **2.3 input bounds** — a global cap plus `n` vs `len(props)` validation is
-   days, and closes a memory-exhaustion vector in every array endpoint.
-3. **3.2 `schema_version` + differential harness** — ~1 wk, and it is the
-   prerequisite for 1.4.
-4. **2.2 crash containment** — needs a topology decision from you first.
-5. **1.4 fparser2** — ~5 wks. This is what stops the *next* unmodified library
-   hitting the `&` class of defect.
-6. **2.1b session-shaped API** — depends on 1.4.
-7. **2.4 auth and observability**, **3.3 `ast` migration** — real, deferrable.
+1. **Push once so CI actually runs.** Hours, and it is the only way to learn
+   whether the runner assumptions hold. (The security contact is closed —
+   GitHub private vulnerability reporting is enabled and `SECURITY.md` points
+   at it.)
+2. **1.4 — flip `auto` to fparser2.** The seam, the fparser2 reader,
+   `schema_version` and the corpus harness are all in, and the backend's whole
+   suite passes once `fparser` is installed. What remains is judging the parity
+   harness across the corpus and changing the default. This is what stops the
+   *next* unmodified library hitting the `&` class of defect, and it unblocks
+   2.1b and the rest of 2.3.
+3. **2.2 crash containment** — needs a topology decision from you first, and
+   with the error-handling work done it is now unambiguously the largest
+   remaining operational risk: no Python-level handler can see a segfault.
+4. **2.4 auth and rate limiting** — the generated API is still unauthenticated.
+5. **2.1b session-shaped API** — depends on 1.4.
+6. **2.4 observability proper** (request logging, request id, readiness,
+   OpenTelemetry) and **3.3 `ast` migration** — real, deferrable.
 
 ## Out of scope
 

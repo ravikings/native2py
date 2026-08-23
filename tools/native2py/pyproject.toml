@@ -20,7 +20,6 @@ requires-python = ">=3.10"
 dependencies = [
     "click>=8.1",
     "pyyaml>=6.0",
-    "jinja2>=3.1",
     "rich>=13.7",
 ]
 
@@ -29,6 +28,15 @@ dependencies = [
 # which has no preprocessor and no template support (see docs/cpp-guide.md).
 clang = [
     "libclang>=16",
+]
+# The Fortran parse-tree backend (ROADMAP 1.4), selected with
+# `NATIVE2PY_FORTRAN_PARSER=fparser2`. Optional for the same reason `clang` is:
+# without it the regex reader still works, and it is pure Python so it adds no
+# toolchain. Declared so `pip install -e '.[fparser]'` is a documented step —
+# tests/test_fortran_fparser.py skips wholesale when it is absent, and a
+# backend whose entire suite silently skips is a backend nobody is testing.
+fparser = [
+    "fparser>=0.2,<0.3",
 ]
 docs = [
     "mkdocs>=1.6",
@@ -50,4 +58,10 @@ test = [
 native2py = "native2py.cli:main"
 
 [tool.setuptools.packages.find]
+# `native2py*` also picks up `native2py.templates`, which holds the generated
+# service's files as real `.py` modules rather than string literals. Because
+# they are modules in a discovered package they ship in the wheel on their
+# own; no [tool.setuptools.package-data] entry is needed, and adding one
+# would be the thing that silently stops working if a template is renamed.
+# tests/test_golden.py asserts the template is actually in a built wheel.
 include = ["native2py*"]

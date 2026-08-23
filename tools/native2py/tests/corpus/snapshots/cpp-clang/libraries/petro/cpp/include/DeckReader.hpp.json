@@ -1,0 +1,137 @@
+{
+  "classes": [
+    {
+      "bases": [],
+      "constructors": [],
+      "fields": [],
+      "has_default_constructor": true,
+      "methods": [
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "read",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "filename",
+              "native_type": "char *",
+              "type": "str"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "nx",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "ny",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "nz",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "cell_count",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "unit_system",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "well_count",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "api_gravity",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "gas_gravity",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "reservoir_temperature",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "has_dimensions",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "error_text",
+          "parameters": [],
+          "returns": "str"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "error_line",
+          "parameters": [],
+          "returns": "int"
+        }
+      ],
+      "name": "DeckReader",
+      "namespace": null
+    }
+  ],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [],
+  "language": "cpp",
+  "name": "DeckReader",
+  "schema_version": "1.0",
+  "skipped": [],
+  "source_file": "libraries/petro/cpp/include/DeckReader.hpp",
+  "structs": []
+}

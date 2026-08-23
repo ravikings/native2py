@@ -1,0 +1,68 @@
+{
+  "classes": [
+    {
+      "bases": [],
+      "constructors": [],
+      "fields": [],
+      "has_default_constructor": true,
+      "methods": [
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "circle_area",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "radius",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "hypotenuse",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "a",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "b",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        }
+      ],
+      "name": "Geometry",
+      "namespace": null
+    }
+  ],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [],
+  "language": "cpp",
+  "name": "geometry",
+  "schema_version": "1.0",
+  "skipped": [],
+  "source_file": "libraries/geometry/geometry.hpp",
+  "structs": []
+}

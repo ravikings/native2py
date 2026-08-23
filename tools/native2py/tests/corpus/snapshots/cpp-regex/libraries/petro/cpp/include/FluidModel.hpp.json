@@ -1,0 +1,459 @@
+{
+  "classes": [
+    {
+      "bases": [],
+      "constructors": [
+        [
+          {
+            "intent": "in",
+            "is_array": false,
+            "is_const": false,
+            "is_optional": false,
+            "name": "api_gravity",
+            "native_type": null,
+            "type": "float"
+          },
+          {
+            "intent": "in",
+            "is_array": false,
+            "is_const": false,
+            "is_optional": false,
+            "name": "gas_gravity",
+            "native_type": null,
+            "type": "float"
+          },
+          {
+            "intent": "in",
+            "is_array": false,
+            "is_const": false,
+            "is_optional": false,
+            "name": "temp_f",
+            "native_type": null,
+            "type": "float"
+          }
+        ],
+        [
+          {
+            "intent": "in",
+            "is_array": false,
+            "is_const": false,
+            "is_optional": false,
+            "name": "api_gravity",
+            "native_type": null,
+            "type": "float"
+          },
+          {
+            "intent": "in",
+            "is_array": false,
+            "is_const": false,
+            "is_optional": false,
+            "name": "gas_gravity",
+            "native_type": null,
+            "type": "float"
+          },
+          {
+            "intent": "in",
+            "is_array": false,
+            "is_const": false,
+            "is_optional": false,
+            "name": "temp_f",
+            "native_type": null,
+            "type": "float"
+          },
+          {
+            "intent": "in",
+            "is_array": false,
+            "is_const": false,
+            "is_optional": false,
+            "name": "correlation",
+            "native_type": null,
+            "type": "int"
+          }
+        ]
+      ],
+      "fields": [],
+      "has_default_constructor": false,
+      "methods": [
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "activate",
+          "parameters": [],
+          "returns": "None"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "api_gravity",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "gas_gravity",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "temperature",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "bubble_point",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "solution_gor",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "pressure",
+              "native_type": null,
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "oil_fvf",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "pressure",
+              "native_type": null,
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "oil_viscosity",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "pressure",
+              "native_type": null,
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "gas_viscosity",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "pressure",
+              "native_type": null,
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "gas_fvf",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "pressure",
+              "native_type": null,
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "z_factor",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "pressure",
+              "native_type": null,
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "oil_density",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "pressure",
+              "native_type": null,
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "properties_at",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "pressure",
+              "native_type": null,
+              "type": "float"
+            }
+          ],
+          "returns": "PvtState"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "build_table",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "p_min",
+              "native_type": null,
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "p_max",
+              "native_type": null,
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "n",
+              "native_type": null,
+              "type": "int"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "table_size",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "clear_table",
+          "parameters": [],
+          "returns": "None"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "last_error",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "last_error_text",
+          "parameters": [],
+          "returns": "str"
+        }
+      ],
+      "name": "FluidModel",
+      "namespace": null
+    }
+  ],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [],
+  "language": "cpp",
+  "name": "FluidModel",
+  "schema_version": "1.0",
+  "skipped": [],
+  "source_file": "libraries/petro/cpp/include/FluidModel.hpp",
+  "structs": [
+    {
+      "fields": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "bo",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "bg",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "bw",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "rs",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "mu_oil",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "mu_gas",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "mu_water",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "rho_oil",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "rho_gas",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "rho_water",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "z_factor",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "c_oil",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "has_default_constructor": true,
+      "name": "PvtState",
+      "namespace": null
+    }
+  ]
+}

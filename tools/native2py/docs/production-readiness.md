@@ -38,8 +38,9 @@ for what "verified" means elsewhere in these docs.
 |---|---|
 | Run containers as non-root | ✅ fixed — `USER appuser` in the generated Dockerfile |
 | Minimal runtime image | ✅ multi-stage build, compiler toolchain stays in the builder stage |
-| Pin compiler/toolchain versions | ❌ `python:3.12-slim` is a moving tag, not a digest pin |
-| Scan dependencies / generate SBOMs | ❌ not implemented — no `pip-audit`/`syft` step anywhere |
+| Pin compiler/toolchain versions | ✅ fixed — the generated Dockerfile digest-pins its base image for both stages, and the tool's own install is hash-pinned via `constraints.txt`. Still open: the generated service's `apt-get`/`pip`/system-gfortran steps are not reproducible — see [Deployment topologies](deployment-topologies.md) |
+| Generate SBOMs | ✅ fixed — a deterministic CycloneDX SBOM is generated, recording native sources by SHA-256 |
+| Scan dependencies | ❌ no `pip-audit`/vulnerability-scan step anywhere |
 | Sign container images | ❌ not implemented |
 | Restrict filesystem access | ❌ Dockerfile doesn't set `--read-only` / drop capabilities |
 | Never compile untrusted source in prod | ⚠️ your responsibility — native2py will happily compile and expose anything you point it at; there's no sandboxing |
@@ -48,35 +49,58 @@ for what "verified" means elsewhere in these docs.
 
 | Requirement | Status |
 |---|---|
-| Structured logging | ❌ none — generated `service.py` has no logging at all |
+| Structured logging | ⚠️ partial — failures are logged with a correlatable `error_id` under a `native2py.<service>` logger (see [Error handling](#error-handling--the-sharpest-edge)). There is still no request logging for the successful path, and no request id threaded through it |
 | OpenTelemetry traces/metrics/logs | ❌ not implemented |
 | Separate native execution time from HTTP overhead | ❌ not implemented |
 | Health endpoint | ⚠️ generated services expose `/healthz`, and importing the package proves the native extension loaded — but it is liveness only. There is no readiness check, and nothing verifies the extension still *computes correctly* (e.g. after a COMMON-block corruption in stateful Fortran) |
 
 ### Error handling — the sharpest edge
 
-The generated endpoint has **no exception handling**:
+**Correction (2026-08-22).** This page previously said an uncaught exception
+returned "a raw traceback in the response — an information leak". **That was
+wrong.** It was checked by building the generated app and making a real
+request: with `debug=False`, which is FastAPI's default and what the generated
+app uses, Starlette answers exactly `Internal Server Error` as `text/plain`.
+No traceback, no exception message, no paths. There was no leak.
 
-```python
-@app.post("/add")
-def add(a: float, b: float):
-    return {"result": calculator.add(a, b)}
-```
+✅ **What did change:** generated apps now register an unhandled-exception
+handler, emitted from one place (`generators/error_gen.py`) into both the
+standalone `service.py` and the composed gateway app — a handler attaches to
+an *app*, and a router mounted into a gateway runs under the gateway's app, so
+installing it in only one place would miss the topology more likely to face
+the internet. It gives a failure a JSON body and an `error_id` that also
+appears in the log line carrying the traceback, under a `native2py.<service>`
+logger. `HTTPException` is unaffected, so the generated argument-validation
+422s keep their own status and detail.
 
-A Python exception from the native call becomes an unhandled 500 with a
-raw traceback in the response — an information leak, not just a UX rough
-edge. Worse: **native code that segfaults, aborts, or hangs takes down the
-whole worker process** (or the whole process, if you run one worker), not
-just the one request. FastAPI/Python can't catch a SIGSEGV. If your native
-function isn't provably memory-safe for arbitrary input, this is the single
-biggest risk in taking this to production as generated. No sandboxing,
-timeout, or process-per-call isolation exists here.
+That is a traceability and consistency fix, not a security fix. Two limits,
+both measured and pinned by tests in `tests/test_gateway_gen.py`:
+
+- **`debug=True` does leak the full traceback, and the handler cannot stop
+  it** — Starlette consults `debug` *before* the handler, so the debug
+  response wins. Do not enable debug on a deployed service.
+- **Python-level failures only.**
+
+Which leaves the real hazard undiminished: **native code that segfaults,
+aborts, or hangs takes down the whole worker process** (or the whole process,
+if you run one worker), not just the one request. FastAPI/Python can't catch a
+SIGSEGV, and no exception handler will ever see it. If your native function
+isn't provably memory-safe for arbitrary input, this is the single biggest
+risk in taking this to production as generated. No sandboxing, timeout, or
+process-per-call isolation exists here.
 
 ### API surface
 
 - No auth, no rate limiting, no CORS configuration.
-- No request validation beyond FastAPI's default type coercion — a
-  malformed body/query param gets FastAPI's generic 422, not anything
+- ✅ fixed — array parameters carry a `MAX_ARRAY_ITEMS` cap
+  (`NATIVE2PY_MAX_ARRAY_ITEMS`, default 65536) instead of accepting a body of
+  any length, and where a size argument can be paired unambiguously with the
+  array it sizes, a generated guard rejects `n != len(props)` with a 422
+  before it reaches Fortran and indexes past the end of the buffer. The
+  pairing is inferred conservatively: an ambiguous case yields no guard,
+  because a false pairing would reject valid calls.
+- Beyond those, no request validation past FastAPI's default type coercion —
+  a malformed body/query param gets FastAPI's generic 422, not anything
   tailored to the native function's actual preconditions.
 - ✅ fixed — an instance is now constructed **per request**, and a class
   whose constructor takes arguments gets them from the request rather than
@@ -223,10 +247,58 @@ at the same time.
   `-D` flags as the build (`clang:` in `native2py.yaml`), and on a machine
   without libclang the front end silently falls back to the regex reader —
   set `parser: clang` to make that an error.
-- The Fortran parser is still regex-based, not a compiler frontend.
-  Declarations it recognises but can't bind are reported with a reason rather
-  than dropped silently, but syntax it doesn't match at all can slip past
-  unreported.
+- The Fortran front end now has two backends behind one seam: the original
+  regex reader (the default) and a real fparser2 parse tree, selectable with
+  `NATIVE2PY_FORTRAN_PARSER=fparser2`. `auto` stays on the regex reader until
+  the IR-parity harness (`tests/corpus/harness.py`) is green across the whole
+  corpus. Under the regex reader, declarations it recognises but can't bind
+  are reported with a reason rather than dropped silently, but syntax it
+  doesn't match at all can slip past unreported.
+
+## Enterprise readiness — the prioritized gap list
+
+An assessment (2026-08-22) of everything above, ordered by what would actually
+stop an enterprise deployment. Numbered cross-references (2.2, 1.4, …) are `ROADMAP.md` work items in the
+repository root — not part of this docs site.
+
+**Blockers — would stop a deployment today**
+
+1. **Crash containment (2.2).** A segfault, Fortran `STOP`, or out-of-bounds
+   write kills the whole worker process, and no exception handler can ever
+   see it. Needs a supervised worker pool with request-level isolation; a
+   topology decision, not just codegen. This is the one that should decide
+   whether you deploy.
+2. **No auth, rate limiting, or request-size limits (2.4).** Array *element*
+   counts are now capped and size arguments guarded (2.3, done), but nothing
+   authenticates a caller or bounds a request rate.
+3. **The COMMON-block session race (2.1b).** Configure-then-compute pairs
+   still race across requests — silent wrong numbers under concurrent
+   multi-tenant load.
+4. **`SECURITY.md` contact is a placeholder.** Enabling GitHub private
+   vulnerability reporting closes this in minutes; it is table stakes for
+   vendor security review.
+
+**Major — needed to operate at scale**
+
+5. **Observability: barely started.** Failures now log a correlatable
+   `error_id`; there is still no request logging on the successful path, no
+   request id, no OpenTelemetry, no native-vs-HTTP timing split, and no
+   readiness probe distinct from `/healthz` liveness.
+6. **No CI/CD or Kubernetes generation**, no image signing, no
+   dependency-vulnerability scan step.
+7. **Parser coverage ceilings.** Fortran: statement functions, COMMON
+   outputs, preprocessed `.F90`, `ENTRY` — all await the fparser2 backend
+   becoming the default (1.4); the backend and its parity suite exist and
+   pass, but `auto` still resolves to the regex reader. C++: no
+   templates/`std::vector`, raw pointers refused. No C support at all.
+8. **No versioning/compat story for the generated API.** `ir.json` now
+   carries `schema_version`, but a breaking native signature change still
+   silently changes API behaviour on the next generate + build rather than
+   failing a compatibility check. No releases, no published wheels, no
+   changelog.
+
+Repo hygiene checks out: no build artifacts, caches, virtualenvs, or binary
+wheels are tracked in git — local clutter of that kind is `.gitignore`d.
 
 ## What "valid" means today
 

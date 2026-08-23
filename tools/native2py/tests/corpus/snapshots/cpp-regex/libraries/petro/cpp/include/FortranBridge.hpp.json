@@ -1,0 +1,17 @@
+{
+  "classes": [],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [],
+  "language": "cpp",
+  "name": "FortranBridge",
+  "schema_version": "1.0",
+  "skipped": [
+    {
+      "name": "F77_NAME",
+      "reason": "could not parse this declaration; if the name comes from a macro, native2py does not run a preprocessor \u2014 declare the symbol with its expanded name to bind it."
+    }
+  ],
+  "source_file": "libraries/petro/cpp/include/FortranBridge.hpp",
+  "structs": []
+}

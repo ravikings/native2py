@@ -7,15 +7,16 @@ receives security fixes; there are no maintained release branches yet.
 
 ## Reporting a vulnerability
 
-> **TODO (repo owner): replace the placeholder below with a real contact.**
-> Until then there is no working private reporting channel. The preferred fix
-> is to enable GitHub [private vulnerability reporting][pvr] on this repository
-> (Settings → Security → Reporting), which needs no email address at all.
+**Report privately through GitHub [private vulnerability reporting][pvr]:**
+open the [Security tab][advisories] and choose *Report a vulnerability*.
 
-**Contact: `SECURITY-CONTACT-NOT-YET-SET` — placeholder, not a real address.**
+This is enabled on the repository and is the only supported channel. It is
+deliberately not an email address: a mailbox on a one-maintainer project is
+the thing that silently stops being read, whereas a GitHub advisory is
+tracked, private until published, and lets a fix and a CVE come out together.
+You need a GitHub account and nothing else.
 
-Please do **not** open a public issue for a suspected vulnerability. Once a
-channel exists, report privately and include:
+Please do **not** open a public issue for a suspected vulnerability. Include:
 
 - what the issue is and why you believe it is a security problem,
 - the affected file, command, or generated artifact,
@@ -26,6 +27,7 @@ Expect an acknowledgement within a few days. This is a small project with no
 paid on-call; there is no bug bounty.
 
 [pvr]: https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability
+[advisories]: https://github.com/ravikings/native2py/security/advisories/new
 
 ## Threat model — what native2py actually does
 

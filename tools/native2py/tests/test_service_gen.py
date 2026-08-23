@@ -657,6 +657,15 @@ def _load_router(code: str, native: dict):
 
             return decorate
 
+        # The router also carries the generated `GET /_unexposed` introspection
+        # route, which has to bind somewhere when the file is exec'd.
+        def get(self, path, **kwargs):
+            def decorate(fn):
+                self.routes[path] = fn
+                return fn
+
+            return decorate
+
     namespace = dict(native)
     namespace["APIRouter"] = _FakeRouter
     stripped = "\n".join(
@@ -941,3 +950,317 @@ def test_the_lock_does_not_make_a_configure_then_compute_pair_atomic():
     routes["/PVTINI"](30.0)
     routes["/PVTINI"](45.0)  # a second request lands between configure and read
     assert routes["/PVTRS"](2000.0)["result"] == 45.0
+
+
+# --- input bounds (ROADMAP 2.3) and /_unexposed (ROADMAP 2.4) ------------
+#
+# Both of these are about what a generated endpoint accepts from an untrusted
+# caller. `props: list[float]` accepted a body of any length — a
+# memory-exhaustion vector in every array endpoint — and a size argument that
+# disagreed with its array went straight into Fortran, which then indexed past
+# the end of the buffer. Neither failed loudly; the first exhausted the worker,
+# the second read or wrote memory it did not own.
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from native2py.ir import SkippedSymbol
+
+
+def _live_client(code: str, native: dict) -> TestClient:
+    """A real FastAPI app serving a generated router, with fake native symbols.
+
+    The generated file opens `from . import PVTSTATE`, a relative import with
+    no package to resolve against, so the native names are injected into the
+    module namespace instead. Everything else — the real APIRouter, the real
+    Pydantic validation, the real 422s — is exercised as deployed.
+    """
+    stripped = "\n".join(
+        line for line in code.splitlines() if not line.startswith("from . import")
+    )
+    namespace = dict(native)
+    exec(compile(stripped, "router.py", "exec"), namespace)  # noqa: S102
+    app = FastAPI()
+    app.include_router(namespace["router"])
+    return TestClient(app)
+
+
+def _array_fortran_ir(**kwargs) -> ModuleIR:
+    return fortran_module(
+        functions=[
+            FunctionDef(
+                name="PVTSTATE",
+                parameters=[
+                    Parameter(name="pressure", type="float"),
+                    Parameter(name="props", type="float", is_array=True),
+                    Parameter(name="n", type="int"),
+                ],
+                returns="float",
+            )
+        ],
+        **kwargs,
+    )
+
+
+def test_an_array_endpoint_declares_a_cap_on_its_length():
+    code = python_pkg_gen.generate_router_py(_array_fortran_ir(), "petro")
+
+    # A named, commented constant — not a magic number buried in the signature.
+    assert "MAX_ARRAY_ITEMS" in code
+    assert "PLACEHOLDER" in code
+    assert "Field(max_length=MAX_ARRAY_ITEMS)" in code
+    # Still configurable per deployment without regenerating.
+    assert 'os.environ.get("NATIVE2PY_MAX_ARRAY_ITEMS"' in code
+    assert "props: list[float]" not in code
+
+
+def test_an_oversized_array_body_is_rejected_with_a_422():
+    code = python_pkg_gen.generate_router_py(_array_fortran_ir(), "petro")
+    # Shrink the cap rather than posting 65537 floats: the mechanism is what is
+    # under test, and the constant is deliberately readable at module scope.
+    code = code.replace(
+        'int(os.environ.get("NATIVE2PY_MAX_ARRAY_ITEMS", "65536"))', "4"
+    )
+    calls = []
+
+    def PVTSTATE(pressure, props, n):
+        calls.append(n)
+        return 1.0
+
+    client = _live_client(code, {"PVTSTATE": PVTSTATE})
+
+    ok = client.post("/PVTSTATE?pressure=2000&n=4", json=[1.0, 2.0, 3.0, 4.0])
+    assert ok.status_code == 200
+
+    too_big = client.post("/PVTSTATE?pressure=2000&n=5", json=[1.0] * 5)
+    assert too_big.status_code == 422
+    # Rejected during request validation — the native routine never ran, and
+    # the oversized list never reached numpy.
+    assert calls == [4]
+
+
+def test_a_size_argument_that_disagrees_with_its_array_is_rejected():
+    code = python_pkg_gen.generate_router_py(_array_fortran_ir(), "petro")
+    calls = []
+
+    def PVTSTATE(pressure, props, n):
+        calls.append((len(props), n))
+        return 1.0
+
+    client = _live_client(code, {"PVTSTATE": PVTSTATE})
+
+    mismatch = client.post("/PVTSTATE?pressure=2000&n=9", json=[1.0, 2.0, 3.0])
+    assert mismatch.status_code == 422
+    assert "len(props)" in mismatch.json()["detail"]
+    # This is the whole point: n=9 against a 3-element buffer is an
+    # out-of-bounds read inside Fortran, not a wrong answer.
+    assert calls == []
+
+    assert client.post("/PVTSTATE?pressure=2000&n=3", json=[1.0, 2.0, 3.0]).status_code == 200
+    assert calls == [(3, 3)]
+
+
+def test_a_size_argument_is_paired_by_name_when_there_are_several_arrays():
+    mod = fortran_module(
+        functions=[
+            FunctionDef(
+                name="MIXPROPS",
+                parameters=[
+                    Parameter(name="props", type="float", is_array=True),
+                    Parameter(name="temps", type="float", is_array=True),
+                    Parameter(name="nprops", type="int"),
+                    Parameter(name="len_temps", type="int"),
+                ],
+                returns="float",
+            )
+        ]
+    )
+
+    code = python_pkg_gen.generate_router_py(mod, "petro")
+
+    assert "if nprops != len(props):" in code
+    assert "if len_temps != len(temps):" in code
+
+
+def test_an_ambiguous_size_argument_is_not_guessed():
+    """A wrong pairing rejects valid calls, so no pairing is emitted at all."""
+    mod = fortran_module(
+        functions=[
+            FunctionDef(
+                name="BLEND",
+                parameters=[
+                    Parameter(name="a", type="float", is_array=True),
+                    Parameter(name="b", type="float", is_array=True),
+                    Parameter(name="mode", type="int"),
+                    Parameter(name="steps", type="int"),
+                ],
+                returns="float",
+            )
+        ]
+    )
+
+    code = python_pkg_gen.generate_router_py(mod, "petro")
+
+    assert "!= len(" not in code
+    assert "HTTPException" not in code
+    # The length cap still applies — it needs no pairing to be safe.
+    assert code.count("Field(max_length=MAX_ARRAY_ITEMS)") == 2
+
+
+def test_an_integer_that_is_not_a_length_is_not_treated_as_one():
+    """One array and one integer is not on its own a size argument.
+
+    `PRZFAC(IPHASE, X)` in libraries/petro takes a *phase selector* and an
+    array. Pairing them would reject every valid call to that routine, which is
+    worse than leaving it as unguarded as it is today — so the structural
+    fallback also requires the integer to be named like a length.
+    """
+    mod = fortran_module(
+        functions=[
+            FunctionDef(
+                name="PRZFAC",
+                parameters=[
+                    Parameter(name="IPHASE", type="int"),
+                    Parameter(name="X", type="float", is_array=True),
+                ],
+                returns="float",
+            )
+        ]
+    )
+
+    code = python_pkg_gen.generate_router_py(mod, "petro")
+
+    assert "!= len(" not in code
+    assert "Field(max_length=MAX_ARRAY_ITEMS)" in code
+
+
+def test_one_shared_length_across_several_arrays_is_not_guessed_either():
+    """`THOMAS(A, B, C, D, N)` — N is almost certainly all four extents.
+
+    "Almost certainly" is not good enough: nothing in the IR says the arrays
+    are the same length, and a wrong guess rejects valid calls. Recorded as a
+    known false negative rather than a silent one; it becomes a real
+    `Field(max_length=...)` when the IR carries extents (ROADMAP 1.4).
+    """
+    mod = fortran_module(
+        functions=[
+            FunctionDef(
+                name="THOMAS",
+                parameters=[
+                    Parameter(name=letter, type="float", is_array=True)
+                    for letter in "ABCD"
+                ]
+                + [Parameter(name="N", type="int")],
+                is_subroutine=True,
+            )
+        ]
+    )
+
+    assert "!= len(" not in python_pkg_gen.generate_router_py(mod, "petro")
+
+
+def test_cpp_array_parameters_are_capped_too():
+    mod = module(
+        functions=[
+            FunctionDef(
+                name="mean",
+                parameters=[Parameter(name="values", type="float", is_array=True)],
+                returns="float",
+            )
+        ]
+    )
+
+    code = python_pkg_gen.generate_router_py(mod, "pvt")
+
+    assert "values: Annotated[list[float], Field(max_length=MAX_ARRAY_ITEMS)]" in code
+
+
+def test_a_service_with_no_arrays_gains_no_bounds_machinery():
+    code = python_pkg_gen.generate_router_py(PVTSOLVE_IR, "petro")
+
+    assert "MAX_ARRAY_ITEMS" not in code
+    assert "HTTPException" not in code
+    assert "from typing import Annotated" not in code
+
+
+# --- GET /_unexposed -----------------------------------------------------
+
+
+def test_unexposed_serves_what_the_parser_refused_and_why():
+    mod = _array_fortran_ir(
+        skipped=[
+            SkippedSymbol(name="GETNAME", reason="non-const char* output buffer"),
+            SkippedSymbol(name="PVTPACK", reason="derived-type Fortran result"),
+        ]
+    )
+
+    client = _live_client(
+        python_pkg_gen.generate_router_py(mod, "petro"), {"PVTSTATE": lambda *a: 1.0}
+    )
+
+    response = client.get("/_unexposed")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "GETNAME": "non-const char* output buffer",
+        "PVTPACK": "derived-type Fortran result",
+    }
+
+
+def test_unexposed_exists_and_is_empty_when_nothing_was_skipped():
+    # "nothing was skipped" and "this service predates the feature" must be
+    # distinguishable: {} versus a 404.
+    client = _live_client(
+        python_pkg_gen.generate_router_py(_array_fortran_ir(), "petro"),
+        {"PVTSTATE": lambda *a: 1.0},
+    )
+
+    response = client.get("/_unexposed")
+
+    assert response.status_code == 200
+    assert response.json() == {}
+
+
+def test_unexposed_is_generated_for_cpp_services_as_well():
+    mod = module(
+        functions=[
+            FunctionDef(
+                name="circle_area",
+                parameters=[Parameter(name="r", type="float")],
+                returns="float",
+            )
+        ],
+        skipped=[SkippedSymbol(name="raw_buffer", reason="returns a raw pointer")],
+    )
+
+    client = _live_client(
+        python_pkg_gen.generate_router_py(mod, "pvt"), {"circle_area": lambda r: r}
+    )
+
+    assert client.get("/_unexposed").json() == {"raw_buffer": "returns a raw pointer"}
+
+
+def test_a_native_symbol_named_unexposed_does_not_shadow_the_route():
+    mod = module(
+        functions=[FunctionDef(name="_unexposed", returns="float")],
+        skipped=[SkippedSymbol(name="x", reason="why")],
+    )
+
+    client = _live_client(
+        python_pkg_gen.generate_router_py(mod, "pvt"), {"_unexposed": lambda: 7.0}
+    )
+
+    assert client.get("/_unexposed").json() == {"x": "why"}
+    assert client.post("/_unexposed_2").json() == {"result": 7.0}
+
+
+def test_the_bounded_router_still_compiles_and_is_byte_deterministic():
+    mod = _array_fortran_ir(
+        skipped=[SkippedSymbol(name="GETNAME", reason="non-const char* output buffer")]
+    )
+
+    first = python_pkg_gen.generate_router_py(mod, "petro")
+    second = python_pkg_gen.generate_router_py(mod, "petro")
+
+    compile(first, "router.py", "exec")
+    assert first.encode() == second.encode()
