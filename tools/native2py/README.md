@@ -8,27 +8,28 @@ bindings, the CMake build, an installable Python package, a FastAPI service,
 smoke tests, a numerical regression baseline, and a Dockerfile.
 
 ```bash
-native2py quickstart reservoir/native/FluidModel.hpp --build
-pip install services/fluidmodel/dist/*.whl
+native2py quickstart libraries/geometry/geometry.hpp --name demo --build
+pip install services/demo/dist/*.whl
 ```
 
 ```python
-from fluidmodel import FluidModel
+from demo import Geometry
 
-fluid = FluidModel(35.0, 0.75)   # 35 °API oil, 0.75 gas gravity
-fluid.oil_fvf(2500.0)            # formation volume factor at 2500 psia
+Geometry().hypotenuse(3.0, 4.0)   # 5.0
 ```
 
 ...plus a FastAPI service over the same binding:
 
 ```bash
-uvicorn fluidmodel.service:app
-curl -X POST "http://localhost:8000/oil_fvf?api=35&gas_gravity=0.75&pressure=2500"
+uvicorn demo.service:app
+curl -X POST "http://localhost:8000/hypotenuse?a=3&b=4"
 ```
 
 Built for re-hosting the kind of code that runs an engineering business:
 1990s C++ over F77, fixed-form decks with COMMON blocks and INCLUDE files,
 PVT correlations nobody wants to rewrite and nobody can afford to get wrong.
+The worked example of that in this repo is `services/petro_api`, generated
+from the Fortran decks in `libraries/petro/`.
 
 ## Install
 
@@ -149,8 +150,9 @@ that `suggest` exists so it should not read headers itself to pick a starting
 file, that a `regex reader` line means the parse is missing symbols and must
 not be trusted, that skipped-binding reasons should be relayed rather than
 summarized, and that generated files are rewritten every run so hand-edits are
-lost. It also carries the production-readiness gap list, so the agent raises it
-unprompted rather than handing over a service with no auth as if it were done.
+lost. It also carries the production-readiness gap list, so the agent raises
+the process-wide call lock and the single-tenant boundary unprompted rather
+than handing over a service as if it were ready for anything.
 
 ### Why an agent should use it: the token argument
 
@@ -239,8 +241,10 @@ native2py build pvt                  # pip wheel . -> scikit-build-core -> CMake
 native2py test pvt                   # the generated pytest suite
 native2py golden record pvt       # pin the numbers (commit golden.json)
 native2py golden verify pvt       # prove a rebuild returns the same answers
-native2py docker pvt --build      # multi-stage image, non-root, healthcheck
-native2py gateway platform-api --service pvt --service sim
+native2py lock pvt                   # pin deps by version + SHA-256
+native2py docker pvt --build         # multi-stage image, non-root, healthcheck
+native2py k8s pvt                    # -> infrastructure/kubernetes/pvt.yaml
+native2py gateway platform-api --service pvt
 ```
 
 ## What it parses
@@ -250,20 +254,41 @@ The preprocessor runs, so `#include`d types, `#define`d names, `#ifdef`
 branches and macro-mangled `extern "C"` bridge declarations resolve. Handles
 classes, structs, overloads, public inheritance, constructors, typedefs and
 `using` aliases, enums, namespaces, `std::string`, static methods, abstract
-classes, `= default` / `= delete`.
+classes, `= default` / `= delete`. Also: `std::vector<T>` of scalars,
+`const char*` inputs, operators bound as Python special methods (`__add__`,
+`__eq__`, `__getitem__`, …), and a raw `T*` paired with a length argument
+bound as a numpy buffer — including on class methods.
 
-Refused *with a reason*, never silently: templates, `std::vector<T>`, raw
-numeric pointers (no length information), pointer returns of class types
-(ownership), and types only forward-declared. A header that does not compile
-is refused outright rather than half-bound — clang recovers from an unknown
-type by pretending it was `int`, and binding that produces a service whose
-signatures disagree with the C++ it calls.
+Refused *with a reason*, never silently: templates (a typedef does not help),
+a non-const `std::vector<T>&` (pybind11 would discard what you write into it),
+a non-const `char*` (an output buffer with no length convention), a raw
+pointer with no length argument to pair it with, pointer returns of class
+types (ownership), and types only forward-declared. A header that does not
+compile is refused outright rather than half-bound — clang recovers from an
+unknown type by pretending it was `int`, and binding that produces a service
+whose signatures disagree with the C++ it calls.
 
-**Fortran** — targeted per-routine extraction: you name the routines you want
-and a large legacy deck costs only what you expose, rather than being parsed
-whole. Fixed-form F77 and free-form F90+, INCLUDE
-expansion, kind-parameter resolution (`real(dp)` → `real(8)`), inferred
-argument intent, module-nested routines.
+`extern "C"` functions whose bare `T*` arguments are single scalars passed by
+reference (the Fortran-linkage convention) can be opted in per function with
+`clang.scalar_ref_functions`. It is opt-in and never inferred, because an
+array whose extent lives in a COMMON block or PARAMETER looks identical in a C
+prototype. It applies to free functions under the clang backend only.
+
+**Fortran** — you name the routines you want, and a large legacy deck costs
+only what you expose. Fixed-form F77 and free-form F90+, INCLUDE expansion,
+kind-parameter resolution (`real(dp)` → `real(8)`), inferred argument intent,
+module-nested routines, array arguments, and `.F90`/`.F` sources run through
+`gfortran -cpp` first.
+
+Two newer Fortran features are narrower than they sound, so they are worth
+stating precisely. **Derived types** are bound by generating a flattening
+shim, but only for a *subroutine*, in *free-form* source, parsed by the
+*fparser2* backend, where the routine is inside a module, the type is defined
+in the same file, and every component is a scalar `real`/`integer`/`logical`.
+**CHARACTER outputs** are bound only when the declaration fixes the length
+(`CHARACTER*80`); an assumed-length output is demoted to an input and
+reported, because f2py builds it and then silently returns an empty string.
+That screening currently runs on the fixed-form path only.
 
 Everything the parser recognises but cannot bind is reported at `generate`
 time with the reason — the failure mode that costs the most time is a header
@@ -296,27 +321,37 @@ native2py/
   ir.py             language-neutral IR — the seam every layer meets at
   config.py         native2py.yaml
   golden.py         numerical regression harness
+  discovery.py      language/dialect detection
+  preprocess.py     INCLUDE expansion and gfortran -cpp for .F90/.F
+  suggest.py        ranks candidate sources
+  locking.py        dependency pinning for requirements.lock
   parsers/
-    cpp.py          front door: picks a backend, reports which one ran
-    cpp_ast.py      Clang AST parser (primary)
-    cpp_regex.py    token/brace reader (fallback, no libclang needed)
-    fortran.py      free-form F90+
-    fixed_form.py   F77 fixed-form
-  generators/       pybind11, f2py, CMake, Python package, FastAPI, tests,
-                    golden test, Dockerfile, gateway, pyproject
+    cpp.py              front door: picks a C++ backend, reports which ran
+    cpp_ast.py          Clang AST parser (primary)
+    cpp_regex.py        token/brace reader (fallback, no libclang needed)
+    fortran.py          front door: picks a Fortran backend
+    fortran_fparser.py  fparser2 parse tree (primary)
+    fortran_regex.py    targeted per-routine reader (fallback)
+    fixed_form.py       F77 fixed-form helpers (IMPLICIT, CHARACTER lengths)
+  generators/       pybind11, f2py, CMake, Python package, FastAPI router,
+                    middleware, error handling, tests, golden test,
+                    Dockerfile, gateway, Kubernetes, pyproject
 ```
 
 Parsers normalise source into `ir.ModuleIR`; generators consume it without
 knowing which language it came from. Both C++ backends emit the identical IR,
 which is why swapping the regex reader for a real compiler front end changed
-nothing below `parsers/`.
+nothing below `parsers/`. The Fortran side has since gone the same way: the
+fparser2 backend replaced the regex reader as the default, and the regex
+reader is still there for machines without the package.
 
 ## Developing
 
 ```bash
-.venv/bin/python -m pytest tests -q                       # 220 tests
-NATIVE2PY_CPP_PARSER=regex .venv/bin/python -m pytest -q  # fallback backend
-.venv/bin/python -m mkdocs serve                          # docs at :8000
+.venv/bin/python -m pytest tests -q                           # 694 tests
+NATIVE2PY_CPP_PARSER=regex .venv/bin/python -m pytest -q      # C++ fallback backend
+NATIVE2PY_FORTRAN_PARSER=regex .venv/bin/python -m pytest -q  # Fortran fallback backend
+.venv/bin/python -m mkdocs serve                              # docs at :8000
 ```
 
 The suite runs green under both C++ backends — that is the contract that lets
@@ -333,6 +368,7 @@ failure) were found that way and not by inspection.
 - [Getting started](docs/getting-started.md) — C++ end to end
 - [Exposing C++](docs/cpp-guide.md) / [Exposing Fortran](docs/fortran-guide.md)
 - [Numerical regression](docs/golden-values.md)
+- [Troubleshooting](docs/troubleshooting.md)
 - [native2py.yaml reference](docs/configuration.md) · [CLI reference](docs/cli-reference.md)
 - [Architecture](docs/architecture.md) — the IR, the parser seam, and what is
   generated versus what is yours
@@ -341,10 +377,47 @@ failure) were found that way and not by inspection.
 
 ## Before you ship
 
-Read [Is this production-ready?](docs/production-readiness.md) first. Short
-answer: not as-is. The compile-and-serve path is real and verified, but the
-generated endpoints have no auth, no rate limiting and no exception handling;
-native code that segfaults takes the worker down with it; there is no
-sandboxing, timeout or per-call isolation; and there are no CI/CD or
-Kubernetes templates. That page is an honest gap list, not a sales pitch —
-use it to decide what to add before a paying workload touches this.
+**Honest positioning: this is usable today for internal, single-tenant
+deployments, where a team is putting an HTTP or Python interface on legacy
+code it already trusts. It is not ready for internet-facing or multi-tenant
+use.**
+
+The compile-and-serve path is real and verified. Generated services do now
+carry API-key auth (`api.auth: api_key`), rate limiting, a request size cap,
+request IDs and access logging, an exception handler, `/healthz` and `/readyz`
+with SIGTERM draining, and Kubernetes manifests via `native2py k8s`.
+
+What remains, and why it is not just a to-do item:
+
+- **Fortran endpoints are serialised process-wide.** Each holds one lock
+  across the native call, because COMMON blocks are process-global storage and
+  two concurrent requests that configure different states would otherwise read
+  back each other's numbers silently. Throughput scales with processes, not
+  threads — do not plan capacity as if these endpoints were concurrent. C++
+  services are not locked (a fresh instance per request covers the usual
+  case), which also means a C++ library holding file-scope static state has no
+  protection here and the parser cannot detect that it needs any.
+- **Stateful libraries get a session-shaped API** — "configure, then read".
+  That is fine when one tenant owns the process and wrong when it does not.
+- **`MAX_ARRAY_ITEMS` is a memory guard, not a bounds check.** Emitted for
+  services that take array arguments. The IR records that a parameter is an
+  array, not the extent the routine actually declares, so one configurable cap
+  (`NATIVE2PY_MAX_ARRAY_ITEMS`, default 65536) stands in for all of them. A
+  real extent check waits on the fparser2 front end.
+- **A segfault still takes the worker down.** No sandbox, no per-call timeout,
+  no per-call isolation.
+- No CI/CD templates; `infrastructure/docker/` is an empty skeleton.
+
+Read [Is this production-ready?](docs/production-readiness.md) and
+[DEFECTS.md](DEFECTS.md) before a paying workload touches this. Those are
+honest gap lists, not a sales pitch.
+
+### Refusals are part of the contract
+
+When the parser recognises a symbol but will not bind it, that is a decision,
+not a gap it forgot to fill: a non-const `char*` output buffer has no length,
+a pointer return has no ownership, a derived-type Fortran result has no
+mapping. Each refusal is printed at `generate` time with its reason, and the
+generated service publishes them at `GET /_unexposed` so they stay visible to
+whoever is calling the API. An empty mapping there means this build refused
+nothing; a 404 means the service predates the route and cannot tell you.

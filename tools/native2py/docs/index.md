@@ -19,9 +19,9 @@ repo root):
 
 | Language | Parser | Binding tool | Status |
 |----------|--------|--------------|--------|
-| C++ | Clang AST via libclang (preprocessor, templates, typedefs, overloads), with a regex reader as fallback | pybind11 | ✅ generate + build verified against a real `clang++`/CMake compile |
-| Fortran | regex-based, targeted per-routine extraction | f2py | ✅ generate + build verified against a real `gfortran`/f2py compile |
-| C | — | — | not started |
+| C++ | Clang AST via libclang (preprocessor, typedefs, overloads), with a regex reader as fallback | pybind11 | ✅ generate + build verified against a real `clang++`/CMake compile |
+| Fortran | fparser2 parse tree, with a targeted per-routine regex reader as fallback | f2py | ✅ generate + build verified against a real `gfortran`/f2py compile |
+| C | via the C++ path, for `extern "C"` declarations in a header | pybind11 | partial |
 
 Both language paths have been run through a **real compiler**, not just unit
 tests: the generated `CMakeLists.txt` was fed to actual `cmake`/`gfortran`/
@@ -30,10 +30,29 @@ package, and the generated FastAPI service was exercised with real HTTP
 requests. See [Architecture](architecture.md#verified-not-just-tested) for
 what was checked.
 
+## What it is, and is not, ready for
+
+Usable today for **internal, single-tenant deployments**, where a team is
+putting a Python or HTTP interface on legacy code it already trusts. Not ready
+for internet-facing or multi-tenant use.
+
+Two constraints shape that, and neither is a to-do item:
+
+- Every generated **Fortran** endpoint serialises its native call through one
+  process-wide lock, because COMMON blocks are process-global storage.
+  Concurrency is one native call per process, by design — scale with
+  processes, not threads. C++ services are not locked. See
+  [Architecture](architecture.md#the-concurrency-model-one-native-call-per-process-fortran).
+- For a stateful library the generated API is session-shaped ("configure, then
+  read"), which is safe when one tenant owns the process and unsafe otherwise.
+
+[Is this production-ready?](production-readiness.md) carries the detail, and
+`DEFECTS.md` in the tool's root tracks known defects.
+
 ## Where to start
 
 - New to native2py? Start with [Getting started](getting-started.md) — it
-  walks through the C++ `calculator` example end to end.
+  walks through a small C++ example end to end.
 - Exposing your own C++ code? See [Exposing C++](cpp-guide.md).
 - Exposing Fortran, especially a large legacy source file? See
   [Exposing Fortran](fortran-guide.md) — this is the case native2py's

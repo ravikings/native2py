@@ -1,5 +1,7 @@
 import pytest
 
+from conftest import requires_fparser
+
 from native2py.config import ExposeConfig
 from native2py.generators import f2py_gen, python_pkg_gen, test_gen
 from native2py.parsers import fortran as fortran_parser
@@ -225,6 +227,7 @@ def test_derived_type_result_is_skipped_not_bound_as_float(modern_source):
     assert "pvt_state" in module.skipped[0].reason
 
 
+@requires_fparser
 def test_derived_type_argument_is_skipped_not_bound_as_float(tmp_path):
     # A1, parameter half: the same defaulting sat on the parameter path.
     source = tmp_path / "derived_arg.f90"

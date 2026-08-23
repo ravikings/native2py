@@ -52,6 +52,7 @@ CORPUS = _corpus()
 # --- the seam -----------------------------------------------------------
 
 
+@requires_fparser
 def test_fparser2_is_the_default_when_it_is_available(monkeypatch):
     # The default was flipped on evidence, not preference: across 180 files
     # (the petro F77 decks plus numpy's own f2py test corpus) there is no file
@@ -99,6 +100,7 @@ def test_auto_still_resolves_when_fparser_is_absent(monkeypatch):
     assert fortran_parser.resolve_backend() == "regex"
 
 
+@requires_fparser
 def test_backend_description_names_what_actually_ran(monkeypatch):
     # This string lands in build logs. It has to distinguish "you got the
     # grammar" from "you got the pattern matcher" without the reader having to

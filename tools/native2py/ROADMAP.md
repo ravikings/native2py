@@ -9,10 +9,17 @@ The goal is not a better compiler. It is this acceptance test:
 Every item is judged against one of two questions. **Can we ingest more code
 without editing it?** **Is the resulting API safe to operate?**
 
-Status as of `fbbd285`+ (2026-08-23). Test suite: **238 → 595 passing, 0
-skipped**, green under both Fortran backends and on Python 3.10–3.12.
-**CI is green on all six legs** — the first fully green run in the project's
-history, and it took three real bugs to get there (see W0).
+Status as of `3a3c648` (re-audited 2026-08-23). Test suite: green on both
+paths — `python -m pytest -q` with the `[fparser]` extra installed, and
+without it (the fparser2-only tests skip). The collected count varies with
+which optional extras are present, so it is deliberately not quoted here.
+The "595 passing, 0 skipped" figure that stood here was from `fbbd285` and is
+superseded. Ten fparser2-only tests used to *fail* rather than skip on a
+checkout without the optional `[fparser]` extra; the `requires_fparser` marker
+now lives in `tests/conftest.py` and covers them, so that checkout reports
+**652 passed, 41 skipped** and the extra-installed run **695 passed, 1 skipped,
+1 xfailed**. Both were measured. Coverage under both Fortran backends and on
+Python 3.10–3.12, and the current CI state, were **not** re-verified here.
 
 ---
 
@@ -21,9 +28,9 @@ history, and it took three real bugs to get there (see W0).
 | | Status |
 |---|---|
 | **W1** Widen unmodified ingestion | 1.4 done — fparser2 is now the default when installed, on measured evidence |
-| **W2** Make the generated API safe to operate | Concurrency serialised, bounds capped, crash containment tier 1 shipped; auth/observability and per-request isolation open |
+| **W2** Make the generated API safe to operate | Concurrency serialised, bounds capped, crash containment tier 1, auth/rate limiting/request ids shipped; **per-request isolation and the session-shaped API still open — the two deployment blockers** |
 | **W3** Codegen and IR hygiene | IR versioned, differential harness built; `ast` migration still deferred |
-| **W0** Adoption prerequisites (added later) | Done; CI still unproven until first push |
+| **W0** Adoption prerequisites (added later) | Done; CI has run (see W0 Open), state at this commit not re-verified |
 
 The single most consequential change is not on this list as a line item: the
 generated services now carry **evidence**. `services/petro_api/golden.json`
@@ -128,9 +135,7 @@ f2py must survive — each parsed with fparser2 and compiled with
 All 180 accepted by both. `parser: regex` and `NATIVE2PY_FORTRAN_PARSER=regex`
 remain as escape hatches, and a machine without fparser is unaffected.
 
-What the tree parser now unblocks, still to be built on it:
-
-What is still broken without it:
+What the tree parser unblocks, still to be built on it:
 
 - ~~**Statement functions** corrupt intent inference~~ — fixed, though not the
   way 1.4 predicted: fparser2 *cannot* tell `DBL(X)=X*2` from an array write
@@ -186,7 +191,12 @@ COMMON safety lands first. This is documented in `docs/production-readiness.md`.
 
 ### Open
 
-**2.1b — the lock is per-call, not per-session.** A deliberately passing test
+**2.1b — the lock is per-call, not per-session.** The lock is at
+`services/petro_api/python/petro_api/router.py:44`, and it holds only *within*
+one worker process: it does not make the service safe across workers, pods or
+replicas, and it caps native throughput at one concurrent call per process.
+Design routes for closing this are below, under "Closing the shared-state gap".
+A deliberately passing test
 records this so it cannot be mistaken for a complete fix: `POST /pvt_set_fluid`
 followed by `POST /solution_gor` still races across the two requests. Closing it
 means either process affinity per session, or detecting the write→read COMMON
@@ -244,11 +254,129 @@ traceability and consistency fix, **not** a leak fix, and it explicitly does
 not protect a service running with `debug=True` (Starlette checks `debug`
 before the handler). Both limits are pinned by tests.
 
-Still open: no authentication, no rate limiting, no request-*rate*/size limit,
-no request logging on the successful path, no request id, no readiness probe
-distinct from `/healthz` liveness, no OpenTelemetry. Also unbuilt: a
-`GET /_unexposed` route returning what the parser skipped and why — that
-information currently exists only in generated comments inside a container.
+**Mostly closed since — this paragraph was stale and is corrected.** Shipped in
+`fbbd285`/`52dae51` and verified in the tree: API-key auth that fails closed
+(`generators/middleware_gen.py:40`, keys from `NATIVE2PY_API_KEYS`, never
+baked in), a rate limiter (`middleware_gen.py:120`), per-request ids and
+request logging (`middleware_gen.py:152`+), a `/readyz` readiness probe
+distinct from `/healthz` liveness — reporting 503 while draining, and wired
+into the generated Kubernetes manifests (`generators/k8s_gen.py:157`) — and
+the `GET /_unexposed` route, which is generated (`python_pkg_gen.py:505`) and
+present in `services/petro_api/python/petro_api/router.py:58`.
+
+Still open, verified by grep over `native2py/`: **no OpenTelemetry** (zero
+references), and **no authorization** — a valid API key can call every
+endpoint (see "What to do next" #4).
+
+---
+
+## Closing the shared-state gap — design, not implementation
+
+Nothing in this section is built. It exists so the choice is made deliberately
+rather than by default. The problem is stated in DEFECTS.md S1/S2: native
+process-global state (Fortran `COMMON`, C++ file-scope statics) makes the
+native contract "configure, then read", HTTP has no session, and the current
+answer is a process-wide lock that serialises everything and still only holds
+inside one worker — and that lock is emitted for Fortran only
+(`generators/python_pkg_gen.py:398`), so a C++ header carrying file-scope
+`static` state gets no protection at all.
+
+Three routes. They are not exclusive — (a) and (b) compose.
+
+### (a) Reshape the API via codegen — fuse configure + compute
+
+Extend the IR to record, per routine, **which process-global state it writes
+and which it reads**. Then generate one endpoint per write→read chain, taking
+the union of both routines' arguments, so a single HTTP request performs the
+configure and the compute inside one lock acquisition and leaves nothing
+behind that a later request depends on.
+
+What it changes in the generator:
+
+- **IR.** `FunctionDef` needs a globals-effect record — something like
+  `writes_globals: list[str]` / `reads_globals: list[str]`, naming the COMMON
+  block (or module variable, or C++ static) touched and in which direction. It
+  must serialise, version under `schema_version`, and default empty so an older
+  `ir.json` still loads (the existing pattern in `ir.py`).
+- **Fortran front end.** This is the work `COMMON`/`EQUIVALENCE` outputs need
+  in W1.4 and cannot be done by the regex reader: fparser2's per-scoping-unit
+  `SYMBOL_TABLES` is what tells you that a name in an assignment target is a
+  COMMON member rather than a local. Cross-file `CALL` resolution has to
+  propagate the effect transitively, or a routine that configures via a
+  subroutine call looks pure.
+- **Pairing rule.** Deciding which writer pairs with which reader must be
+  explicit and conservative, and where it is ambiguous the honest output is a
+  `ModuleIR.skipped` entry plus the unfused endpoints, not a guess. A YAML
+  escape hatch (`api: fuse:`) is the likely fallback.
+- **Router codegen.** Emit fused endpoints, merge and de-duplicate argument
+  names, and decide what happens to the unfused ones — probably still emitted,
+  documented as unsafe under concurrency, or omitted behind config.
+
+Trade-offs. Stateless: one request is one self-contained native call, so it is
+safe across workers, pods and replicas, and the `WEB_CONCURRENCY=1` pin and the
+one-worker-per-pod Kubernetes pin can both be lifted. It is a **codegen
+change**, which is exactly native2py's mandate — no new runtime, no new
+operational surface. It does **not** contain crashes: a segfault still kills
+the worker. It cannot express a genuinely long-lived session (configure once,
+then a thousand reads) without re-sending the configuration each time, which
+costs native work per request. And it depends on IR work that does not exist.
+
+### (b) Isolate per request at runtime — a subprocess pool
+
+Run the native extension in child processes, not in the API worker. One native
+process per in-flight request, or per session token if a session API is kept.
+`COMMON` is then per-tenant by construction, because it is per-process.
+
+What it changes in the generator:
+
+- A generated pool module: spawn, health-check, recycle after N calls, cap
+  size, and a supervisor that replaces a dead child.
+- A marshalling layer for every bound signature — arrays especially. Shared
+  memory for large `numpy` buffers if the IPC cost is not to dominate.
+- Endpoints call through the pool instead of importing the extension directly;
+  the process-wide `RLock` disappears, replaced by pool checkout.
+- Timeouts become enforceable per request rather than per worker
+  (`gunicorn --timeout` today), and a session token, if kept, must pin to a
+  child and expire.
+
+Trade-offs. This is the only route that **also contains segfaults, Fortran
+`STOP` and hangs** — the crash kills a child, the request gets a 5xx, the
+service stays up. It is the honest answer for untrusted input or native code
+whose memory safety cannot be argued. It costs IPC latency on every call and
+adds a large runtime surface for native2py to own and debug — pool lifecycle,
+marshalling, backpressure, zombie reaping — which is a different kind of
+project than a code generator.
+
+### (c) Make the native source re-entrant
+
+Move state out of `COMMON` into a derived type (or a C++ object) threaded
+through the call chain. Then there is no shared state, the lock is unnecessary,
+and both (a) and (b) become unnecessary too.
+
+What it changes in the generator: very little — a re-entrant deck binds with
+what exists today, and the derived-type shim machinery already landed
+(`3a3c648`) is most of what a state handle would need.
+
+Trade-offs. Cleanest by a wide margin and the only route that fixes the problem
+rather than working around it. It is also the most expensive, requires editing
+the native source — which contradicts native2py's founding constraint — and
+requires the numerical revalidation that makes anyone touching a 1988 deck
+nervous. Usually off the table for legacy code. Worth naming anyway, because
+for a *new* library it is simply the right answer, and native2py should not
+teach people otherwise.
+
+### Recommendation
+
+**(a) is the default.** It fits the mandate — a codegen change, driven by IR
+the front end should be recovering anyway, with W1.4 already on the critical
+path for it — and it produces a stateless API that scales horizontally.
+
+**(b) is what multi-tenant or crash-prone libraries actually need**, and no
+amount of (a) substitutes for it: fusing endpoints does not stop a segfault
+from taking down every co-resident request. If native2py is ever pointed at
+untrusted input, (b) is not optional.
+
+**(c) when you own the source and the revalidation budget.**
 
 ---
 
@@ -355,6 +483,29 @@ has been dropped from `pyproject.toml` and `requirements.txt`.
 
 ---
 
+## Deployment verdict
+
+**Deployable today for internal, single-tenant-per-service use**: a team
+calling trusted legacy code it owns, one deck per service, one tenant per
+deployment. The supporting evidence is real and checkable — `golden.json` with
+10 recorded entry points and toolchain provenance, a native oracle that
+compiles the Fortran and C++ directly, reproducible container builds, API-key
+auth, rate limiting, request ids, `/healthz` + `/readyz`.
+
+**Not deployable internet-facing or multi-tenant.** Two blockers, both in
+DEFECTS.md ("Standing blockers") and both open here:
+
+1. **No per-request isolation.** `router.py:44` serialises every native call
+   through one process-wide `RLock` for correctness, not speed; it is emitted
+   for Fortran services only, it holds only
+   within a worker, so nothing protects tenants across replicas, and a
+   segfault, `STOP` or hang still takes the worker's co-resident requests with
+   it (`service.py:52`).
+2. **The API is session-shaped.** "Configure, then read" over stateless HTTP is
+   not a safe public contract. See "Closing the shared-state gap".
+
+Neither is a bug to be patched. Closing them is the design work above.
+
 ## What to do next
 
 Ordered by value per hour, not by workstream.
@@ -363,7 +514,10 @@ Ordered by value per hour, not by workstream.
    untrusted input, and the last thing standing between "supervised" and
    "contained". Deliberately deferred so far because it costs marshalling on
    every request; that trade should be made deliberately.
-2. **2.1b session-shaped API** — unblocked by 1.4's symbol table, and more
+   Route (b) in "Closing the shared-state gap".
+2. **2.1b — close the shared-state gap**, preferably by route (a): record
+   global-state effects in the IR and generate fused configure+compute
+   endpoints. Unblocked by 1.4's symbol table, and more
    urgent than it looks: the crash-containment default pins Fortran to one
    worker, and the Kubernetes manifests pin it to one worker per pod, both
    *because this is unsolved*. Fixing it lifts a throughput ceiling in two
@@ -390,10 +544,16 @@ Ordered by value per hour, not by workstream.
 ## Out of scope
 
 - **C++ semantic analysis beyond Clang.** Binding safety is enforced by refusal —
-  no raw pointer returns, no length-free pointers, no non-const `char*`. That is
-  a design, not a gap.
-- **STL container binding** (`std::vector`, `std::span`) — the highest-value C++
-  IR extension, and the largest remaining C++ coverage gap.
-- **Migrating off f2py.** It is the constraint behind several IR compromises (no
-  CHARACTER outputs, arrays forced to `intent(in,out)` to avoid allocating
-  `MXCELL` elements per call). Revisit once 1.4 provides real extents.
+  no raw pointer returns, no *length-free* pointers, no non-const `char*`
+  (`parsers/cpp_ast.py:608`). That is a design, not a gap.
+- ~~**STL container binding**~~ **— partly done, no longer out of scope.**
+  `std::vector<T>` binds through typedefs (`parsers/cpp_ast.py:538`), with a
+  non-const `std::vector<T>&` argument deliberately refused because pybind11
+  discards writes through it (`parsers/cpp_ast.py:492`); a raw `T*` paired with
+  a length argument binds as a numpy buffer. Still out of scope: `std::span`,
+  `std::map`, and general template instantiation.
+- **Migrating off f2py.** It is the constraint behind several IR compromises
+  (arrays forced to `intent(in,out)` to avoid allocating `MXCELL` elements per
+  call). Note this no longer includes CHARACTER outputs: fixed-length ones now
+  bind via a lifted demotion (see 1.4 above and DEFECTS.md), though only on the
+  fixed-form path. Revisit once 1.4 provides real extents.

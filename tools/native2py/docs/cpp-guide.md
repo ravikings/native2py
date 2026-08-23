@@ -91,14 +91,19 @@ pip install "native2py[clang]"
   still bound, with its own members only.
 - inheriting from a class the service does not bind: reported, and the
   relationship dropped — expose the base too if Python needs its methods
-- operator overloading — **now supported**, see below
 - raw numeric pointers whose length **nothing in the signature names**. See
   below — a pointer paired with a length argument *is* now bindable
 - pointer *returns* of class types — ownership ambiguity
 - types that are only forward-declared and never defined in the service
 
-The last four are pybind11 constraints, not parser limits: they stay refused
+The last three are pybind11 constraints, not parser limits: they stay refused
 no matter how good the parser gets.
+
+Refusals are part of the service's contract, not a gap the tool forgot to
+fill. Each one is printed at `generate` time with its reason, and the running
+service republishes them at `GET /_unexposed`, so a caller reading the API can
+see what is deliberately absent and why. An empty mapping there means the
+build refused nothing.
 
 ### Array arguments: raw pointers
 
@@ -229,6 +234,15 @@ Two guardrails stay on even under opt-in: the convention is fenced to
 binds), and a size-word integer anywhere in the signature vetoes it —
 `krload_(double* sw, ..., int* n)` is four arrays sharing a length, and no
 opt-in should turn them into five scalars.
+
+Two further limits are worth knowing before you reach for this key:
+
+- It applies to **free functions only**. A class method taking a bare `T*` is
+  refused whatever you list here, and its refusal message will not even
+  mention `scalar_ref_functions`.
+- It applies under the **clang backend only**. The regex fallback reader
+  ignores the key entirely, so a machine without libclang silently gets a
+  different, smaller API.
 
 Verified against the real petro bridge, compiled and linked against the real
 Fortran: `pvtrs_(2000)` and `pvtbub_(1000)` reproduce the golden values to
@@ -397,8 +411,13 @@ public:
 };
 ```
 
-If `expose:` is empty, everything found is exposed. As soon as you list even
-one name, only listed names are exposed — config becomes a filter once used.
+State "bind everything" explicitly with `expose: all` (or
+`expose: {all: true}`). An empty `expose:` block still binds everything found
+— falling back to any `[[native2py::expose]]` annotations in the source — but
+warns that the intent was never stated, because a whole header should not get
+bound on an unstated default. `expose: false` binds nothing. As soon as you
+list even one name, only listed names are exposed — config becomes a filter
+once used.
 
 ## Type mapping
 
@@ -475,7 +494,7 @@ To `#include` a header that doesn't live in `native/`, add its directory:
 name: extdep
 language: cpp
 include_paths:
-  - libraries/extheaders
+  - libraries/common-cpp/include
 ```
 
 Entries are repo-root-relative and become `target_include_directories`
@@ -518,10 +537,21 @@ For a service at `services/<name>/`:
 bindings/generated/<name>_bindings.cpp   one pybind11 PYBIND11_MODULE for the service
 CMakeLists.txt                           pybind11_add_module(<name>_cpp ...)
 python/<name>/__init__.py                re-exports from ._native.<name>_cpp
-python/<name>/router.py                  APIRouter with one POST per method
-python/<name>/service.py                 standalone FastAPI app + /healthz
+python/<name>/router.py                  APIRouter with one POST per method,
+                                         plus GET /_unexposed
+python/<name>/service.py                 standalone FastAPI app, /healthz,
+                                         and the exception handler
+python/<name>/middleware.py              auth, rate limiting, body-size cap,
+                                         request ids, /readyz, draining
 tests/test_python_api.py                 import + call smoke test
+tests/test_golden.py                     replays golden.json (skips until recorded)
+pyproject.toml                           generated once, then yours
+.native2py/ir.json                       machine-readable record of what bound
 ```
+
+`pyproject.toml` is the one exception to "generated files are rewritten":
+`generate` restores it only if it is missing, so pinned dependencies and
+version edits survive. Everything else in that list is overwritten every run.
 
 Everything under `bindings/generated/` is rewritten on every `generate`,
 including clearing stale files from previous runs. Don't edit them.
@@ -547,9 +577,12 @@ Docker build-context change are in
 
 ## Verified against real builds
 
-Both the multi-header case and the shared-library case have been compiled
-with real `cmake` + `clang++` + `pybind11`, imported, and called — not just
-unit-tested:
+Both the multi-header case and the shared-library case are compiled with real
+`cmake` + `clang++` + `pybind11`, imported, and called in the test corpus
+(`tools/native2py/tests/test_multifile_cpp.py`,
+`tools/native2py/tests/test_shared_libraries.py`) — not just unit-tested
+against the parser. No service for them is committed under `services/`; the
+suite scaffolds them per run. The calls that get checked:
 
 ```
 Vec3.norm(3,4,0)       = 5.0

@@ -3,6 +3,10 @@
 Generated from `native2py --help` / `native2py <command> --help` output —
 if this drifts from what the CLI actually prints, trust the CLI.
 
+Service names in the examples below (`demo`, `pvt`, `reservoir`, …) are
+illustrative. The only service committed in this repo is `petro_api`;
+substitute your own, or scaffold one first with `quickstart`.
+
 In a hurry? Skip straight to [`native2py quickstart`](#native2py-quickstart-source)
 — one command, no `native2py.yaml` editing.
 
@@ -135,14 +139,9 @@ Detect the native language of a file, or list every native source found
 under a directory, grouped by language.
 
 ```bash
-native2py detect services/demo/native/geometry.hpp
-native2py detect services/reservoir/native
+native2py detect libraries/geometry/geometry.hpp
+native2py detect services/petro_api/native
 ```
-
-`init` only creates directories that are missing, so it is safe to re-run.
-It restores the empty skeleton, never service content — see
-[Architecture](architecture.md#what-is-generated-what-is-yours) for what does
-come back after a deletion.
 
 ## `native2py inspect <path>`
 
@@ -237,6 +236,57 @@ native2py docker demo --build   # also runs `docker build -t demo:latest .`
 |--------|---------|
 | `--build` / `--no-build` | `--no-build` |
 
+For a **C++** service that declares `libraries:`, the build context becomes the
+repo root and the command becomes
+`docker build -f services/<name>/Dockerfile -t <name>:latest .`, because `COPY`
+cannot reach outside a service directory. A Fortran service keeps the
+service-directory context: its library sources are already vendored into
+`native/_expanded/` by `generate`.
+
+If no `requirements.lock` exists, this prints a note that pip will resolve
+dependencies at build time, so two builds a week apart can ship different
+code. Run `native2py lock <name>` first.
+
+## `native2py lock <name>`
+
+Pin the service's Python dependencies by version **and SHA-256**, writing
+`services/<name>/requirements.lock`. The generated Dockerfile installs it with
+`--require-hashes`.
+
+```bash
+native2py lock demo
+```
+
+Without it, `docker build` resolves fastapi/uvicorn/numpy from PyPI on every
+build, so an image rebuilt later ships different code with nothing recording
+the change. Resolution targets the **image** — Python 3.12 on Linux, both
+architectures — not the machine running the command. Re-run
+`native2py docker <name>` afterwards.
+
+## `native2py k8s <name>`
+
+Generate Kubernetes manifests for the service.
+
+```bash
+native2py k8s demo
+native2py k8s demo --image registry.example.com/demo:1.4.0 --replicas 3
+```
+
+| Option | Default |
+|--------|---------|
+| `--image` | `<name>:latest` |
+| `--replicas` | `2` |
+| `--output` | `infrastructure/kubernetes/<name>.yaml` |
+
+Replicas, resources and the image are starting points you are expected to
+tune. The security context and the probe wiring (`/healthz` for liveness,
+`/readyz` for readiness) are not — they are the reason to generate this rather
+than hand-write it.
+
+For a Fortran service, note that native calls are serialised per process (see
+[Architecture](architecture.md#the-concurrency-model-one-native-call-per-process-fortran)),
+so replica count, not thread count, is what buys you concurrency there.
+
 ## `native2py gateway <name> --service <a> --service <b>`
 
 Generate a composed FastAPI app that serves several services on one URL,
@@ -260,8 +310,12 @@ trade-off comparison in
 
 ## `native2py clean <name>`
 
-Remove build artifacts (`dist/`, `build/`, `*.egg-info`, `__pycache__/`)
-under `services/<name>/`.
+Remove build artifacts under `services/<name>/`: `dist/`, `build/`,
+`*.egg-info`, `__pycache__/`, `.pytest_cache/`, and `native/_expanded/`.
+
+`native/_expanded/` is the vendored+preprocessed Fortran tree — regenerable,
+but note that it holds the library sources a Fortran `libraries:` service
+compiles against, so `clean` must be followed by `generate` before `build`.
 
 ```bash
 native2py clean demo
@@ -281,8 +335,10 @@ native2py golden show pvt       # what it covers, and what it does not
 `record` needs the *built* package importable — the point is to pin what the
 compiled extension computes, not what the source says. It refuses to
 overwrite a golden file whose values have changed; pass `--force` once you
-have decided the change is intended. `--rtol` / `--atol` set the comparison
-tolerance stored in the file (default `rtol=1e-12`).
+have decided the change is intended. `--force`, `--rtol` and `--atol` are
+options of `record` only; `verify` and `show` take none. `--rtol` / `--atol`
+set the comparison tolerance stored in the file (defaults **`rtol=1e-9`,
+`atol=1e-12`**).
 
 The same check runs inside the service's own suite via the generated
 `tests/test_golden.py`, so `native2py test <name>` and CI catch drift with no

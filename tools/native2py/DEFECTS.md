@@ -34,11 +34,110 @@ are given per class.
 >
 > Each fix carries a regression test confirmed to fail before it and pass after.
 >
-> **What remains is in [ROADMAP.md](ROADMAP.md).** Class C is the only part of
-> this document not fully closed: `.F90` preprocessed Fortran is now *detected
-> and warned about* but still not handled, and STL/template coverage is
-> unchanged. Both are the fparser2 argument (W1.4). Defects (g) statement
-> functions and (h) `COMMON`/`EQUIVALENCE` outputs also await that work.
+> **What remains is in [ROADMAP.md](ROADMAP.md).**
+>
+> **Re-audited 2026-08-23 against the tree at `3a3c648`.** Since the sentence
+> that used to stand here was written, most of Class C has closed too:
+>
+> - `.F90`/`.F`/`.FOR` are now discovered (`discovery.py:48`) and run through
+>   `gfortran -cpp -E -P` into `_expanded/` before any parse
+>   (`preprocess.py:283`+), with `fortran: defines:` (`config.py:141`) choosing
+>   the branch. C3 is closed, not merely "warned about".
+> - `std::vector<T>` binds (`parsers/cpp_ast.py:538`), a raw `T*` paired with a
+>   length argument binds as a numpy buffer, and C++ operators bind to Python
+>   special methods (`parsers/cpp_ast.py:417`+). C5 is substantially closed;
+>   general templates are still refused.
+> - Statement functions no longer corrupt intent inference (ROADMAP W1.4).
+>
+> Still genuinely open from Class C/D: `COMMON`/`EQUIVALENCE` **outputs** are
+> still invisible to the parser, `ENTRY` points are still undiscoverable, `.h`
+> is still parsed as C++ from any YAML (C4 — see below), and an empty
+> `expose:` block still means "expose everything" for C++ (D1).
+>
+> **Test-suite claim, corrected — and the gating bug behind it, fixed.** The
+> 595 quoted in ROADMAP.md was long stale. Worse, on a checkout *without* the
+> optional `fparser` extra the suite ran **628 passed, 10 failed, 31 skipped**:
+> ten fparser2-only tests (derived-type shims, statement functions, backend
+> selection) *failed* rather than skipped, the inverse of the W0 "a skip is not
+> a pass" note — a missing optional extra read as a red suite, which buries a
+> real regression. The `requires_fparser` marker now lives in `tests/conftest.py`
+> and is applied to all of them, so that checkout reports **652 passed, 41
+> skipped**.
+>
+> Do not quote a single collected-test number here. It varies with which
+> optional extras are installed (697 with `fparser`, 694 without), so any fixed
+> figure is wrong on some machine. Quote the command instead.
+
+---
+
+## Standing blockers — not defects in the generator, limits of the design
+
+These are not bugs to fix in a sweep. They are properties of putting HTTP in
+front of a process-global native library, and they decide where a generated
+service may be deployed. Both were verified in the tree at `3a3c648`.
+
+### S1. No per-request isolation
+
+`services/petro_api/python/petro_api/router.py:44` serialises **every** native
+call through one process-wide `threading.RLock`. This is a correctness
+mechanism, not a performance choice. Fortran `COMMON` blocks are process-global
+storage: `PVTSET`/`PVTINI` writes `COMMON /FLUID/` and `PVTRS`/`PVTBO` read it
+back. FastAPI runs synchronous `def` endpoints in a threadpool, so without the
+lock two concurrent requests configuring different fluids interleave their
+writes and reads in the same block and **each caller silently receives the
+other caller's numbers** — nothing raises, nothing logs.
+
+Three limits follow, and all three matter more than the lock:
+
+- The lock only holds **within one worker process**. It does not make the
+  service multi-tenant safe across workers, pods or replicas — that is why
+  Fortran services pin `WEB_CONCURRENCY=1` (ROADMAP W2 2.2).
+- It caps native throughput at **one concurrent call per process**.
+- **The lock is emitted for Fortran only.** `generators/python_pkg_gen.py:398`
+  sets `serialise = module.language == "fortran"`; a generated C++ service has
+  no `_NATIVE_LOCK` and no critical section at all. That is right for the
+  common case — C++ endpoints get a fresh instance per request — but a C++
+  library with file-scope or function-local `static` state has exactly the S1
+  problem with none of the S1 mitigation, and the parser cannot detect that it
+  needs one. For such a header, the protection has to come from the deployment
+  (one tenant per process), not from the generator.
+
+### S2. The API is session-shaped, and HTTP is not
+
+The native contract is "configure, then read" — stateful by construction. HTTP
+is not. Two endpoints where the second depends on process-global state left by
+the first is not a safe public contract: nothing in the protocol ties the pair
+to one caller, and nothing in the generated service can tell an interleaved
+sequence from an intended one. See ROADMAP "Closing the shared-state gap" for
+the three routes out and the recommendation.
+
+### Two things the generated error handling cannot cover
+
+- **Crashes outrun Python.** A segfault, a Fortran `STOP` or a hang kills the
+  worker before any Python exception handler runs — stated in the generated
+  code itself at `services/petro_api/python/petro_api/service.py:52`. The
+  unhandled-exception handler (`generators/error_gen.py`) gives failures a JSON
+  body and an `error_id`; it cannot contain a process death. Only supervision
+  (gunicorn, W2 2.2 tier 1) or process-per-request isolation (tier 2) can.
+- **`MAX_ARRAY_ITEMS` is an explicit placeholder.**
+  `services/petro_api/python/petro_api/router.py:22` (comment from line 11)
+  caps every array argument of every endpoint at one configurable number
+  (`NATIVE2PY_MAX_ARRAY_ITEMS`, default 65536), because the IR records that a
+  parameter *is* an array, not how long the routine expects it to be. Real
+  per-parameter extents need the fparser2 front end (ROADMAP 1.4).
+
+### Deployment verdict
+
+**Deployable today for internal, single-tenant-per-service use** — a team
+calling its own trusted legacy code, one service per deck, one tenant per
+deployment, callers who are not adversaries. The evidence for that is real:
+`golden.json` with 10 recorded entry points and toolchain provenance, a native
+oracle, reproducible builds, API-key auth and rate limiting.
+
+**S1 and S2 are blockers for anything internet-facing or multi-tenant.** Until
+per-request isolation exists, one process is one tenant, and the "configure
+then read" contract cannot be safely exposed to callers who do not trust each
+other.
 
 ---
 
@@ -92,6 +191,52 @@ an `optional` argument and an argument-less subroutine.
 ## Class A — silently wrong bindings
 
 The tool succeeds, the service builds, the numbers are wrong.
+
+### A9. An INTENT-less derived-type dummy loses its output components — **open**
+
+`parsers/fortran_fparser.py:402` defaults a declaration with no INTENT clause
+to `"in"`, and line 471 stores that verbatim in `derived_intents`. Fortran does
+not: a dummy argument with no INTENT is usable for both read and write, so
+`type(fluid_state) :: state` with no INTENT is legal, common in older code, and
+writable.
+
+Two consequences. The defensive fallback at line 620,
+`decls.derived_intents.get(key, "inout") or "inout"`, is **dead code** — the key
+is always present, holding `"in"`, so the `"inout"` default can never fire. And
+with intent resolved to `"in"`, the generated shim emits `shim_pre` but not
+`shim_post` (lines 364-367), so components the native routine updated are never
+copied back. The caller receives its own input values, unchanged. Nothing
+raises. A smoke test that does not assert on output-field mutation passes.
+
+Fix is to distinguish *absent* from `"in"` in `_attributes`, and let absent fall
+through to `"inout"` for derived dummies.
+
+### A10. Flattening shims are spliced into the wrong module — **open**
+
+`cli.py:1301` walks every `end module` in the file and keeps the **last** one
+(`pass  # keep the last one`), contradicting the docstring five lines above it:
+"Before `end module`, because the shim constructs the derived type and that type
+is only visible from inside the module that defines it."
+
+For the single-module sources in the corpus, first and last are the same line
+and the bug is invisible. In a file with two or more modules where the exposed
+routine lives in an earlier one, the shim lands in a later, unrelated module,
+where the derived type is out of scope — the `_expanded` copy fails to compile.
+Fix is to anchor on the `end module` of the module that declares the type, not
+the file's last.
+
+### A11. Fixed-form `CHARACTER(32) MSG` falls through to implicit typing — **open**
+
+`parsers/fixed_form.py:152` accepts three spellings —
+`character*32`, `character(len=32)`, `character(32)` — and is described as "one
+pattern, used by BOTH Fortran backends, so the rule cannot drift between them".
+But the declaration regex that feeds it, `_OLD_DECL_RE` via `_LENGTH_SUFFIX`
+(line 154), only ever captures a leading `*`. So on the fixed-form path a
+`CHARACTER(32) MSG` declaration matches nothing at all: `MSG` never reaches
+`declared_types` or `char_lengths` and is typed by the implicit rules instead —
+i.e. as a real. Nonstandard for fixed form, but widely accepted by compilers and
+present in real decks. The two patterns *have* drifted, in the direction the
+comment says they cannot.
 
 ### A1. Fortran derived-type return silently becomes `float`
 
@@ -307,38 +452,56 @@ makes the routine unfindable, and a bare `end module` mis-attributes
 `fortran_module`, which sends `generate_init_py` looking for the symbol in the
 wrong place.
 
-### C3. Preprocessed Fortran (`.F90`, `.F`, `.FOR`)
+### C3. Preprocessed Fortran (`.F90`, `.F`, `.FOR`) — **closed**
+
+Handled since `bf9ba9c`: `discovery.py:48` lists the preprocessed suffixes,
+`preprocess.py:283`+ runs `gfortran -cpp -E -P` (with `-D` flags from
+`config.py:141`) into the `_expanded/` copy before parsing. Original text kept
+for the record:
 
 By convention the uppercase suffix means the file needs the C preprocessor —
 `#ifdef`, `#include`, `#define`. `discovery.py` lowercases the suffix and routes
 these to the ordinary parser, which has no preprocessor. Conditional code is
 parsed as if every branch were live.
 
-### C4. `.h` is always parsed as C++17
+### C4. `.h` is always parsed as C++17 — **open, half-addressed**
 
-`_EXTENSIONS` maps `.h` → `"cpp"`, and `ClangOptions.command_line` hardcodes
-`-x c++`. A C header using `restrict`, K&R declarations, or a C-only keyword
-fails to parse, and the failure is reported as a C++ diagnostic.
+`ClangOptions` now has a `language` field and `command_line` passes
+`-x <language>`, also suppressing a mismatched `-std`
+(`parsers/cpp_ast.py:247-270`). But `discovery.py:22` still maps `.h` → `cpp`,
+`config.ClangConfig` (`config.py:49`) has **no `language` field**, and no call
+site passes one — so from a `native2py.yaml` there is still no way to say "this
+header is C". The plumbing exists; the knob is not wired.
 
-### C5. STL containers and templates
+### C5. STL containers and templates — **largely closed**
 
-Refused by design, and defensible — but `std::vector<double>` is how modern C++
-carries an array with its length, which is precisely the information
-`_map_type` refuses raw pointers for. The refusal is currently the largest
-single gap in C++ coverage.
+`std::vector<T>` binds through typedefs (`parsers/cpp_ast.py:538`), with one
+shape deliberately refused: a non-const `std::vector<T>&` argument, because
+pybind11 silently discards writes through it (`parsers/cpp_ast.py:492`). A raw
+`T*` paired with a length argument binds as a numpy buffer. What remains
+refused is general template instantiation — `std::span`, `std::map`, and
+user templates.
 
 ---
 
 ## Class D — tool-level and configuration
 
-### D1. An empty `expose:` block means "expose everything" (C++ only)
+### D1. An empty `expose:` block means "expose everything" (C++ only) — **open**
+
+Still true at `config.py:35-41`: with neither `classes:` nor `functions:` named,
+`is_exposed` returns `True` for every name unless the user wrote `all: false`.
+An explicit `all:` flag was added; the permissive default was not changed.
 
 `ExposeConfig.is_exposed` returns `True` for every name when both lists are
 empty. Pointed at a large header, native2py binds its entire public surface
 with no opt-in. Fortran requires explicit `expose.functions:`; C++ should too,
 or should at least require an explicit `expose: all`.
 
-### D2. `language` silently defaults to `cpp`
+### D2. `language` silently defaults to `cpp` — **closed**
+
+`ServiceConfig.load` now calls `_load_language` (`config.py:128`, defined at
+`config.py:259`), which requires `language:` or infers it from the files under
+`native/` and never falls back to `cpp`. Original text:
 
 `ServiceConfig.load` uses `data.get("language", "cpp")`. A typo'd or missing key
 routes Fortran sources into the C++ parser.
@@ -380,9 +543,11 @@ Steps 1–6 removed every silent-wrong-answer defect in Class A. Verified by
 re-running each probe in this document against the merged tree, not by
 inspection.
 
-**The one item not closed here is Class C**, which is the fparser2 argument:
-`.F90` preprocessed Fortran is detected and warned about but still parsed as
-though every `#ifdef` branch were live, STL and template coverage is unchanged,
-and defects (g) statement functions and (h) `COMMON`/`EQUIVALENCE` outputs need
-the symbol table a real parse tree provides. That work is scoped as W1.4 in
+**Class C was the one part not closed by that sweep, and most of it has closed
+since** (re-verified 2026-08-23 at `3a3c648`): `.F90` is preprocessed properly,
+`std::vector<T>` and length-paired `T*` bind, statement functions no longer
+corrupt intent inference. What is still open, and still needs the symbol table
+a real parse tree provides: `COMMON`/`EQUIVALENCE` **outputs**, `ENTRY` points,
+per-parameter array extents, C-vs-C++ selection for `.h` (C4), and the
+permissive empty `expose:` default (D1). Scoped as W1.4 and W2 in
 [ROADMAP.md](ROADMAP.md).

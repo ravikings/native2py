@@ -11,6 +11,8 @@ import textwrap
 from pathlib import Path
 
 import pytest
+
+from conftest import requires_fparser
 from click.testing import CliRunner
 
 from native2py.cli import main
@@ -117,6 +119,7 @@ def test_generate_preprocesses_before_anything_parses(tmp_path, monkeypatch):
 # --- statement functions --------------------------------------------------
 
 
+@requires_fparser
 def test_a_statement_function_definition_is_not_a_read(tmp_path):
     # `DBL(X) = X*2*B` is a declaration wearing an assignment's clothes.
     # Counting its right-hand side as a read marked B — written before any

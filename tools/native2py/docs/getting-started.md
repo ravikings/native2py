@@ -55,6 +55,10 @@ Keep your source outside `services/` — native2py copies it in, and
 mkdir -p libraries/geometry
 ```
 
+In this repo `libraries/geometry/` already exists with exactly the two files
+below, so you can skip ahead to step 3 and use it as-is. Create it yourself
+only if you are following along in your own project.
+
 ```cpp
 // libraries/geometry/geometry.hpp
 #pragma once
@@ -91,14 +95,30 @@ native2py quickstart libraries/geometry/geometry.hpp --name demo
 ```
 
 ```
-Copied libraries/geometry/geometry.hpp -> services/demo/native/geometry.hpp
-Copied libraries/geometry/geometry.cpp -> services/demo/native/geometry.cpp
-Generated Python package at services/demo/python/demo
+  services/demo
+  libraries/geometry/geometry.hpp -> services/demo/native/geometry.hpp
+WARNING: services/demo/native2py.yaml: `expose:` is empty, so every symbol
+native2py finds will be bound unless the source carries [[native2py::expose]]
+annotations. Say so explicitly with `expose: all`, or list the
+classes/functions you want under `expose.classes:` / `expose.functions:`.
+  libraries/geometry/geometry.cpp -> services/demo/native/geometry.cpp
+Parsing C++ with clang AST (libclang 18.1.1).
+  services/demo/python/demo
+✔ Scaffold service
+✔ Copy native source
+✔ Generate bindings & package
+
+Done — services/demo is ready.
 ```
 
 It found the sibling `.cpp` automatically, scaffolded `services/demo/`,
 exposed everything in the header, and generated the bindings, CMake, Python
-package, FastAPI layer, and a smoke test.
+package, FastAPI layer, middleware, and a smoke test.
+
+The warning is expected here and worth understanding: `quickstart` leaves
+`expose:` empty, which still binds everything but does not *say* that was the
+intent. For a service you keep, set `expose: all` in `native2py.yaml`, or list
+the specific classes and functions you want.
 
 `libraries/geometry/` is untouched — only read and copied.
 
@@ -200,12 +220,29 @@ inputs are kept across future re-records. See
 
 ```bash
 native2py test demo                  # pytest tests/ (includes the golden check)
+native2py lock demo                  # pin deps by version + SHA-256
 native2py docker demo                # writes Dockerfile
 native2py docker demo --build        # also runs docker build
 ```
 
-The generated image is multi-stage (no compilers in the runtime layer),
-runs as a non-root user, and carries a `HEALTHCHECK`.
+Run `lock` first. Without a `requirements.lock`, `docker` prints a note that
+pip will resolve fastapi/uvicorn/numpy from PyPI at build time, so the same
+Dockerfile built a week later can ship different code with nothing recording
+the change.
+
+The generated image is multi-stage (no compilers in the runtime layer), runs
+as a non-root `appuser`, and carries a `HEALTHCHECK`.
+
+Alongside your two endpoints, the service also serves `/healthz` (liveness),
+`/readyz` (readiness, and it reports 503 while draining on SIGTERM), and
+`/_unexposed` — the symbols the parser recognised and refused to bind, with
+the reason. For `demo` that last one is empty, because nothing was refused.
+
+To generate Kubernetes manifests wired to those probes:
+
+```bash
+native2py k8s demo                   # -> infrastructure/kubernetes/demo.yaml
+```
 
 ## Where to go next
 
@@ -221,5 +258,23 @@ runs as a non-root user, and carries a `HEALTHCHECK`.
   [Numerical regression](golden-values.md)
 - What is generated versus what is yours (and what survives a deletion):
   [Architecture](architecture.md#what-is-generated-what-is-yours)
+
+## Before you deploy this
+
+What you just built is suitable for **internal, single-tenant** use — a team
+calling legacy code it already trusts. It is not ready to face the internet or
+to serve multiple tenants from one process.
+
+Two things to know before sizing anything:
+
+- A **Fortran** service serialises every native call through one process-wide
+  lock, because COMMON blocks are process-global state. Concurrency comes from
+  more processes, not more threads. (C++ services like `demo` are not locked —
+  they build a fresh instance per request.)
+- A **segfault in native code takes the worker down.** There is no sandbox and
+  no per-call timeout.
+
+[Is this production-ready?](production-readiness.md), and `DEFECTS.md` in the
+tool's root, are the honest gap lists.
 - Before running any of this for real:
   [Is this production-ready?](production-readiness.md)

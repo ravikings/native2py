@@ -9,7 +9,8 @@ pain.
 |---|---|---|
 | **One API URL** across services | Composed gateway, or an ingress in front of separate images | ✅ both supported |
 | **One deployable** (one image, one scale unit) | Composed gateway | ✅ `native2py gateway` |
-| **Native code** across services (common C++/Fortran) | Shared CMake library target | ✅ C++ via `libraries:` — Fortran not yet |
+| **Native code** across services (common C++/Fortran) | Shared CMake library target (C++) or compiled-in sources (Fortran) | ✅ both, by different mechanisms |
+| **One process** across tenants | — | ❌ not supported — see [Tenancy](#tenancy-what-is-and-is-not-supported) |
 
 ## The enabling design: routers, not apps
 
@@ -94,6 +95,10 @@ or copy-pasted.
 - ✅ No network hop between "services" (it's one process)
 - ❌ No independent scaling — they share CPU/memory
 - ❌ **Shared blast radius**: a native segfault kills every mounted service
+- ❌ **Shared process-global state**: mounted Fortran services share one
+  address space, so they share COMMON blocks and one another's native lock.
+  Do not compose services belonging to different tenants — see
+  [Tenancy](#tenancy-what-is-and-is-not-supported)
 
 Use this when your services are low-traffic, related, and operationally
 better off as one unit. This maps to design.md §23 Phase 2/3 — a sensible
@@ -134,8 +139,10 @@ This is why the router split matters — the topology decision stays reversible.
 
 ## Sharing native code — `libraries/common-cpp`
 
-design.md §4's `libraries/` directory is implemented for C++. Declare the
-library in a service's `native2py.yaml`:
+design.md §4's `libraries/` directory is implemented. The C++ path links a
+CMake target; the Fortran path compiles the sources in (see
+[below](#shared-fortran-libraries-same-libraries-different-mechanism)).
+Declare the library in a service's `native2py.yaml`:
 
 ```yaml
 name: demo
@@ -233,12 +240,106 @@ non-root):
 POST /circle_area_from_feet -> {"result":0.2918635079601587}
 ```
 
-### Not yet: shared Fortran libraries
+### Shared Fortran libraries — same `libraries:`, different mechanism
 
-`libraries:` is wired into the C++/CMake path only. Fortran services build
-through `f2py -c`, which doesn't take the same `add_subdirectory` treatment
-— sharing Fortran code across services still means duplicating source or
-managing a prebuilt library yourself.
+`libraries:` works for Fortran too, but it does not *link* anything. f2py has
+no equivalent of CMake's `add_subdirectory` + `target_link_libraries`, so the
+library's Fortran sources are **compiled into the extension**: they are
+expanded into the service's `native/_expanded/` alongside its own sources and
+handed to `f2py -c` (`native2py/cli.py:1046-1094`, `cli.py:1372-1474`).
+Consequences worth knowing before you rely on it:
+
+- **A Fortran `libraries:` entry needs Fortran sources**, not a CMake target.
+  Declaring one that has none is an error rather than a silent no-op.
+- **The library's INCLUDE directories are picked up automatically**, so you do
+  not restate them under `include_paths:`.
+- **Name collisions are rejected, not resolved.** A library source whose
+  filename matches one the service already has is skipped as shadowed; two
+  library sources with the same basename are a hard error, because compiling
+  both gives duplicate symbols.
+- **The Docker build context stays the simple service-dir one** for Fortran
+  (`cli.py:691-699`) — unlike C++, the sources are already vendored under the
+  service by generate time, so there is no `COPY libraries/...` and no
+  repo-root context.
+
+Same trade-off as the C++ static-link case below, and slightly sharper: this is
+source-level sharing. A fix in the library requires regenerating and rebuilding
+every service that names it.
+
+## Tenancy: what is and is not supported
+
+Topologies A and B are about *packaging*. This one is about *who is allowed to
+call the same process*, and it is the constraint most likely to bite you. It
+comes from the native code, not from FastAPI, so no amount of routing config
+changes it.
+
+### ✅ Supported today — one tenant per service instance
+
+```
+   tenant A ────► petro-a  (own Deployment, own pods)
+   tenant B ────► petro-b  (own Deployment, own pods)
+```
+
+One deployment per tenant, with the tenant boundary drawn at the *deployment*,
+not inside the process. Traffic from one tenant only ever reaches pods that
+serve that tenant. This is the shape the generated artefacts are built for:
+`WEB_CONCURRENCY=1` for Fortran, a process-wide lock around every native call,
+and scaling by replicas.
+
+Within one tenant, replicas are still fine **only if the caller does not depend
+on state carried between two requests**. If it does — the configure-then-read
+pattern below — that tenant needs either a single replica or session affinity
+you provide at the ingress. native2py does not generate affinity.
+
+### ❌ Not supported — one shared deployment, many tenants
+
+```
+   tenant A ─┐
+             ├──► petro-api (shared)     <-- do not do this
+   tenant B ─┘
+```
+
+**The reason, concretely.** The generated API is session-shaped:
+`POST /pvt_set_fluid` writes the process-global Fortran `COMMON /FLUID/` block
+and a later `POST /solution_gor` reads it back. HTTP requests carry no session,
+so:
+
+- **Within one process**, tenant B's configure lands between tenant A's
+  configure and A's read. A gets numbers computed from B's fluid. The
+  process-wide `threading.RLock` at
+  `services/petro_api/python/petro_api/router.py:44` makes each *individual*
+  native call atomic — that is a correctness mechanism, not a throughput
+  choice — but it is released between the two requests, so it cannot make the
+  *pair* atomic.
+- **Across processes**, A's configure and A's read land on different gunicorn
+  workers or different pods, and the read sees a COMMON that was never
+  configured for A. The generated manifest ships `replicas: 2`
+  (`infrastructure/kubernetes/petro_api.yaml:13`), so this is the default
+  shape.
+
+Both failures are **silent**. Nothing raises, nothing logs, and no golden-value
+test catches it — the caller just gets plausible numbers from someone else's
+fluid.
+
+Authentication does not help here. A per-tenant API key identifies the caller;
+it does not partition the COMMON block. Neither does the composed gateway
+(Topology B) — it makes the sharing *worse*, since every mounted service is in
+the one process.
+
+The two things that would close this — session affinity pinning a session to a
+worker, or generating a session-shaped/combined configure+compute API — are
+described in
+[production readiness](production-readiness.md#what-the-lock-does-not-fix) and
+neither is implemented.
+
+### C++ services
+
+C++ routers get no lock: they construct an instance per request, and a C++ free
+function has no equivalent of COMMON that the parser can see. So a C++ service
+with no process-global state is not subject to the constraint above, and
+`WEB_CONCURRENCY` defaults to `2`. **This is a claim about what native2py can
+see, not a guarantee.** If your C++ uses file-scope statics or a singleton, you
+have the same hazard and native2py cannot detect it — that assessment is yours.
 
 ## Topology C — air-gapped / regulated build
 
@@ -408,8 +509,11 @@ What that check does **not** prove:
 - **Python dependency versions.** Library components carry a name and a bare
   `pkg:pypi/<name>` purl with **no version**, because the generated
   `pyproject.toml` declares those deps unpinned — asserting a version here
-  would be a fabrication. To get resolved versions you must scan the *built
-  image* (`syft`, `trivy`, or `pip freeze` inside the container) and merge
+  would be a fabrication. **Note this is true even when `requirements.lock`
+  exists:** the SBOM generator emits a bare `pkg:pypi/<name>` regardless
+  (`generators/docker_gen.py:540`), so a locked service has pinned, hashed
+  dependencies that its own SBOM does not name. To get resolved versions you
+  must scan the *built image* (`syft`, `trivy`, or `pip freeze` inside the container) and merge
   that BOM with this one. This SBOM is authoritative about native sources; it
   is only indicative about Python.
 - **Transitive native dependencies.** System packages installed by `apt-get`
@@ -445,8 +549,9 @@ What that check does **not** prove:
    Re-tagging preserves the digest of the *content*; keep the original digest
    recorded so the provenance survives the retag.
 4. **A Debian package mirror** for the `apt-get install` lines
-   (`build-essential`, `gfortran`, `cmake`, `libgfortran5`). These are not
-   version-pinned at all — see below.
+   (`build-essential`, `gcc-14`, `g++-14`, `gfortran`, `gfortran-14`, `cmake`,
+   `libgfortran5`). These *are* version-pinned, but the mirror must still carry
+   those exact versions — see below.
 5. **The system toolchain outside pip entirely**: cmake, gcc/gfortran, ninja.
    `constraints.txt` says nothing about these and cannot.
 
@@ -454,19 +559,22 @@ What that check does **not** prove:
 
 Being blunt about this is more useful than a checklist that looks complete.
 
-- **`pip install` inside the generated Dockerfile.** Both stages run
-  `pip install` / `pip wheel` against the default index. There is no
-  `--no-index`, no `--find-links`, no `--require-hashes`, and the service's
-  own `pyproject.toml` declares `fastapi`/`uvicorn`/`numpy` **unpinned**. On
-  an air-gapped builder you must supply an index yourself today — bake
-  `PIP_INDEX_URL`/`PIP_FIND_LINKS` into the build environment, or edit the
-  generated Dockerfile. **native2py does not generate an offline-capable
-  Dockerfile.** The base image is pinned; what gets installed into it is not.
-- **`apt-get update && apt-get install`** in both stages, unpinned, against
-  whatever `deb.debian.org` currently serves. So the compiler that builds
-  your numerics is *not* reproducible even though the base image is. Point
-  `sources.list` at an internal snapshot mirror if you need this closed;
-  nothing in the generator does it for you.
+- **`pip install` inside the generated Dockerfile** still reaches an index.
+  With `native2py lock`, *what* it installs is pinned by version and SHA-256
+  (`--require-hashes`), and the wheel goes in `--no-deps` — but there is still
+  no `--no-index` and no `--find-links`, so an air-gapped builder must supply
+  the index itself: bake `PIP_INDEX_URL`/`PIP_FIND_LINKS` into the build
+  environment or point it at an internal mirror. **native2py does not generate
+  an offline-capable Dockerfile.** Without a lock the resolution happens at
+  build time and `native2py docker` says so plainly.
+- **`apt-get update && apt-get install`** in both stages. The *package
+  versions* are pinned (`docker_gen.APT_PINS`, e.g. `gfortran-14=14.2.0-19`),
+  but `apt-get update` still fetches live indexes from whatever
+  `deb.debian.org` serves. A build whose pinned versions have been superseded
+  therefore **fails loudly rather than drifting** — which is the behaviour you
+  want, but it does mean the build is not closed. Point `sources.list` at an
+  internal snapshot mirror if you need that; nothing in the generator does it
+  for you.
 - **`f2py -c` shelling out** to the system `gfortran` (and, on newer NumPy, a
   `meson`/`ninja` build). No network of its own, but it depends entirely on a
   toolchain pip never installed and the SBOM never records. Two machines with
@@ -479,8 +587,19 @@ Being blunt about this is more useful than a checklist that looks complete.
   connected-side operations by definition. Air-gapped sites need a documented
   sneakernet cadence for them, not a one-off transfer.
 
-The short version: **the tool's own install and the container base are
-reproducible today; the generated service's build is not.** Closing that gap
-means teaching the generated Dockerfile and `pyproject.toml` about pinned,
-hash-verified installs and a snapshot apt mirror. That work has not been
-done.
+The short version: **the generated service's build is reproducible today —
+verified by building it three times — but it is not offline.** Every input that
+determines the bytes is pinned (base image digest, apt versions,
+hash-locked Python deps, `SOURCE_DATE_EPOCH`); what is not solved is doing it
+with no network. Closing that means `--no-index`/`--find-links` in the
+generated Dockerfile and a snapshot apt mirror, and neither is generated for
+you.
+
+One genuine reproducibility gap remains, and it is not about the network:
+**`f2py -c` shells out to whatever `gfortran` is on the machine**, which the
+SBOM does not record. Inside the generated image that is the pinned Debian
+compiler, so an image build is covered. A *local* (non-container) build is not:
+two machines with different gfortran versions produce different binaries from
+identical sources and identical SBOMs. `golden.json`'s provenance records the
+local toolchain for exactly this reason — check it before trusting a local
+build's numbers.

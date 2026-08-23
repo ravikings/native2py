@@ -89,11 +89,76 @@ Import from the generated Python package instead — `python/<name>/__init__.py`
 already handles this nesting for you. See
 [Exposing Fortran](fortran-guide.md#the-module-wrapper-gotcha) for details.
 
-## `generate` fails: "Fortran sources require explicit `expose.functions:` entries"
+## `generate` fails: "Fortran services require an `expose.functions:` list"
+
+The full message is:
+
+```
+Fortran services require an `expose.functions:` list in native2py.yaml naming
+exactly the routines to bind — there is no expose-everything fallback, so
+large legacy templates only pay for what they use.
+```
 
 This is intentional, not a bug — see
 [Exposing Fortran](fortran-guide.md#designed-for-large-legacy-files). Add
 the routine names you want under `expose.functions:` in `native2py.yaml`.
+
+## `ExposeWarning`: "`expose:` is empty, so every symbol will be bound"
+
+C++ only, and a warning rather than an error. An empty `expose:` block still
+binds everything the parser finds, but the warning exists because a whole
+header should not get bound on an unstated default. Say what you mean:
+`expose: all` to take everything, `expose: false` to take nothing, or list
+names under `expose.classes:` / `expose.functions:`.
+
+## `undefined symbol: <routine>_` at import, after a clean Fortran build
+
+The build compiled, but the routines your source *calls* were never compiled
+in with it. For a Fortran service that depends on shared decks under
+`libraries/`, declare them:
+
+```yaml
+libraries:
+  - petro
+```
+
+`generate` then copies that library's `.f`/`.f90`/`.f77`/`.for` sources into
+`services/<name>/native/_expanded/` and compiles them into the extension. If
+`native/_expanded/` is missing or empty, `generate` has not been run since the
+last `clean` — `clean` deletes it.
+
+## A Fortran service is slower under load than one call suggests
+
+Expected. Every generated Fortran endpoint holds one process-wide lock across
+its native call, so native execution is one call at a time per process
+regardless of how many worker threads FastAPI has. This is deliberate: COMMON
+blocks are process-global storage, and concurrent calls would silently return
+each other's numbers.
+
+Add processes (more gunicorn workers, more pods), not threads. Do not remove
+the lock. See
+[Architecture](architecture.md#the-concurrency-model-one-native-call-per-process-fortran).
+
+C++ services have no such lock — they construct a fresh instance per request
+instead. If a C++ library keeps file-scope static state, that state *is*
+shared across concurrent requests and nothing generated guards it; the parser
+cannot see file-scope statics to know it should.
+
+## `422 Unprocessable Entity` on a request with a large array
+
+The array exceeded `MAX_ARRAY_ITEMS` (default 65536), and Pydantic rejected it
+during request validation, before the array was ever materialised for the
+native call. Raise it if your inputs are genuinely that large:
+
+```bash
+NATIVE2PY_MAX_ARRAY_ITEMS=500000 uvicorn <name>.service:app
+```
+
+Note what this is *not*: a check that the array matches the extent the routine
+declares. The IR records that a parameter is an array, not how long the
+routine expects it to be, so one configurable cap stands in for all of them.
+It is a memory guard against an unbounded request body. Passing an array of
+the wrong length for the routine is still your responsibility.
 
 ## `NativeTypeError: Unsupported native type '...'`
 

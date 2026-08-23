@@ -12,6 +12,21 @@ real legacy F77". Those skip cleanly if the library isn't present.
 
 import pytest
 
+from native2py.parsers import fortran_fparser
+
+# fparser2 is an OPTIONAL extra, so a test that needs it must SKIP when it is
+# absent, not fail. Ten tests across four modules used to fail on an install
+# without the extra — which reads as a regression and buries any real one.
+#
+# The inverse rule still holds and is the reason this is a shared marker
+# rather than a try/except in each module: a skip is not a pass. CI installs
+# the extra, so these run there; a bare `pip install -e .` skips them and says
+# so, naming the reason.
+requires_fparser = pytest.mark.skipif(
+    not fortran_fparser.is_available(),
+    reason=f"fparser is not installed: {fortran_fparser.unavailable_reason()}",
+)
+
 CALCULATOR_HPP = """#pragma once
 
 namespace math {

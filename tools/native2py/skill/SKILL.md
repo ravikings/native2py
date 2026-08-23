@@ -85,22 +85,42 @@ native2py inspect src/pvt.hpp     # what the parser sees, before generating
 native2py generate pvt            # re-run codegen after editing native2py.yaml
 native2py build pvt               # wheel via scikit-build-core -> CMake
 native2py test pvt                # the generated pytest suite
+native2py lock pvt                # pin deps by version + SHA-256
 native2py docker pvt --build      # multi-stage image, non-root, healthcheck
-native2py gateway platform-api --service pvt --service sim
+native2py k8s pvt                 # -> infrastructure/kubernetes/pvt.yaml
+native2py gateway platform-api --service pvt
 ```
 
-Fortran differs in one way that matters: parsing is targeted per routine. For
-a large legacy deck, use `create-service` + list only the routines you need
-under `expose.functions:` in `native2py.yaml` + `generate`, rather than
-`quickstart`, which scans the whole file.
+Fortran differs in one way that matters: it binds only the routines named in
+`expose.functions:`, and there is no "expose everything" fallback. For a large
+legacy deck, use `create-service` + list only the routines you need in
+`native2py.yaml` + `generate`, rather than `quickstart`, which scans the whole
+file. For C++, state "bind everything" explicitly as `expose: all` — an empty
+`expose:` block still does it but warns that the intent was never stated.
 
 ## Reading the output
 
 Everything the parser recognises but cannot bind is reported at `generate`
-time **with a reason** — templates, `std::vector<T>`, raw numeric pointers,
-class-typed pointer returns, forward-declared types. Relay those lines to the
-user rather than summarizing them as "some methods were skipped"; which four
-of thirty are missing is the whole content of the message.
+time **with a reason** — templates, a non-const `std::vector<T>&`, a non-const
+`char*`, a raw pointer with no length argument, class-typed pointer returns,
+forward-declared types. Relay those lines to the user rather than summarizing
+them as "some methods were skipped"; which four of thirty are missing is the
+whole content of the message.
+
+Refusals are part of the contract, not a bug to work around: a non-const
+`char*` output buffer has no length, a pointer return has no ownership, a
+derived-type Fortran result has no mapping. The running service republishes
+them at `GET /_unexposed`, so you can point the user there. An empty mapping
+means the build refused nothing; a 404 means the service predates the route.
+
+Do not report a construct as unsupported without checking — several things
+that used to be refused now bind: `std::vector<T>` of scalars, operators as
+Python special methods, a raw `T*` paired with a length argument (including on
+methods), Fortran derived types, and fixed-length Fortran CHARACTER outputs.
+The last two are narrow: derived types need free-form source, the fparser2
+backend, a subroutine inside a module, the type defined in the same file, and
+all-scalar components; a CHARACTER output must have its length fixed in the
+declaration or it is demoted to an input.
 
 A header that does not compile is refused outright. Do not try to route around
 that by falling back to the regex parser: clang recovers from an unknown type
@@ -110,14 +130,37 @@ with the C++ underneath.
 ## What you still own
 
 The generated `services/<name>/` is self-contained — it does not depend on
-native2py at runtime and builds on a machine that never installed it. But the
-generated endpoints have **no auth, no rate limiting, and no exception
-handling**; a segfault in native code takes the worker down; there is no
-sandboxing or per-call timeout; there are no CI/CD or Kubernetes templates. If
-the user is heading for production, say this unprompted and point at
-`docs/production-readiness.md`.
+native2py at runtime and builds on a machine that never installed it.
+
+Generated services **do** carry API-key auth (`api: {auth: api_key}` in
+`native2py.yaml`, keys from `NATIVE2PY_API_KEYS`), rate limiting, a request
+size cap, request IDs and access logging, an exception handler, `/healthz` and
+`/readyz` with SIGTERM draining, and Kubernetes manifests via `native2py k8s`.
+Do not tell the user these are missing.
+
+What you **should** raise unprompted if the user is heading for production:
+
+- **This is for internal, single-tenant use.** Not internet-facing, not
+  multi-tenant.
+- **Fortran services run one native call at a time, per process.** Each
+  endpoint holds a process-wide lock across the native call, because COMMON
+  blocks are process-global storage and interleaved calls would silently
+  return each other's numbers. Never suggest removing it to improve throughput
+  — capacity comes from more processes. C++ services are not locked (fresh
+  instance per request); if a C++ library keeps file-scope static state, say
+  so, because nothing generated protects it.
+- **Stateful libraries get a session-shaped API** (configure, then read),
+  which is unsafe to share between tenants.
+- **`NATIVE2PY_MAX_ARRAY_ITEMS` is a memory guard, not a bounds check** — the
+  IR knows a parameter is an array, not its declared extent.
+- **A segfault in native code takes the worker down.** No sandbox, no per-call
+  timeout, no per-call isolation.
+
+Point at `docs/production-readiness.md` and `DEFECTS.md` for the detail.
 
 Regenerated files are rewritten from source every run. Do not hand-edit
-anything under `bindings/generated/`, the generated `CMakeLists.txt`,
-`pyproject.toml`, or the package `__init__` — change `native2py.yaml` and
-re-run `generate`.
+anything under `bindings/generated/`, the generated `CMakeLists.txt`, or
+anything in `python/<name>/` (`__init__.py`, `router.py`, `service.py`,
+`middleware.py`) — change `native2py.yaml` and re-run `generate`.
+`pyproject.toml` is the exception: it is generated once and then yours, and
+`generate` restores it only if it is missing.

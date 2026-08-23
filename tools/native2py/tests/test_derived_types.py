@@ -20,6 +20,12 @@ from native2py.cli import main
 from native2py.config import ExposeConfig
 from native2py.parsers import fortran as fortran_parser
 
+from conftest import requires_fparser
+
+# Every test here needs fparser2: the derived-type reader lives only on the
+# tree-parser path, so on the regex fallback there is nothing to assert.
+pytestmark = requires_fparser
+
 FLUID_F90 = textwrap.dedent(
     """\
     module fluid_mod

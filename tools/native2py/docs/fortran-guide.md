@@ -2,11 +2,14 @@
 
 Two dialects are supported, and the difference matters:
 
-| | Free-form (`.f90`, `.f95`, `.f03`) | Fixed-form F77 (`.f`, `.for`, `.f77`) |
+| | Free-form (`.f90`, `.f95`, `.f03`, `.f08`) | Fixed-form F77 (`.f`, `.for`, `.f77`) |
 |---|---|---|
 | Declarations | `real(8), intent(in) :: x` | often none — [IMPLICIT typing](#fixed-form-f77) |
 | Routine end | `end function foo` | bare `END` |
 | INCLUDE files | rare | common, and [f2py mishandles them](#the-include-trap) |
+
+Uppercase suffixes (`.F90`, `.F`) mean the same dialect but run through the C
+preprocessor first — see [Preprocessed Fortran](#preprocessed-fortran-f90-f-and-ifdef).
 
 Jump to [Fixed-form F77](#fixed-form-f77) if you're working with legacy
 `.f` sources.
@@ -20,13 +23,19 @@ common case of needing just one or two of those routines:
 
 - `native2py.yaml`'s `expose.functions:` list is **required** for Fortran
   (unlike C++, there is no "expose everything" fallback)
-- each requested name drives one **targeted regex search** for that
-  routine's `function ... end function` / `subroutine ... end subroutine`
-  block — the rest of the file is never parsed
-- a 20,000-line template with one exposed routine costs about the same as a
-  200-line file with the same routine
+- only the routines you name are bound, however large the file is
 
-This is verified by `tests/test_fortran_pipeline.py::test_extracts_one_routine_from_a_huge_file`,
+How much of the file gets *read* depends on the backend. Under the regex
+fallback, each requested name drives one **targeted search** for that
+routine's `function ... end function` / `subroutine ... end subroutine` block
+and the rest of the file is never parsed — so a 20,000-line template with one
+exposed routine costs about the same as a 200-line file. The default fparser2
+backend builds a parse tree of the whole file, which costs more on a huge
+deck but buys grammar-accurate routine boundaries, structured attributes, and
+derived-type support.
+
+The targeted-extraction path is verified by
+`tools/native2py/tests/test_fortran_pipeline.py::test_extracts_one_routine_from_a_huge_file`,
 which builds a synthetic 500-routine file and confirms only the target
 routine is extracted.
 
@@ -40,9 +49,11 @@ expose:
     - calculate_pressure   # only this routine is parsed, even in a huge file
 ```
 
-A requested routine can live in any `.f90`/`.f95`/`.f03` file under
-`native/` — `generate` searches each file in turn until every requested name
-is found, so you don't need to say which file it's in.
+A requested routine can live in any Fortran source under `native/` —
+free-form `.f90`/`.f95`/`.f03`/`.f08`, fixed-form `.f`/`.for`/`.f77`, or the
+preprocessed uppercase variants `.F90`/`.F` (searched via their expansions in
+`native/_expanded/`). `generate` searches each file in turn until every
+requested name is found, so you don't need to say which file it's in.
 
 ## What gets parsed per routine
 
@@ -108,17 +119,38 @@ raises a clear error if you try.
 
 ```
 CMakeLists.txt                 f2py-driven custom command + python_add_library(...)
+native/_expanded/              INCLUDE- and cpp-expanded copies of the sources
+                               actually handed to f2py, plus any `libraries:` decks
 python/<name>/__init__.py      re-exports, bridged through fortran_module if needed
-python/<name>/service.py       FastAPI app with one POST endpoint per routine
+python/<name>/router.py        APIRouter with one POST per routine, GET /_unexposed,
+                               and the process-wide native call lock
+python/<name>/service.py       standalone FastAPI app, /healthz, exception handler
+python/<name>/middleware.py    auth, rate limiting, body-size cap, /readyz, draining
 tests/test_python_api.py       import + call smoke test (NumPy-aware for array params)
+tests/test_golden.py           replays golden.json (skips until recorded)
+pyproject.toml                 generated once, then yours
+.native2py/ir.json             machine-readable record of what bound
 ```
+
+The endpoints live in `router.py`, not `service.py` — `service.py` is the thin
+standalone app that mounts the router and adds `/healthz`. That split is what
+lets the same router be mounted into a gateway.
+
+**Every Fortran endpoint holds one process-wide lock across its native call**,
+because COMMON blocks are process-global storage. This caps native execution
+at one concurrent call per process, deliberately: without it, two requests
+configuring different fluids interleave their writes into the same COMMON
+block and each caller silently gets the other's numbers. Scale with processes,
+not threads. See
+[Architecture](architecture.md#the-concurrency-model-one-native-call-per-process-fortran).
 
 ## Verified against a real build
 
-The `reservoir` example in `services/reservoir/` (Fortran module `physics`,
-functions `calculate_pressure` and `normalize`) has been compiled for real
-with `gfortran` + `f2py`, imported through the generated package, and
-exercised through the generated FastAPI service — see
+`services/petro_api/` — an F90 facade over the seven fixed-form F77 decks in
+`libraries/petro/fortran/` — is compiled for real with `gfortran` + `f2py`,
+imported through the generated package, and exercised through the generated
+FastAPI service. Its `golden.json` pins 10 entry points, so a rebuild has to
+reproduce the numbers, not merely compile. See
 [Architecture](architecture.md#verified-not-just-tested).
 
 ## Fixed-form F77
@@ -237,8 +269,10 @@ Two caveats worth knowing:
   routine's own documentation before trusting it in production.
 - **A modern F90 facade removes the guesswork.** If you can add one, a thin
   wrapper module with explicit `intent(in)` / `intent(out)` attributes makes
-  the contract explicit instead of inferred — `libraries/petro`'s
-  `petro_api.f90` is exactly this pattern.
+  the contract explicit instead of inferred —
+  `libraries/petro/fortran/modern/petro_api.f90` is exactly this pattern.
+  (`services/petro_api/native/petro_api.f90` is the service's own copy, and
+  that is the one actually bound.)
 
 ### COMMON blocks mean the API is stateful
 
@@ -319,6 +353,17 @@ f2py, and returned the configured branch's value. If gfortran is missing,
 generation **stops with an error** rather than falling back to the old
 misreading.
 
+Two limits on where this expansion reaches:
+
+- It runs in the `generate` path only. `inspect` and `suggest` do **not**
+  preprocess, so an `#ifdef`-heavy `.F90` inspects differently from how it
+  generates. Trust `generate`.
+- It does **not** cover sources pulled in through `libraries:`. Those decks
+  are copied and INCLUDE-expanded, but not cpp-expanded, so a library `.F`/
+  `.F90` with live preprocessor branches is still read with every branch
+  apparently active. Keep preprocessed sources in the service's own `native/`
+  if the branch choice matters.
+
 ### Statement functions no longer widen intents
 
 `DBL(X) = X*2.0*B` is a declaration wearing an assignment's clothes. The
@@ -362,7 +407,8 @@ they are compiled into the extension:
 name: petro_api
 language: fortran
 libraries:
-  - petro          # libraries/petro/**.f, plus its include/ directories
+  - petro          # libraries/petro/**/*.f, plus any directory under it
+                   # holding *.INC (here: libraries/petro/fortran/include/)
 expose:
   functions:
     - solution_gor
@@ -422,14 +468,24 @@ published name is yours; the shim (`density_n2p`) is what f2py actually
 wraps, and `intent(out)`/`inout` components come back in the response.
 Verified by compiling the generated service and calling it.
 
-The preconditions, each refused with its reason when unmet:
+The preconditions are narrow. Each is refused with its reason when unmet:
 
+- **free-form source only** — the shim generator is not reachable from the
+  fixed-form path, where a derived-type parameter is a hard error;
+- **the fparser2 backend only** — under `NATIVE2PY_FORTRAN_PARSER=regex`,
+  derived types are refused outright;
 - the routine must be **inside the module that defines the type** (the shim
   constructs the type, and that is the only place it is visible from);
+- the **type must be defined in the same file** as the routine, or its
+  components cannot be read to flatten them;
 - components must be **scalar numeric/logical** — arrays, CHARACTER and
   nested types don't flatten yet;
 - subroutines only for now (wrap a function in one);
 - non-derived companion arguments must be scalars.
+
+Miss any of these and you get a refusal with the reason, not a wrong binding —
+but do not plan on derived types as a general feature. Most legacy F77 will
+not meet the first two conditions at all.
 
 ### CHARACTER outputs: fixed length binds, assumed length refuses loudly
 
@@ -442,6 +498,11 @@ f2py returns into a clean JSON string.
 **builds, imports, and silently returns an empty string** — measured, and
 worse than a build failure. It stays demoted to an input, and the skip
 message says to give it a length.
+
+**This screening currently runs on the fixed-form F77 path only.** A free-form
+`character(len=*), intent(out)` is not caught by it — it is bound with no
+demotion and no warning, and will exhibit the empty-string behaviour. Declare
+a fixed length in free-form source too; the tool will not remind you.
 
 ### Not yet supported
 

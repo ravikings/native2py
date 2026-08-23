@@ -13,18 +13,20 @@ It holds three things:
 2. **[`libraries/petro/`](libraries/petro/)** — a period-accurate legacy
    codebase (~4,800 lines, 1988–2004 vintage) that exists to stress the
    generator against the real thing rather than a toy header.
-3. **`services/`** — what came out the other side: eight services generated
-   from that code and from smaller examples, each an independently buildable
-   wheel and container.
+3. **`services/`** — what came out the other side. The repo currently carries
+   one committed service, `petro_api`, generated from the Fortran decks in
+   `libraries/petro/`: an independently buildable wheel and container.
 
 ## Layout
 
 ```
 tools/native2py/     the generator + its docs and test suite
-libraries/           native code shared by services (petro, common-cpp, ...)
+libraries/           native code shared by services (petro, common-cpp,
+                     geometry, demo)
 services/<name>/     one generated service per exposed API
-gateways/<name>/     optional: several services mounted into one FastAPI app
-infrastructure/      docker/ and kubernetes/ (skeleton only, see below)
+gateways/<name>/     created on demand by `native2py gateway`
+infrastructure/      docker/ and kubernetes/ (kubernetes/ holds the generated
+                     petro_api manifest)
 design.md            the 1,073-line specification all of this implements
 ```
 
@@ -61,25 +63,22 @@ the bindings under a service that was working. Details, including which extras
 matter and why, are in
 [Using it in another project](tools/native2py/README.md#using-it-in-another-project).
 
-## The services
+## The service
 
 | Service | Language | From | What it exercises |
 |---|---|---|---|
-| `demo` | C++ | `geometry.hpp` | the simplest end-to-end path; mounted in the gateway |
-| `calculator` | C++ | `calculator.hpp` | linking a shared library (`libraries/common-cpp`) |
-| `fluid` | C++ | `FluidModel.hpp` | a class over F77 correlations, with a PVT cache |
-| `sim` | C++ | `Simulator.hpp` | forward-declared types and raw pointers — mostly *refusals*, each reported with a reason |
-| `pvt` | Fortran | `pvtcor.f` | fixed-form F77 with COMMON blocks; carries the recorded `golden.json` |
-| `petro` | Fortran | 7 F77 decks + an F90 facade | INCLUDE expansion, inferred intent, module nesting, 12 exposed routines |
-| `reservoir` | Fortran | `pressure.f90` | free-form F90 and a C ABI variant |
-| `linsolve` | Fortran | `matsol.f` | array arguments (Thomas algorithm) |
+| `petro_api` | Fortran | an F90 facade over 7 fixed-form F77 decks | INCLUDE expansion, COMMON-block state, inferred intent, module nesting, array arguments, 10 exposed routines |
 
-Regenerate any of them at any time — the bindings, CMake, Python package and
-tests are all generated:
+Regenerate it at any time — the bindings, CMake, Python package and tests are
+all generated:
 
 ```bash
-tools/native2py/.venv/bin/native2py generate petro
+tools/native2py/.venv/bin/native2py generate petro_api
 ```
+
+The other directories under `libraries/` (`geometry`, `demo`, `common-cpp`)
+are inputs used by the docs and the test suite; no service is committed for
+them, so the C++ examples in the guides scaffold one as they go.
 
 What is **not** regenerable is the code you wrote: `native/`,
 `native2py.yaml`, and the recorded answers in `golden.json`. See
@@ -105,20 +104,22 @@ For a re-host, "it builds and imports" is not the acceptance criterion. Every
 service can pin what its bindings return:
 
 ```bash
-tools/native2py/.venv/bin/native2py golden record pvt    # -> services/pvt/golden.json
-tools/native2py/.venv/bin/native2py golden verify pvt    # 4 entry point(s) unchanged
+tools/native2py/.venv/bin/native2py golden record petro_api  # -> services/petro_api/golden.json
+tools/native2py/.venv/bin/native2py golden verify petro_api
 ```
 
-`services/pvt/golden.json` is a worked example: the 1988 correlations called
-at 35 °API, 0.75 gas gravity, 180 °F and 2500 psia, giving Rs = 610.696
-scf/stb and Bo = 1.34069 — values a reservoir engineer can check by hand.
-Commit the file, and any rebuild that moves a number fails.
+`services/petro_api/golden.json` is a worked example: the fluid configured at
+35 °API, 0.65 gas gravity and 180 °F, then the 1988 correlations evaluated at
+2000 psia, giving Rs = 355.076 scf/stb and Bo = 1.23766 — values a reservoir
+engineer can check by hand. It pins 10 entry points, and records the compiler
+versions and the SHA-256 of every native source it was recorded from. Commit
+the file, and any rebuild that moves a number fails.
 See [Numerical regression](tools/native2py/docs/golden-values.md).
 
 ## Serving several services together
 
 ```bash
-tools/native2py/.venv/bin/native2py gateway platform-api --service demo --service calculator
+tools/native2py/.venv/bin/native2py gateway platform-api --service petro_api
 uvicorn platform_api.app:app
 ```
 
@@ -131,7 +132,7 @@ behind an ingress — needs no generated code at all. Both are covered in
 
 ```bash
 cd tools/native2py
-.venv/bin/python -m pytest tests -q                        # 220 tests
+.venv/bin/python -m pytest tests -q                        # green with or without [fparser]
 NATIVE2PY_CPP_PARSER=regex .venv/bin/python -m pytest -q   # the fallback C++ backend
 ```
 
@@ -147,11 +148,38 @@ replayed stateful F77 routines out of order.
 
 ## Status
 
-`infrastructure/docker/` and `infrastructure/kubernetes/` are empty
-directories: no CI/CD pipelines or K8s manifests are generated yet. The
-generated services have no auth, no rate limiting and no exception handling,
-and native code that segfaults takes the worker down with it.
+**Where this is usable today: internal, single-tenant-per-service deployments,
+where a team is calling legacy code it already trusts. Not internet-facing,
+and not multi-tenant.**
+
+What has landed since the first cut: generated services now carry optional API
+key auth (`api.auth: api_key`), rate limiting, request size limits, request
+IDs and access logging, an exception handler, `/healthz` and `/readyz` with
+SIGTERM draining, and generated Kubernetes manifests (`native2py k8s`, output
+in `infrastructure/kubernetes/`). `infrastructure/docker/` is still an empty
+skeleton and no CI/CD pipelines are generated.
+
+Three limits are structural rather than unfinished work, and are worth knowing
+before you size anything:
+
+- **Fortran services run one native call at a time, per process.** Every
+  generated Fortran endpoint takes a single process-wide lock before entering
+  native code, because COMMON blocks are process-global storage — two requests
+  configuring different fluids would otherwise interleave writes into the same
+  COMMON block and each caller would get numbers computed from the other's
+  inputs, with nothing raised and nothing logged. This is deliberate (see
+  `services/petro_api/python/petro_api/router.py`). Concurrency for a Fortran
+  service comes from running more processes, not more threads. C++ services
+  are not locked: they get a fresh instance per request instead. A C++
+  library that keeps file-scope static state is *not* protected, and the
+  parser cannot see that it does — that one is on you.
+- **The API for a stateful library is session-shaped** — "configure, then
+  read" — which is safe when one tenant owns the process and unsafe when it
+  does not.
+- **A segfault in native code still takes the worker down.** There is no
+  sandbox, no per-call timeout and no per-call isolation.
 
 Before running any of this for a workload that matters, read
-[Is this production-ready?](tools/native2py/docs/production-readiness.md) —
-an honest gap list against `design.md`'s own requirements, not a sales pitch.
+[Is this production-ready?](tools/native2py/docs/production-readiness.md) and
+[the defect list](tools/native2py/DEFECTS.md) — honest gap lists against
+`design.md`'s own requirements, not a sales pitch.
