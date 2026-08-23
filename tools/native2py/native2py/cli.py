@@ -17,16 +17,19 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from .config import ClangConfig, ExposeConfig, ServiceConfig
+from .config import ClangConfig, ConfigError, ExposeConfig, ExposeWarning, ServiceConfig
 from .discovery import (
     detect_language,
+    find_cpp_directives,
     find_implementation_files,
     find_native_sources,
     is_fixed_form,
+    requires_preprocessing,
 )
 from .preprocess import (
     IncludeError,
     expand_includes,
+    read_source,
     resolve_kind_parameters,
     uses_kind_parameters,
 )
@@ -43,7 +46,13 @@ from .generators import (
     python_pkg_gen,
     test_gen,
 )
-from .ir import ModuleIR, NativeTypeError, module_from_dict, module_to_dict
+from .ir import (
+    ModuleIR,
+    NativeTypeError,
+    module_from_dict,
+    module_to_dict,
+    validate as validate_ir,
+)
 from .parsers import cpp as cpp_parser
 from .parsers.cpp_ast import ClangOptions
 from .parsers import fixed_form
@@ -93,6 +102,83 @@ class StepTracker:
 
     def log(self, message: str) -> None:
         self._console.print(f"  [dim]{message}[/dim]")
+
+
+def _load_config(service_dir: Path) -> ServiceConfig:
+    """ServiceConfig.load with its two new failure channels reported properly.
+
+    `language:` is now inferred from the sources actually present, so a config
+    that disagrees with native/ raises ConfigError — which reached the user as
+    a raw traceback — and a service exposing nothing by default now warns.
+    """
+    import warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ExposeWarning)
+        try:
+            config = ServiceConfig.load(service_dir)
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+    for warning in caught:
+        if issubclass(warning.category, ExposeWarning):
+            click.echo(f"WARNING: {warning.message}")
+    return config
+
+
+def _symbol_names(module) -> list[str]:
+    if module is None:
+        return []
+    return (
+        [c.name for c in getattr(module, "classes", [])]
+        + [s.name for s in getattr(module, "structs", [])]
+        + [f.name for f in getattr(module, "functions", [])]
+        + [
+            m.name
+            for c in getattr(module, "classes", [])
+            for m in getattr(c, "methods", [])
+        ]
+    )
+
+
+def _write_python(path: Path, source: str, module=None) -> None:
+    """Syntax-check generated Python, then write it (D3).
+
+    A generated file that will not parse has to fail the *build*. Before this
+    gate the only thing that ever compiled generated output was one golden
+    test, which is how a Fortran `&` line continuation leaked into a committed
+    router.py and shipped as a SyntaxError that surfaced at container start.
+    """
+    try:
+        compile(source, str(path), "exec")
+    except SyntaxError as exc:
+        offending = (exc.text or "").rstrip()
+        # Name the symbol whose codegen most likely produced the bad line, so
+        # the report points at the native declaration rather than at a line
+        # number in a file nobody wrote by hand.
+        implicated = sorted(
+            {name for name in _symbol_names(module) if name and name in offending}
+        )
+        detail = f" (symbol: {', '.join(implicated)})" if implicated else ""
+        raise click.ClickException(
+            f"native2py generated invalid Python in {path} at line {exc.lineno}: "
+            f"{exc.msg}{detail}\n"
+            f"    {offending}\n"
+            "This is a native2py bug — the file was not written. Please report it "
+            "with the native declaration above."
+        ) from exc
+    path.write_text(source)
+
+
+def _validate_module(module) -> None:
+    """Refuse to generate from an IR that cannot produce working Python (B4)."""
+    problems = validate_ir(module)
+    if not problems:
+        return
+    lines = "\n".join(f"  - {p.symbol}: {p.message}" for p in problems)
+    raise click.ClickException(
+        f"Cannot generate a Python package for '{module.name}':\n{lines}"
+    )
 
 
 def _service_dir(name: str) -> Path:
@@ -179,10 +265,12 @@ def quickstart(source: Path, name: str | None, force: bool, build: bool) -> None
 
         tracker.start("Copy native source")
         native_copy = service_dir / "native" / source.name
-        native_copy.write_text(source.read_text())
+        # Copied byte-for-byte: a latin-1 legacy deck must not pick up
+        # U+FFFD replacement characters on its way into the service.
+        native_copy.write_bytes(source.read_bytes())
         tracker.log(f"{source} -> {native_copy}")
 
-        config = ServiceConfig.load(service_dir)
+        config = _load_config(service_dir)
         if language == "cpp":
             # Empty expose: lists mean "expose everything found" for C++ — see ExposeConfig.is_exposed.
             # A header with declarations only (no bodies) needs its matching
@@ -194,7 +282,7 @@ def quickstart(source: Path, name: str | None, force: bool, build: bool) -> None
                 impl_files = find_implementation_files(source)
                 for impl_file in impl_files:
                     impl_copy = service_dir / "native" / impl_file.name
-                    impl_copy.write_text(impl_file.read_text())
+                    impl_copy.write_bytes(impl_file.read_bytes())
                     tracker.log(f"{impl_file} -> {impl_copy}")
                 if not impl_files:
                     tracker.log(
@@ -416,7 +504,7 @@ def expose(path: Path) -> None:
     directory itself. Equivalent to editing native2py.yaml + `generate`.
     """
     service_dir = _resolve_service_dir(path)
-    config = ServiceConfig.load(service_dir)
+    config = _load_config(service_dir)
     _generate_service(service_dir, config)
     click.echo(f"Exposed native API from {path} for service '{config.name}'.")
 
@@ -426,7 +514,7 @@ def expose(path: Path) -> None:
 def generate(name: str) -> None:
     """Re-run binding/package/test generation for services/<name>."""
     service_dir = _service_dir(name)
-    config = ServiceConfig.load(service_dir)
+    config = _load_config(service_dir)
     _generate_service(service_dir, config)
     click.echo(f"Generated bindings, CMake, Python package, and tests for '{name}'.")
 
@@ -588,7 +676,7 @@ def test(name: str) -> None:
 def docker(name: str, build: bool) -> None:
     """Generate (and optionally build) the service's Dockerfile."""
     service_dir = _service_dir(name)
-    config = ServiceConfig.load(service_dir)
+    config = _load_config(service_dir)
     libraries = _validated_libraries(config)
     dockerfile = docker_gen.generate_dockerfile(
         name, config.language, name, libraries=libraries
@@ -640,9 +728,11 @@ def gateway(name: str, services: tuple[str, ...]) -> None:
     package_dir.mkdir(parents=True, exist_ok=True)
 
     (package_dir / "__init__.py").write_text("")
-    (package_dir / "app.py").write_text(
-        gateway_gen.generate_gateway_app(name, list(services))
-    )
+    try:
+        app_source = gateway_gen.generate_gateway_app(name, list(services))
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _write_python(package_dir / "app.py", app_source)
     (gateway_dir / "pyproject.toml").write_text(
         gateway_gen.generate_gateway_pyproject(name, package_name, list(services))
     )
@@ -734,6 +824,7 @@ def _restore_scaffold(service_dir: Path, config: ServiceConfig) -> None:
 
 
 def _write_package(service_dir: Path, config: ServiceConfig, module) -> None:
+    _validate_module(module)
     _restore_scaffold(service_dir, config)
 
     # A machine-readable record of exactly what was bound. `golden record`
@@ -745,24 +836,36 @@ def _write_package(service_dir: Path, config: ServiceConfig, module) -> None:
 
     package_dir = service_dir / "python" / config.name
     package_dir.mkdir(parents=True, exist_ok=True)
-    (package_dir / "__init__.py").write_text(python_pkg_gen.generate_init_py(module))
-    (package_dir / "router.py").write_text(
-        python_pkg_gen.generate_router_py(module, config.name)
+    # Every generated .py is compiled before it is written (D3): an unparsable
+    # file must fail the build here, never the container start.
+    _write_python(
+        package_dir / "__init__.py", python_pkg_gen.generate_init_py(module), module
     )
-    (package_dir / "service.py").write_text(python_pkg_gen.generate_service_py(config.name))
+    _write_python(
+        package_dir / "router.py",
+        python_pkg_gen.generate_router_py(module, config.name),
+        module,
+    )
+    _write_python(
+        package_dir / "service.py", python_pkg_gen.generate_service_py(config.name), module
+    )
 
     tests_dir = service_dir / "tests"
     tests_dir.mkdir(parents=True, exist_ok=True)
-    (tests_dir / "test_python_api.py").write_text(
-        test_gen.generate_python_api_test(module, config.name)
+    _write_python(
+        tests_dir / "test_python_api.py",
+        test_gen.generate_python_api_test(module, config.name),
+        module,
     )
     # The regression test ships even before anything is recorded: it skips
     # with the command to record, which is how you find out the harness
     # exists. A golden file that nobody knows to create protects nothing.
-    (tests_dir / "test_golden.py").write_text(
+    _write_python(
+        tests_dir / "test_golden.py",
         golden_gen.generate_golden_test(
             config.name, config.name, golden_lib.GOLDEN_FILENAME
-        )
+        ),
+        module,
     )
 
 
@@ -1047,14 +1150,37 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
     # generated wrapper does not inherit the module's kind PARAMETERs, so
     # `real(dp)` has to be resolved to `real(8)` before it reaches f2py.
     # See preprocess.resolve_kind_parameters.
+    # A source needing the C preprocessor (an uppercase .F90/.F suffix, or cpp
+    # directives in the text) is parsed here as if every #ifdef branch were
+    # live, because neither Fortran parser has a preprocessor. That silently
+    # binds whichever branch happens to lex, so say so rather than let it pass.
+    for source in sources:
+        directives = find_cpp_directives(read_source(source))
+        if requires_preprocessing(source):
+            click.echo(
+                f"WARNING: {source.name} needs the C preprocessor"
+                + (f" (found {', '.join('#' + d for d in directives[:4])})" if directives else "")
+                + ". native2py has no preprocessor, so conditional code is read "
+                "as though every branch is active. Pre-process it yourself and "
+                "point native2py at the output if the branches differ."
+            )
+
     fixed_form_sources = [s for s in sources if is_fixed_form(s)]
+    # A6: an INCLUDE in a .f90 has exactly the same consequence as one in a
+    # fixed-form deck — f2py mis-wraps the routine and calls return
+    # uninitialized memory — so free-form sources get expanded too.
+    free_form_include_sources = [
+        s for s in sources if s not in fixed_form_sources and _has_include(s)
+    ]
     kind_param_sources = [
         s
         for s in sources
-        if s not in fixed_form_sources and uses_kind_parameters(s.read_text())
+        if s not in fixed_form_sources
+        and s not in free_form_include_sources
+        and uses_kind_parameters(read_source(s))
     ]
 
-    rewritten = fixed_form_sources + kind_param_sources
+    rewritten = fixed_form_sources + free_form_include_sources + kind_param_sources
     if rewritten:
         expanded_dir = service_dir / "native" / "_expanded"
         expanded_dir.mkdir(parents=True, exist_ok=True)
@@ -1068,9 +1194,18 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
                 )
                 target.write_text(expanded)
                 native_sources.append(f"native/_expanded/{source.name}")
+            elif source in free_form_include_sources:
+                target = expanded_dir / source.name
+                expanded = expand_includes(
+                    source, include_paths, comment_style="free"
+                )
+                # An expanded INCLUDE routinely carries the kind PARAMETERs the
+                # body needs, so resolve them on the same copy.
+                target.write_text(resolve_kind_parameters(expanded))
+                native_sources.append(f"native/_expanded/{source.name}")
             elif source in kind_param_sources:
                 target = expanded_dir / source.name
-                target.write_text(resolve_kind_parameters(source.read_text()))
+                target.write_text(resolve_kind_parameters(read_source(source)))
                 native_sources.append(f"native/_expanded/{source.name}")
             else:
                 native_sources.append(f"native/{source.name}")
@@ -1078,6 +1213,11 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
             click.echo(
                 f"Expanded INCLUDEs for {len(fixed_form_sources)} fixed-form source(s) "
                 f"-> {expanded_dir}"
+            )
+        if free_form_include_sources:
+            click.echo(
+                f"Expanded INCLUDEs for {len(free_form_include_sources)} free-form "
+                f"source(s) -> {expanded_dir}"
             )
         if kind_param_sources:
             click.echo(
@@ -1100,6 +1240,15 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
     _write_package(service_dir, config, module)
 
 
+import re as _re
+
+_INCLUDE_LINE_RE = _re.compile(r"^\s*INCLUDE\s+['\"][^'\"]+['\"]", _re.IGNORECASE | _re.MULTILINE)
+
+
+def _has_include(source: Path) -> bool:
+    return _INCLUDE_LINE_RE.search(read_source(source)) is not None
+
+
 def _routine_in_file(source: Path, name: str) -> bool:
     import re
 
@@ -1110,7 +1259,7 @@ def _routine_in_file(source: Path, name: str) -> bool:
         rf"^[ \t]*(?:[A-Za-z0-9_*]+[ \t]+)*?(?:function|subroutine)[ \t]+{re.escape(name)}\b",
         re.IGNORECASE | re.MULTILINE,
     )
-    return pattern.search(source.read_text()) is not None
+    return pattern.search(read_source(source)) is not None
 
 
 def _run(cmd: list[str], cwd: Path, log=click.echo) -> None:

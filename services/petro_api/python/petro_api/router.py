@@ -38,10 +38,8 @@ def pvt_state_endpoint(pressure: float, n: int, props: list[float]):
     return {"props": props.tolist()}
 
 @router.post("/tubing_bhp")
-def tubing_bhp_endpoint(wellhead_p: float, q_oil: float, q_water: float, q_gas: float, diameter: float, &
-                        roughness: float, tvd: float, md: float, nseg: int):
-    return {"result": tubing_bhp(wellhead_p, q_oil, q_water, q_gas, diameter, &
-                        roughness, tvd, md, nseg)}
+def tubing_bhp_endpoint(wellhead_p: float, q_oil: float, q_water: float, q_gas: float, diameter: float, roughness: float, tvd: float, md: float, nseg: int):
+    return {"result": tubing_bhp(wellhead_p, q_oil, q_water, q_gas, diameter, roughness, tvd, md, nseg)}
 
 @router.post("/vogel_rate")
 def vogel_rate_endpoint(res_pressure: float, flowing_bhp: float, q_max: float):

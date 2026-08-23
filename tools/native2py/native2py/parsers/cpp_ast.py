@@ -229,9 +229,20 @@ class ClangOptions:
     include_paths: tuple[str, ...] = ()
     defines: tuple[str, ...] = ()
     extra_args: tuple[str, ...] = ()
+    # `-x <language>`. `.h` is ambiguous: a C header using `restrict` or a K&R
+    # declaration is not valid C++, and forcing `-x c++` reports the failure as
+    # a C++ diagnostic. Defaults to C++ so existing callers — config.ClangConfig
+    # among them, which does not know about this field — are unchanged.
+    language: str = "c++"
 
     def command_line(self, header: Path) -> list[str]:
-        args = ["-x", "c++", f"-std={self.std}", "-fsyntax-only"]
+        args = ["-x", self.language, "-fsyntax-only"]
+        # A C++ -std with -x c (or the reverse) is a hard clang error, so the
+        # standard is only passed when it belongs to the selected language.
+        is_cpp_language = "c++" in self.language
+        is_cpp_std = self.std.startswith("c++") or self.std.startswith("gnu++")
+        if is_cpp_language == is_cpp_std:
+            args.append(f"-std={self.std}")
         args += _platform_args()
         # A header almost always includes its siblings by bare name.
         args.append(f"-I{header.parent}")
@@ -287,6 +298,63 @@ def _record_short_name(t) -> str | None:
     if decl.spelling:
         return decl.spelling.split("::")[-1].split("<")[0]
     return None
+
+
+def _qualified_decl_name(decl) -> str | None:
+    """`petro::Correlation` for a declaration, walking namespaces and records.
+
+    The Python type name is lossy by construction (every enum is `int`), so a
+    generator that must emit C++ needs the spelling as written *and* qualified
+    enough to be valid at namespace scope in the generated binding file.
+    """
+    if decl is None or not decl.spelling:
+        return None
+    parts = [decl.spelling.split("<")[0]]
+    parent = decl.semantic_parent
+    while parent is not None and parent.kind != _cindex.CursorKind.TRANSLATION_UNIT:
+        if parent.spelling and parent.kind in (
+            _cindex.CursorKind.NAMESPACE,
+            _cindex.CursorKind.STRUCT_DECL,
+            _cindex.CursorKind.CLASS_DECL,
+            _cindex.CursorKind.UNION_DECL,
+            _cindex.CursorKind.CLASS_TEMPLATE,
+        ):
+            parts.append(parent.spelling.split("<")[0])
+        parent = parent.semantic_parent
+    return "::".join(reversed(parts))
+
+
+_NAMED_TYPE_DECL_KINDS = lambda: (  # noqa: E731 - needs _cindex loaded first
+    _cindex.CursorKind.STRUCT_DECL,
+    _cindex.CursorKind.CLASS_DECL,
+    _cindex.CursorKind.UNION_DECL,
+    _cindex.CursorKind.ENUM_DECL,
+    _cindex.CursorKind.TYPEDEF_DECL,
+    _cindex.CursorKind.TYPE_ALIAS_DECL,
+)
+
+
+def _native_spelling(t) -> str | None:
+    """The C++ type as written, qualified — `std::uint64_t`, `petro::Correlation`.
+
+    Top-level `const` and reference decoration are dropped: constness travels
+    separately on `ir.Parameter.is_const`, and what a generator needs here is
+    the type to name inside `py::init<...>`.
+    """
+    base = _strip_refs(t)
+    decl = base.get_declaration()
+    if (
+        decl is not None
+        and decl.kind != _cindex.CursorKind.NO_DECL_FOUND
+        and decl.kind in _NAMED_TYPE_DECL_KINDS()
+    ):
+        qualified = _qualified_decl_name(decl)
+        if qualified:
+            return qualified
+    spelling = base.spelling.strip()
+    if spelling.startswith("const "):
+        spelling = spelling[len("const ") :].strip()
+    return spelling or None
 
 
 _STD_STRING_SPELLINGS = frozenset(
@@ -350,8 +418,18 @@ def _map_type(t, known_records: frozenset[str], *, is_return: bool) -> tuple[str
 
         if any(canonical_pointee.kind in _kinds(n) for n in _CHAR_KIND_NAMES):
             # `const char*` is a C string, the one pointer with an unambiguous
-            # Python meaning.
-            return "str", False
+            # Python meaning. A *non-const* `char*` is an output buffer with no
+            # length convention: bound as a Python str, pybind11 materialises a
+            # temporary that C++ then writes through, so the write is lost or
+            # lands in freed memory.
+            if pointee.is_const_qualified() or canonical_pointee.is_const_qualified():
+                return "str", False
+            raise NativeTypeError(
+                f"'{spelling}' is a non-const 'char*': an output buffer with no "
+                "length convention. Binding it as a Python str would have C++ "
+                "write through a temporary. Return std::string (or take "
+                "'const char*' for input), or exclude the symbol in native2py.yaml."
+            )
 
         name = _record_short_name(pointee)
         if name and name in known_records:
@@ -431,9 +509,41 @@ def _parameters(cursor, known_records: frozenset[str]) -> list[Parameter]:
                 name=arg.spelling or f"arg{index}",
                 type=py_type,
                 is_array=is_array or _declared_as_array(arg),
+                native_type=_native_spelling(arg.type),
+                is_const=_is_const_type(arg.type),
             )
         )
     return params
+
+
+def _is_const_type(t) -> bool:
+    """True for a `const`-qualified declaration (`const double x`).
+
+    A const data member bound with def_readwrite is a compile error inside
+    pybind11's templates; the generator emits def_readonly instead.
+    """
+    try:
+        if t.is_const_qualified():
+            return True
+        stripped = _strip_refs(t)
+        return bool(stripped is not t and stripped.is_const_qualified())
+    except Exception:
+        return False
+
+
+def _mark_overloads(entries) -> None:
+    """Flag every entry whose name is declared more than once.
+
+    `&Cls::viscosity` is ambiguous the moment a second `viscosity` exists, so
+    the binding has to go through py::overload_cast<...>; on the HTTP side two
+    same-named routes would silently shadow each other.
+    """
+    counts: dict[str, int] = {}
+    for entry in entries:
+        counts[entry.name] = counts.get(entry.name, 0) + 1
+    for entry in entries:
+        if counts[entry.name] > 1:
+            entry.is_overloaded = True
 
 
 # --- declaration walking ------------------------------------------------
@@ -543,6 +653,7 @@ def _parse_record(
     bases: list[str] = []
     saw_constructor = False
     saw_public_default_ctor = False
+    blocks_default_ctor = False
 
     for child in cursor.get_children():
         kind = child.kind
@@ -626,11 +737,20 @@ def _parse_record(
                     parameters=parameters,
                     returns=returns,
                     is_static=child.is_static_method(),
+                    is_const=_bool_method(child, "is_const_method"),
                 )
             )
             continue
 
         if kind == _cindex.CursorKind.FIELD_DECL:
+            field_is_const = _is_const_type(child.type)
+            if field_is_const or child.type.kind in _kinds(
+                "LVALUEREFERENCE", "RVALUEREFERENCE"
+            ):
+                # A const or reference member — public or not — suppresses the
+                # implicit default constructor, so py::init<>() for this record
+                # would not compile.
+                blocks_default_ctor = True
             if not _is_public(child):
                 continue
             if broken:
@@ -648,7 +768,13 @@ def _parse_record(
                 )
                 continue
             fields.append(
-                Parameter(name=child.spelling, type=py_type, is_array=is_array)
+                Parameter(
+                    name=child.spelling,
+                    type=py_type,
+                    is_array=is_array,
+                    native_type=_native_spelling(child.type),
+                    is_const=field_is_const,
+                )
             )
             continue
 
@@ -672,12 +798,25 @@ def _parse_record(
     if abstract:
         constructors = []
 
-    if is_struct and not methods and not bases and fields:
-        return StructDef(name=name, namespace=namespace, fields=fields)
+    _mark_overloads(methods)
 
-    has_default = not abstract and (
-        saw_public_default_ctor or not saw_constructor
+    # libclang exposes no reliable "has a default constructor" query on the
+    # record cursor across builds, so it is derived: a user-declared non-default
+    # constructor, or a const/reference member, removes the implicit one.
+    has_default = (
+        not abstract
+        and (saw_public_default_ctor or not saw_constructor)
+        and (saw_public_default_ctor or not blocks_default_ctor)
     )
+
+    if is_struct and not methods and not bases and fields:
+        return StructDef(
+            name=name,
+            namespace=namespace,
+            fields=fields,
+            has_default_constructor=has_default,
+        )
+
     return ClassDef(
         name=name,
         namespace=namespace,
@@ -718,7 +857,14 @@ def _parse_function(
         module.skipped.append(SkippedSymbol(cursor.spelling, str(exc)))
         return
     module.functions.append(
-        FunctionDef(name=cursor.spelling, parameters=parameters, returns=returns)
+        FunctionDef(
+            name=cursor.spelling,
+            parameters=parameters,
+            returns=returns,
+            # Without this a function in `namespace petro` is emitted as
+            # `&bubble_point` — "use of undeclared identifier".
+            namespace=_namespace_of(cursor),
+        )
     )
 
 
@@ -1010,6 +1156,10 @@ def parse_header(
                     module.classes.append(parsed)
 
     _walk(tu.cursor, resolved, build)
+
+    # Free functions overload just as members do: the same &name ambiguity
+    # applies, and two same-named HTTP routes shadow each other.
+    _mark_overloads(module.functions)
 
     # One macro spelled 28 times is one problem, not 28.
     seen: set[tuple[str, str]] = set()

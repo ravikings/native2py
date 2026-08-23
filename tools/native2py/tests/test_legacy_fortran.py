@@ -487,3 +487,54 @@ def test_endpoint_keeps_inout_arguments_and_returns_them():
 
     assert "def TRAVER_endpoint(pwh: float, nseg: int):" in router
     assert "nseg, pbh = TRAVER(pwh, nseg)" in router
+
+
+# --- encoding and preprocessed decks (DEFECTS.md A8, C3) ----------------
+
+
+def test_vms_era_deck_survives_include_expansion_intact(tmp_path):
+    """A latin-1 deck must not be silently rewritten with U+FFFD.
+
+    The bytes below are what a VMS-era listing header actually contains; the
+    old `read_text(errors="replace")` turned every one of them into U+FFFD in
+    the _expanded copy that f2py then compiled.
+    """
+    import pytest
+
+    from native2py.preprocess import SourceEncodingWarning
+
+    (tmp_path / "PETRO.INC").write_bytes(b"      REAL*8 TREF\nC     TREF IN \xb0C\n")
+    deck = tmp_path / "probe.f"
+    deck.write_bytes(
+        b"C     (c) 1988 \xa9 ACME\n"
+        b"      SUBROUTINE PROBE1(API)\n"
+        b"      INCLUDE 'PETRO.INC'\n"
+        b"      END\n"
+    )
+
+    with pytest.warns(SourceEncodingWarning):
+        expanded = expand_includes(deck, [tmp_path])
+
+    assert "�" not in expanded
+    assert "\N{COPYRIGHT SIGN}" in expanded
+    assert "\N{DEGREE SIGN}C" in expanded
+    assert "REAL*8 TREF" in expanded
+
+
+def test_preprocessed_deck_is_flagged_rather_than_parsed_as_if_all_branches_live(tmp_path):
+    from native2py import discovery
+
+    deck = tmp_path / "PROBE.F"
+    deck.write_text(
+        "      SUBROUTINE PROBE1(API)\n"
+        "#ifdef DOUBLE_PRECISION\n"
+        "      REAL*8 API\n"
+        "#else\n"
+        "      REAL*4 API\n"
+        "#endif\n"
+        "      END\n"
+    )
+
+    assert discovery.detect_language(deck) == "fortran"
+    assert discovery.requires_preprocessing(deck)
+    assert discovery.find_cpp_directives(deck.read_text()) == ["ifdef", "else", "endif"]

@@ -422,3 +422,195 @@ def test_generated_test_skips_calls_it_cannot_build_arguments_for():
 
     assert "instance.take(" not in code
     assert "cannot construct" in code
+
+
+# --- B4: Python keyword names ---------------------------------------------
+
+
+def test_keyword_parameter_names_are_escaped_and_the_router_compiles():
+    # `double attenuate(double lambda, double from)` is ordinary engineering
+    # C++ and generated `def attenuate(lambda: float, from: float)` — a
+    # SyntaxError that surfaced when the container started.
+    mod = module(
+        functions=[
+            FunctionDef(
+                name="attenuate",
+                parameters=[
+                    Parameter(name="lambda", type="float"),
+                    Parameter(name="from", type="float"),
+                ],
+                returns="float",
+            )
+        ]
+    )
+
+    code = router(mod)
+
+    compile(code, "router.py", "exec")
+    assert "def attenuate_endpoint(lambda_: float, from_: float):" in code
+    # Only the Python name moved: the route keeps the native spelling.
+    assert '@router.post("/attenuate")' in code
+    assert "attenuate(lambda_, from_)" in code
+
+
+def test_keyword_symbol_name_is_escaped_everywhere_it_is_spelled():
+    mod = module(
+        functions=[
+            FunctionDef(name="lambda", parameters=[Parameter(name="x", type="float")], returns="float")
+        ]
+    )
+
+    init_py = python_pkg_gen.generate_init_py(mod)
+    code = router(mod)
+
+    compile(init_py, "__init__.py", "exec")
+    compile(code, "router.py", "exec")
+    # A keyword cannot appear in an import statement at all.
+    assert 'lambda_ = getattr(_native, "lambda")' in init_py
+    assert '__all__ = ["lambda_"]' in init_py
+    assert "from . import lambda_" in code
+    assert '@router.post("/lambda")' in code  # the wire contract is untouched
+    assert "def lambda__endpoint(x: float):" in code
+
+
+def test_keyword_method_name_is_reached_by_getattr():
+    mod = module(
+        classes=[ClassDef(name="Filter", methods=[Method(name="pass", returns="float")])]
+    )
+
+    code = router(mod)
+
+    compile(code, "router.py", "exec")
+    assert '@router.post("/pass")' in code
+    assert 'getattr(instance, "pass")()' in code
+
+
+def test_keyword_struct_field_is_escaped_but_the_native_member_is_not():
+    mod = module(
+        structs=[StructDef(name="Beam", fields=[Parameter(name="lambda", type="float")])],
+        functions=[FunctionDef(name="emit", parameters=[], returns="Beam")],
+    )
+
+    code = router(mod)
+
+    compile(code, "router.py", "exec")
+    assert "    lambda_: float" in code
+    assert 'getattr(native, "lambda")' in code
+    assert 'setattr(native, "lambda", model.lambda_)' in code
+
+
+def test_generated_smoke_test_escapes_keywords_and_compiles():
+    mod = module(
+        classes=[
+            ClassDef(
+                name="Filter",
+                methods=[Method(name="pass", parameters=[Parameter(name="lambda", type="float")], returns="float")],
+            )
+        ],
+        functions=[FunctionDef(name="from", parameters=[], returns="float")],
+    )
+
+    code = test_gen.generate_python_api_test(mod, "pvt")
+
+    compile(code, "test_python_api.py", "exec")
+    assert 'getattr(instance, "pass")(1.0)' in code
+    assert "from pvt import from_" in code
+
+
+# --- A5: overloads ---------------------------------------------------------
+
+
+def test_overloaded_methods_each_get_a_reachable_endpoint():
+    # Two `viscosity` overloads used to emit two `def viscosity(...)` and two
+    # @router.post("/viscosity") in one module: the second def shadowed the
+    # first and FastAPI dispatched the first route, so one overload was
+    # unreachable with no warning.
+    mod = module(
+        classes=[
+            ClassDef(
+                name="Pvt",
+                methods=[
+                    Method(name="viscosity", parameters=[Parameter(name="p", type="float")], returns="float"),
+                    Method(
+                        name="viscosity",
+                        parameters=[
+                            Parameter(name="p", type="float"),
+                            Parameter(name="t", type="float"),
+                        ],
+                        returns="float",
+                    ),
+                ],
+            )
+        ]
+    )
+
+    code = router(mod)
+
+    compile(code, "router.py", "exec")
+    assert code.count("def viscosity(") == 1
+    assert "def viscosity_2(p: float, t: float):" in code
+    assert code.count('@router.post("/viscosity")') == 1
+    assert '@router.post("/viscosity_2")' in code
+
+
+def test_overloaded_free_functions_each_get_a_reachable_endpoint():
+    mod = module(
+        functions=[
+            FunctionDef(name="mix", parameters=[Parameter(name="a", type="float")], returns="float"),
+            FunctionDef(
+                name="mix",
+                parameters=[Parameter(name="a", type="float"), Parameter(name="b", type="float")],
+                returns="float",
+            ),
+        ]
+    )
+
+    code = router(mod)
+
+    compile(code, "router.py", "exec")
+    assert "def mix_endpoint(a: float):" in code
+    assert "def mix_2_endpoint(a: float, b: float):" in code
+    assert '@router.post("/mix_2")' in code
+
+
+# --- code-review findings [6][7]: identifier escaping --------------------
+
+def test_soft_keywords_are_not_escaped():
+    """`match`/`case`/`type`/`_` are not reserved — escaping them moves the wire contract.
+
+    The escaped name becomes the FastAPI request-body field, so escaping a
+    soft keyword would silently rename a field on a service that already
+    worked. True keywords carry no such risk: a service exposing one never
+    generated importable Python in the first place.
+    """
+    from native2py import ir
+
+    exec("def _f(match=1, case=2, type=3): return match, case, type")  # valid Python
+    assert [ir.python_identifier(n) for n in ("match", "case", "type", "_")] == [
+        "match", "case", "type", "_",
+    ]
+    assert [ir.python_identifier(n) for n in ("lambda", "from", "class")] == [
+        "lambda_", "from_", "class_",
+    ]
+
+
+def test_validate_catches_a_collision_created_by_escaping():
+    """Two distinct native names can escape to one Python name.
+
+    Keying the collision check on the raw native spelling saw two different
+    keys and missed it, so the generated package defined the name twice and
+    one symbol silently shadowed the other.
+    """
+    from native2py import ir
+    from native2py.ir import ClassDef, ModuleIR, StructDef
+
+    module = ModuleIR(
+        name="m", language="cpp", source_file="m.hpp",
+        structs=[StructDef("lambda_")],
+        classes=[ClassDef("lambda")],
+    )
+
+    problems = ir.validate(module)
+
+    assert len(problems) == 1
+    assert "lambda_" in problems[0].message
