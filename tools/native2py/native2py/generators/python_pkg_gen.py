@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 
 from ..ir import FunctionDef, ModuleIR, Parameter, python_identifier
+from .error_gen import ERROR_HANDLER_IMPORTS, generate_error_handler
 
 
 def _py(name: str) -> str:
@@ -47,7 +48,9 @@ class _EndpointNames:
     """
 
     def __init__(self) -> None:
-        self._used: set[str] = set()
+        # `_unexposed` is taken by the generated introspection route, so a
+        # native symbol of that name gets the suffix instead of shadowing it.
+        self._used: set[str] = {"_unexposed"}
 
     def take(self, native_name: str) -> tuple[str, str]:
         """Return (route path segment, Python function base name)."""
@@ -187,6 +190,132 @@ NATIVE_LOCK_COMMENT = [
 ]
 
 
+# --- input bounds (ROADMAP 2.3) -----------------------------------------
+
+# The placeholder extent. `ir.Parameter` records *that* an argument is an array
+# but not how long it may be — real extents need the fparser2 front end (1.4).
+# Until then every generated array endpoint shares one cap, overridable per
+# deployment through the environment without regenerating.
+DEFAULT_MAX_ARRAY_ITEMS = 65536
+
+ARRAY_CAP_COMMENT = [
+    "# Maximum number of elements accepted in any array argument of any endpoint.",
+    "#",
+    "# PLACEHOLDER. native2py does not yet know the real extent of a native array",
+    "# argument — the IR records that a parameter IS an array, not how long the",
+    "# routine expects it to be. Recovering the declared extent needs the fparser2",
+    "# front end (ROADMAP 1.4); until then one configurable cap stands in for all",
+    "# of them, so an unbounded request body cannot exhaust this worker's memory.",
+    "# Pydantic rejects an oversized list during request validation, so the caller",
+    "# gets a 422 and the array is never materialised for the native call.",
+    "#",
+    "# Raise it for a service with genuinely large inputs; do not remove it.",
+    f'MAX_ARRAY_ITEMS = int(os.environ.get("NATIVE2PY_MAX_ARRAY_ITEMS", "{DEFAULT_MAX_ARRAY_ITEMS}"))',
+]
+
+
+# Integer-name shapes that unambiguously describe an array `x`: n, nx, n_x,
+# num_x, len_x, size_x, count_x, x_n, x_len, x_size, x_count. Anything else is
+# not paired — a wrong pairing rejects valid calls, which is worse than the
+# status quo for that routine.
+_SIZE_PREFIXES = ("n", "n_", "num", "num_", "len", "len_", "size", "size_", "count", "count_")
+_SIZE_SUFFIXES = ("_n", "_len", "_size", "_count", "_dim", "_num")
+
+# Bare integer names that mean "a length" in Fortran by near-universal
+# convention. The fallback below pairs one of these with a lone array; an
+# integer named anything else is left alone, because `PRZFAC(IPHASE, X)` takes
+# a *phase selector* and an array, and pairing those rejects every valid call.
+_SIZE_WORDS = frozenset(
+    {"n", "m", "num", "len", "length", "size", "count", "npts", "ndim", "nelem"}
+)
+
+
+def _names_a_size_of(int_name: str, array_name: str) -> bool:
+    int_name, array_name = int_name.lower(), array_name.lower()
+    for prefix in _SIZE_PREFIXES:
+        if int_name == f"{prefix}{array_name}":
+            return True
+    for suffix in _SIZE_SUFFIXES:
+        if int_name == f"{array_name}{suffix}":
+            return True
+    return False
+
+
+def _size_pairings(inputs: list) -> list[tuple[str, str]]:
+    """(integer parameter, array parameter) pairs where the integer is the length.
+
+    A Fortran routine takes its extents explicitly — `PVTSTATE(P, PROPS, N)` —
+    and f2py passes whatever `n` the request supplied straight through. When
+    `n > len(props)` the routine indexes past the end of the buffer: an
+    out-of-bounds read or write, not merely a wrong answer.
+
+    The IR has no link between a size argument and the array it sizes, so the
+    pairing is inferred, and only where it is unambiguous:
+
+    1. by name — `n`, `nprops`, `n_props`, `num_props`, `len_props`,
+       `props_len`, ... matched case-insensitively against exactly one array;
+    2. failing that, structurally — exactly one array input and exactly one
+       integer whose bare name is a conventional length (`N`, `LEN`, `SIZE`,
+       ...). Both halves are required. "One array, one integer" alone is not
+       enough: `PRZFAC(IPHASE, X)` takes a phase selector and an array, and
+       pairing those would reject every valid call to it.
+
+    Anything else — several arrays sharing one `N`, two integers with unhelpful
+    names, an integer matching two arrays — yields NO pairing. A false pairing
+    rejects valid calls; a missed one leaves that endpoint exactly as unsafe as
+    it was before.
+    """
+    arrays = [p for p in inputs if p.is_array]
+    integers = [p for p in inputs if not p.is_array and p.type == "int"]
+    if not arrays or not integers:
+        return []
+
+    by_int: dict[str, list[str]] = {}
+    for i in integers:
+        matches = [a.name for a in arrays if _names_a_size_of(i.name, a.name)]
+        if matches:
+            by_int[i.name] = matches
+
+    named = [
+        (int_name, matches[0])
+        for int_name, matches in by_int.items()
+        if len(matches) == 1
+    ]
+    # An array claimed by two integers is ambiguous in the other direction.
+    claimed: dict[str, int] = {}
+    for _, array_name in named:
+        claimed[array_name] = claimed.get(array_name, 0) + 1
+    named = [pair for pair in named if claimed[pair[1]] == 1]
+    if named:
+        return named
+
+    size_named = [i for i in integers if i.name.lower() in _SIZE_WORDS]
+    if len(arrays) == 1 and len(size_named) == 1:
+        return [(size_named[0].name, arrays[0].name)]
+    return []
+
+
+def _size_guard_lines(pairings: list[tuple[str, str]]) -> list[str]:
+    """Reject a size/array mismatch before the value reaches native code."""
+    lines: list[str] = []
+    for int_name, array_name in pairings:
+        lines.append(f"    if {int_name} != len({array_name}):")
+        lines.append("        raise HTTPException(")
+        lines.append("            status_code=422,")
+        lines.append(
+            f'            detail=f"{int_name} ({{{int_name}}}) must equal '
+            f'len({array_name}) ({{len({array_name})}}): the native routine '
+            f'uses {int_name} as the extent of {array_name} and would index '
+            'past the end of the buffer.",'
+        )
+        lines.append("        )")
+    return lines
+
+
+def _array_annotation(inner: str) -> str:
+    return f"Annotated[list[{inner}], Field(max_length=MAX_ARRAY_ITEMS)]"
+
+
 def _serialised(body_lines: list[str]) -> list[str]:
     """Indent `body_lines` under `with _NATIVE_LOCK:`.
 
@@ -227,7 +356,7 @@ def _endpoint_for_function(
     scalar_inputs = [p for p in inputs if not p.is_array]
 
     sig_parts = [f"{p.name}: {p.type}" for p in scalar_inputs] + [
-        f"{p.name}: list[{p.type}]" for p in array_inputs
+        f"{p.name}: {_array_annotation(p.type)}" for p in array_inputs
     ]
     # The endpoint function shares fn.name with the imported native symbol
     # (see call_expr's alias in generate_service_py) — using fn.name here as
@@ -235,7 +364,9 @@ def _endpoint_for_function(
     lines = [f'@router.post("/{route}")', f"def {py_name}_endpoint({', '.join(sig_parts)}):"]
     call_args = [p.name for p in inputs]
 
-    body_lines = []
+    # Checked against the *list* the request supplied, before it is turned into
+    # a numpy buffer and before the native call.
+    body_lines = _size_guard_lines(_size_pairings(inputs))
     for p in array_inputs:
         body_lines.append(f"    {p.name} = np.array({p.name}, dtype=np.float64)")
 
@@ -313,22 +444,69 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
 
     needs_numpy = any(p.is_array for fn in module.functions for p in fn.parameters)
 
+    # Does any endpoint accept an array from the request? Includes class
+    # constructor and method arguments, not only free functions.
+    endpoint_params = [p for fn in module.functions for p in fn.parameters]
+    for cls in module.classes:
+        for ctor in cls.constructors:
+            endpoint_params.extend(ctor)
+        for method in cls.methods:
+            endpoint_params.extend(method.parameters)
+    needs_bounds = any(p.is_array for p in endpoint_params)
+
     # Fortran only. A C++ service already builds a fresh instance per request
     # (see below), and a C++ free function has no equivalent of COMMON unless
     # it uses file-scope statics — which the parser cannot see, so a lock there
     # would be a guess that costs every C++ service its concurrency.
     serialise = module.language == "fortran"
 
+    # The endpoints are built first so the header can import exactly what they
+    # turned out to need — the size guards are emitted only where a pairing is
+    # unambiguous, and an unused `HTTPException` import (or a missing one) would
+    # otherwise depend on re-deriving that decision a second time.
+    endpoint_lines: list[str] = []
+    # One registry for the whole file: a class method and a free function can
+    # collide just as two overloads of one method can (A5).
+    names = _EndpointNames()
+
+    for cls in module.classes:
+        endpoint_lines.extend(
+            _endpoints_for_class(cls, structs, class_names, names, serialise=serialise)
+        )
+
+    for fn in module.functions:
+        if module.language == "cpp":
+            endpoint_lines.extend(
+                _endpoint_for_cpp_function(fn, structs, class_names, names)
+            )
+        else:
+            endpoint_lines.extend(
+                _endpoint_for_function(fn, _py(fn.name), names, serialise=serialise)
+            )
+
+    needs_http_exception = any("HTTPException(" in line for line in endpoint_lines)
+
     lines = [
         "# Generated by native2py. Do not edit by hand — re-run `native2py generate`.",
     ]
+    if needs_bounds:
+        lines.append("import os")
     if serialise:
         lines.append("import threading")
+    if needs_bounds:
+        lines.append("from typing import Annotated")
     if needs_numpy:
         lines.append("import numpy as np")
-    lines.append("from fastapi import APIRouter")
-    if structs:
-        lines.append("from pydantic import BaseModel")
+    lines.append(
+        "from fastapi import APIRouter, HTTPException"
+        if needs_http_exception
+        else "from fastapi import APIRouter"
+    )
+    pydantic_names = (["BaseModel"] if structs else []) + (
+        ["Field"] if needs_bounds else []
+    )
+    if pydantic_names:
+        lines.append(f"from pydantic import {', '.join(pydantic_names)}")
     lines.append("")
 
     # The package re-exports every symbol under its escaped Python name (B4),
@@ -345,6 +523,10 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
         lines.append(f"from . import {', '.join(imported_names)}")
     lines.append("")
 
+    if needs_bounds:
+        lines.extend(ARRAY_CAP_COMMENT)
+        lines.append("")
+
     lines.extend(_struct_models(module, structs))
 
     if serialise:
@@ -355,24 +537,62 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
     lines.append(f'router = APIRouter(tags=["{service_name}"])')
     lines.append("")
 
-    # One registry for the whole file: a class method and a free function can
-    # collide just as two overloads of one method can (A5).
-    names = _EndpointNames()
+    lines.extend(_unexposed_route(module))
 
-    for cls in module.classes:
-        lines.extend(
-            _endpoints_for_class(cls, structs, class_names, names, serialise=serialise)
-        )
-
-    for fn in module.functions:
-        if module.language == "cpp":
-            lines.extend(_endpoint_for_cpp_function(fn, structs, class_names, names))
-        else:
-            lines.extend(
-                _endpoint_for_function(fn, _py(fn.name), names, serialise=serialise)
-            )
+    lines.extend(endpoint_lines)
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+# --- what the parser refused to bind (ROADMAP 2.4) ----------------------
+
+
+def _unexposed_route(module: ModuleIR) -> list[str]:
+    """`GET /_unexposed` — every symbol the parser recognised and refused.
+
+    `ModuleIR.skipped` is how native2py promises never to mis-bind silently,
+    but until now it only survived as comments in a file inside a container.
+    Serving it makes the refusals part of the running service's contract: a
+    caller who cannot find an endpoint can ask why it is missing.
+
+    The route exists even when nothing was skipped, and returns `{}`. That is
+    the point — an empty mapping means "this build refused nothing", while a
+    404 means "this service was generated before native2py could tell you".
+    """
+    # Duplicate names are merged rather than silently overwritten: two reasons
+    # for one overloaded symbol are both true and both worth reporting.
+    merged: dict[str, str] = {}
+    for entry in module.skipped:
+        if entry.name in merged:
+            merged[entry.name] = f"{merged[entry.name]}; {entry.reason}"
+        else:
+            merged[entry.name] = entry.reason
+
+    lines = [
+        "# Symbols this build recognised and refused to bind, with the reason.",
+        "#",
+        "# Refusal is native2py's safety mechanism (a non-const char* output buffer",
+        "# has no length; a pointer return has no ownership; a derived-type Fortran",
+        "# result has no mapping), so the refusals are part of this service's",
+        "# contract and not an implementation detail. An EMPTY mapping means this",
+        "# build refused nothing; a 404 on this route means the service predates",
+        "# the feature and cannot tell you either way.",
+        "_UNEXPOSED: dict[str, str] = {",
+    ]
+    for name, reason in merged.items():
+        lines.append(f"    {name!r}: {reason!r},")
+    lines.append("}")
+    lines.append("")
+    lines.append('@router.get("/_unexposed", tags=["introspection"])')
+    # Deliberately NOT `def _unexposed`: the router imports every bound symbol
+    # into this module namespace, so a native routine called `_unexposed` and
+    # the route handler would be the same name and one would silently shadow
+    # the other — the endpoint for that routine would then return this mapping.
+    lines.append("def _native2py_unexposed() -> dict[str, str]:")
+    lines.append('    """Symbols the parser recognised but refused to bind, and why."""')
+    lines.append("    return _UNEXPOSED")
+    lines.append("")
+    return lines
 
 
 # --- structs over HTTP ---------------------------------------------------
@@ -433,10 +653,18 @@ def _struct_models(module: ModuleIR, structs: dict) -> list[str]:
     return lines
 
 
-def _annotation(param, structs: dict) -> str:
-    """The Python type annotation FastAPI should see for one parameter/field."""
+def _annotation(param, structs: dict, bounded: bool = False) -> str:
+    """The Python type annotation FastAPI should see for one parameter/field.
+
+    `bounded` is set for endpoint *parameters*, where an array arriving from an
+    untrusted request body carries the MAX_ARRAY_ITEMS cap. Struct model fields
+    are left plain: they are reached through a parameter that already carries
+    the cap on the outer list.
+    """
     base = _model_name(param.type) if param.type in structs else param.type
-    return f"list[{base}]" if param.is_array else base
+    if not param.is_array:
+        return base
+    return _array_annotation(base) if bounded else f"list[{base}]"
 
 
 def _field_to_json(field, structs: dict) -> str:
@@ -557,9 +785,11 @@ def _endpoints_for_class(
         ]
 
         signature = [
-            f"{name}: {_annotation(p, structs)}"
+            f"{name}: {_annotation(p, structs, bounded=True)}"
             for name, p in zip(ctor_names, needed_ctor)
-        ] + [f"{p.name}: {_annotation(p, structs)}" for p in method_params]
+        ] + [
+            f"{p.name}: {_annotation(p, structs, bounded=True)}" for p in method_params
+        ]
 
         ctor_args = _call_arguments(
             [_renamed(p, name) for name, p in zip(ctor_names, needed_ctor)], structs
@@ -569,6 +799,13 @@ def _endpoints_for_class(
         route, py_name = names.take(method.name)
         lines.append(f'@router.post("/{route}")')
         lines.append(f"def {py_name}({', '.join(signature)}):")
+        guard = _size_guard_lines(
+            _size_pairings(
+                [_renamed(p, name) for name, p in zip(ctor_names, needed_ctor)]
+                + method_params
+            )
+        )
+        lines.extend(guard)
         body: list[str] = []
         if method.is_static:
             call = f"{_attr(_py(cls.name), method.name)}({', '.join(call_args)})"
@@ -614,11 +851,14 @@ def _endpoint_for_cpp_function(
         return [f"# {fn.name}: no endpoint — {reason}.", ""]
 
     parameters = [_renamed(p, _py(p.name)) for p in fn.parameters]
-    signature = ", ".join(f"{p.name}: {_annotation(p, structs)}" for p in parameters)
+    signature = ", ".join(
+        f"{p.name}: {_annotation(p, structs, bounded=True)}" for p in parameters
+    )
     call = f"{_py(fn.name)}({', '.join(_call_arguments(parameters, structs))})"
 
     route, py_name = names.take(fn.name)
     lines = [f'@router.post("/{route}")', f"def {py_name}_endpoint({signature}):"]
+    lines.extend(_size_guard_lines(_size_pairings(parameters)))
     if fn.returns == "None":
         lines.append(f"    {call}")
         lines.append('    return {"ok": True}')
@@ -633,9 +873,15 @@ def generate_service_py(service_name: str) -> str:
 
     Thin by design — all the endpoints live in router.py so the exact same
     code can instead be mounted into a shared gateway.
+
+    The error handler is emitted here AND in the gateway app, from the same
+    generator, because it attaches to an app rather than to a router — see
+    generators/error_gen.py.
     """
+    error_imports = "\n".join(ERROR_HANDLER_IMPORTS)
     return f'''# Generated by native2py. Do not edit by hand — re-run `native2py generate`.
-from fastapi import FastAPI
+{error_imports}
+from fastapi import FastAPI, Request
 
 from .router import router
 
@@ -647,4 +893,4 @@ app.include_router(router)
 def healthz():
     """Liveness: the process is up and the native extension imported."""
     return {{"status": "ok", "service": "{service_name}"}}
-'''
+{generate_error_handler(service_name)}'''

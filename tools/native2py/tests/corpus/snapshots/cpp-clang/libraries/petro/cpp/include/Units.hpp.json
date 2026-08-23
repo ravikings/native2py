@@ -1,0 +1,390 @@
+{
+  "classes": [
+    {
+      "bases": [],
+      "constructors": [],
+      "fields": [],
+      "has_default_constructor": true,
+      "methods": [
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "set_system",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "system",
+              "native_type": "int",
+              "type": "int"
+            }
+          ],
+          "returns": "None"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "system",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "pressure",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "value",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "temperature",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "value",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "length",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "value",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "permeability",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "value",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "liquid_rate",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "value",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "gas_rate",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "value",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "density",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "value",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "float"
+        }
+      ],
+      "name": "UnitConverter",
+      "namespace": null
+    }
+  ],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "psi_to_bar",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "psi",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "bar_to_psi",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "bar",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "degf_to_degc",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "f",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "degc_to_degf",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "c",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "stb_to_m3",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "stb",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "m3_to_stb",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "m3",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "md_to_m2",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "md",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "ft_to_m",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "ft",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "m_to_ft",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "m",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "api_to_sg",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "api",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "sg_to_api",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "sg",
+          "native_type": "double",
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    }
+  ],
+  "language": "cpp",
+  "name": "Units",
+  "schema_version": "1.0",
+  "skipped": [
+    {
+      "name": "UnitConverter::convert_array",
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+    }
+  ],
+  "source_file": "libraries/petro/cpp/include/Units.hpp",
+  "structs": []
+}

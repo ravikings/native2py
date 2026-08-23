@@ -1,0 +1,618 @@
+{
+  "classes": [
+    {
+      "bases": [],
+      "constructors": [],
+      "fields": [],
+      "has_default_constructor": true,
+      "methods": [
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "initialize",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "nx",
+              "native_type": "int",
+              "type": "int"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "ny",
+              "native_type": "int",
+              "type": "int"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "nz",
+              "native_type": "int",
+              "type": "int"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "initialize_from_deck",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "filename",
+              "native_type": "char *",
+              "type": "str"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "nx",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "ny",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "nz",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "cell_count",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "set_uniform_porosity",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "value",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "set_uniform_permeability",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "kx",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "ky",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "kz",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "compute_transmissibility",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "equilibrate",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "woc_depth",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "goc_depth",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "datum_pressure",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "datum_depth",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "set_corey_endpoints",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "swc",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "sor",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "sgc",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "nw",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "no",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "ng",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "well_count",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "set_timestep_limits",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "dt_min",
+              "native_type": "double",
+              "type": "float"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "dt_max",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "None"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "advance",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "dt_days",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": false,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "advance_to",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "target_days",
+              "native_type": "double",
+              "type": "float"
+            }
+          ],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "state",
+          "parameters": [],
+          "returns": "RunState"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "time_days",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "oil_in_place",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "average_pressure",
+          "parameters": [],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "cell_pressure",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "i",
+              "native_type": "int",
+              "type": "int"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "j",
+              "native_type": "int",
+              "type": "int"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "k",
+              "native_type": "int",
+              "type": "int"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "cell_water_saturation",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "i",
+              "native_type": "int",
+              "type": "int"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "j",
+              "native_type": "int",
+              "type": "int"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "k",
+              "native_type": "int",
+              "type": "int"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "cell_gas_saturation",
+          "parameters": [
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "i",
+              "native_type": "int",
+              "type": "int"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "j",
+              "native_type": "int",
+              "type": "int"
+            },
+            {
+              "intent": "in",
+              "is_array": false,
+              "is_const": false,
+              "is_optional": false,
+              "name": "k",
+              "native_type": "int",
+              "type": "int"
+            }
+          ],
+          "returns": "float"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "last_error",
+          "parameters": [],
+          "returns": "int"
+        },
+        {
+          "is_const": true,
+          "is_overloaded": false,
+          "is_static": false,
+          "name": "last_error_text",
+          "parameters": [],
+          "returns": "str"
+        }
+      ],
+      "name": "Simulator",
+      "namespace": null
+    }
+  ],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [],
+  "language": "cpp",
+  "name": "Simulator",
+  "schema_version": "1.0",
+  "skipped": [
+    {
+      "name": "Simulator::set_porosity",
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::set_permeability_x",
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::set_permeability_y",
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::set_permeability_z",
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::set_cell_thickness",
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::set_tops",
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::set_active",
+      "reason": "'double *' is a pointer; native2py cannot infer its length. Wrap it in a type that carries its own size (std::vector, a span, or a struct) or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::set_fluid",
+      "reason": "'FluidModel *' refers to 'FluidModel', which is only forward-declared (an incomplete type). pybind11 needs the full definition to bind it. Add the header that defines 'FluidModel' to this service's native/ directory, or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::fluid",
+      "reason": "'FluidModel *' refers to 'FluidModel', which is only forward-declared (an incomplete type). pybind11 needs the full definition to bind it. Add the header that defines 'FluidModel' to this service's native/ directory, or exclude the symbol in native2py.yaml."
+    },
+    {
+      "name": "Simulator::add_well",
+      "reason": "'WellModel *' refers to 'WellModel', which is only forward-declared (an incomplete type). pybind11 needs the full definition to bind it. Add the header that defines 'WellModel' to this service's native/ directory, or exclude the symbol in native2py.yaml."
+    }
+  ],
+  "source_file": "libraries/petro/cpp/include/Simulator.hpp",
+  "structs": [
+    {
+      "fields": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "time_days",
+          "native_type": "double",
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "timestep_days",
+          "native_type": "double",
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "oil_in_place",
+          "native_type": "double",
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "average_pressure",
+          "native_type": "double",
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "steps_taken",
+          "native_type": "int",
+          "type": "int"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "cuts_taken",
+          "native_type": "int",
+          "type": "int"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "converged",
+          "native_type": "int",
+          "type": "int"
+        }
+      ],
+      "has_default_constructor": true,
+      "name": "RunState",
+      "namespace": null
+    }
+  ]
+}

@@ -1,0 +1,359 @@
+{
+  "classes": [],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "THOMAS",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "A",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "B",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "C",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "D",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "X",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "N",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "LSOR",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AE",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AW",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AN",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AS",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AT",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AB",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AD",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "RHS",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "inout",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "X",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "OMEGA",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "TOL",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "ITMAX",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "ITUSED",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "RESID",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "RESNRM",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AE",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AW",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AN",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AS",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AT",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AB",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "AD",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "RHS",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "X",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "GAUSSB",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "inout",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "A",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "inout",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "B",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "N",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "LDA",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "INFO",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "void"
+    }
+  ],
+  "language": "fortran",
+  "name": "matsol",
+  "schema_version": "1.0",
+  "skipped": [],
+  "source_file": "libraries/petro/fortran/matsol.f",
+  "structs": []
+}

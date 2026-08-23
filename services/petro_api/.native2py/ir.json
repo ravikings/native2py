@@ -1,4 +1,6 @@
 {
+  "schema_version": "1.0",
+  "native2py_version": "0.1.0",
   "name": "petro_api",
   "language": "fortran",
   "source_file": "services/petro_api/native/petro_api.f90",

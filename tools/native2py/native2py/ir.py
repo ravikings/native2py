@@ -8,6 +8,7 @@ knowing which language the API came from.
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import asdict, dataclass, field
 
 # Deterministic native -> Python type mapping (design.md section 15).
@@ -342,11 +343,185 @@ def validate(module: "ModuleIR") -> list[Problem]:
 # over again, on a machine that may only have the built wheel.
 
 
+
+# --- schema version -----------------------------------------------------
+#
+# `ir.json` is a *committed artifact*: services/<name>/.native2py/ir.json is
+# checked in, is read by `golden record` on machines that have neither the
+# headers nor libclang, and outlives the native2py that wrote it. Without a
+# version stamp, a document written by a future native2py deserialises into a
+# subtly different ModuleIR — every field this reader has never heard of takes
+# its "unknown, behave as before" default and nothing says so.
+#
+# The version is MAJOR.MINOR and describes the *document*, not the tool:
+#
+#   MAJOR  changes when the meaning of existing fields changes, or a field is
+#          removed or renamed. A reader cannot honestly interpret a document
+#          whose major it does not know, so it refuses it.
+#   MINOR  changes when fields are added. Additive-only, so:
+#            - an OLDER minor loads: the fields it lacks take the documented
+#              defaults below (this is exactly what a version-less pre-1.0
+#              file gets, and why the already-committed ir.json keeps working);
+#            - a NEWER minor loads too, but the keys this reader does not know
+#              are reported rather than dropped in silence.
+#
+# Unknown keys at a version we *do* fully understand are an error, not a
+# forward-compatibility question: they mean the document is corrupt or
+# hand-edited, and quietly ignoring them is how a typo'd "is_cosnt: true"
+# becomes a wrong binding.
+SCHEMA_VERSION_MAJOR = 1
+SCHEMA_VERSION_MINOR = 0
+SCHEMA_VERSION = f"{SCHEMA_VERSION_MAJOR}.{SCHEMA_VERSION_MINOR}"
+
+# What a document with no `schema_version` at all is treated as: everything
+# native2py wrote before versioning existed is, by definition, 1.0 minus the
+# stamp.
+LEGACY_SCHEMA_VERSION = "1.0"
+
+SCHEMA_VERSION_KEY = "schema_version"
+WRITER_VERSION_KEY = "native2py_version"
+
+
+class IRSchemaError(ValueError):
+    """Raised when an ir.json cannot be honestly read by this native2py."""
+
+
+class IRSchemaWarning(UserWarning):
+    """Warned when an ir.json carries fields this native2py does not know."""
+
+
+def native2py_version() -> str:
+    """The installed native2py version, recorded in every ir.json we write."""
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        return version("native2py")
+    except Exception:  # pragma: no cover - metadata is present in any install
+        return "unknown"
+
+
+def parse_schema_version(raw: object) -> tuple[int, int]:
+    if raw is None:
+        raw = LEGACY_SCHEMA_VERSION
+    text = str(raw).strip()
+    match = re.fullmatch(r"(\d+)\.(\d+)", text)
+    if not match:
+        raise IRSchemaError(
+            f"Unreadable {SCHEMA_VERSION_KEY} {raw!r} in this ir.json: expected "
+            f'"MAJOR.MINOR" (this native2py writes "{SCHEMA_VERSION}"). '
+            "Regenerate the service with `native2py generate <name>`."
+        )
+    return int(match.group(1)), int(match.group(2))
+
+
+def _check_version(data: dict) -> tuple[int, int]:
+    major, minor = parse_schema_version(data.get(SCHEMA_VERSION_KEY))
+    if major != SCHEMA_VERSION_MAJOR:
+        writer = data.get(WRITER_VERSION_KEY)
+        written_by = (
+            f"native2py {writer}" if writer else "an unknown native2py version"
+        )
+        direction = "a newer" if major > SCHEMA_VERSION_MAJOR else "an older"
+        raise IRSchemaError(
+            f"This ir.json uses IR schema {major}.{minor}, written by {written_by}; "
+            f"native2py {native2py_version()} reads schema {SCHEMA_VERSION} and "
+            f"cannot interpret {direction} major version — the meaning of the "
+            "fields it contains has changed, so loading it would silently produce "
+            "a different API than the one that was recorded.\n"
+            + (
+                f"Upgrade native2py (>= {writer}), or regenerate this service "
+                "from source with `native2py generate <name>`."
+                if major > SCHEMA_VERSION_MAJOR
+                else "Regenerate this service from source with "
+                "`native2py generate <name>`."
+            )
+        )
+    return major, minor
+
+
+# Every key each node type understands at SCHEMA_VERSION. Kept beside the
+# dataclasses deliberately: adding a field without listing it here makes the
+# round-trip test fail, which is the reminder to bump SCHEMA_VERSION_MINOR.
+_PARAMETER_KEYS = frozenset(
+    {"name", "type", "is_array", "intent", "native_type", "is_const", "is_optional"}
+)
+_METHOD_KEYS = frozenset(
+    {"name", "parameters", "returns", "is_static", "is_const", "is_overloaded"}
+)
+_CLASS_KEYS = frozenset(
+    {
+        "name",
+        "namespace",
+        "methods",
+        "has_default_constructor",
+        "constructors",
+        "fields",
+        "bases",
+    }
+)
+_STRUCT_KEYS = frozenset({"name", "namespace", "fields", "has_default_constructor"})
+_FUNCTION_KEYS = frozenset(
+    {
+        "name",
+        "parameters",
+        "returns",
+        "is_subroutine",
+        "namespace",
+        "is_overloaded",
+        "fortran_module",
+    }
+)
+_SKIPPED_KEYS = frozenset({"name", "reason"})
+_MODULE_KEYS = frozenset(
+    {
+        "name",
+        "language",
+        "source_file",
+        "classes",
+        "functions",
+        "structs",
+        "fortran_module",
+        "skipped",
+        "diagnostics",
+        SCHEMA_VERSION_KEY,
+        WRITER_VERSION_KEY,
+    }
+)
+
+
 def module_to_dict(module: ModuleIR) -> dict:
-    return asdict(module)
+    """Serialise, stamping the schema version and the writer that produced it."""
+    data = {
+        SCHEMA_VERSION_KEY: SCHEMA_VERSION,
+        WRITER_VERSION_KEY: native2py_version(),
+    }
+    data.update(asdict(module))
+    return data
 
 
 def module_from_dict(data: dict) -> ModuleIR:
+    major, minor = _check_version(data)
+    # Only a document at or below the minor we implement can have its unknown
+    # keys called corrupt; above it, an unknown key is just a field added by a
+    # later native2py, so it is reported and skipped rather than fatal.
+    strict = minor <= SCHEMA_VERSION_MINOR
+    ignored: set[str] = set()
+
+    def check_keys(item: dict, allowed: frozenset[str], where: str) -> dict:
+        unknown = sorted(set(item) - allowed)
+        if not unknown:
+            return item
+        if strict:
+            raise IRSchemaError(
+                f"Unknown key(s) {', '.join(repr(k) for k in unknown)} in {where} of "
+                f"this ir.json, which declares IR schema {major}.{minor} — a version "
+                "this native2py fully implements, so these fields are not from a "
+                "newer writer. The file is corrupt or hand-edited; regenerate it "
+                "with `native2py generate <name>`."
+            )
+        ignored.update(f"{where}.{key}" for key in unknown)
+        return item
+
     def parameters(items) -> list[Parameter]:
         # Explicit rather than Parameter(**item): an ir.json written by an
         # older native2py has none of the fields added since, and **item would
@@ -354,7 +529,7 @@ def module_from_dict(data: dict) -> ModuleIR:
         # "unknown, behave as before" values.
         return [
             Parameter(
-                name=item["name"],
+                name=check_keys(item, _PARAMETER_KEYS, "a parameter")["name"],
                 type=item["type"],
                 is_array=item.get("is_array", False),
                 intent=item.get("intent", "in"),
@@ -365,17 +540,18 @@ def module_from_dict(data: dict) -> ModuleIR:
             for item in items
         ]
 
-    return ModuleIR(
+    check_keys(data, _MODULE_KEYS, "the module")
+    module = ModuleIR(
         name=data["name"],
         language=data["language"],
         source_file=data["source_file"],
         classes=[
             ClassDef(
-                name=cls["name"],
+                name=check_keys(cls, _CLASS_KEYS, f"class {cls.get('name')!r}")["name"],
                 namespace=cls.get("namespace"),
                 methods=[
                     Method(
-                        name=m["name"],
+                        name=check_keys(m, _METHOD_KEYS, f"method {m.get('name')!r}")["name"],
                         parameters=parameters(m.get("parameters", [])),
                         returns=m.get("returns", "void"),
                         is_static=m.get("is_static", False),
@@ -393,7 +569,7 @@ def module_from_dict(data: dict) -> ModuleIR:
         ],
         functions=[
             FunctionDef(
-                name=fn["name"],
+                name=check_keys(fn, _FUNCTION_KEYS, f"function {fn.get('name')!r}")["name"],
                 parameters=parameters(fn.get("parameters", [])),
                 returns=fn.get("returns", "void"),
                 is_subroutine=fn.get("is_subroutine", False),
@@ -405,7 +581,7 @@ def module_from_dict(data: dict) -> ModuleIR:
         ],
         structs=[
             StructDef(
-                name=struct["name"],
+                name=check_keys(struct, _STRUCT_KEYS, f"struct {struct.get('name')!r}")["name"],
                 namespace=struct.get("namespace"),
                 fields=parameters(struct.get("fields", [])),
                 has_default_constructor=struct.get("has_default_constructor", True),
@@ -413,6 +589,25 @@ def module_from_dict(data: dict) -> ModuleIR:
             for struct in data.get("structs", [])
         ],
         fortran_module=data.get("fortran_module"),
-        skipped=[SkippedSymbol(**item) for item in data.get("skipped", [])],
+        skipped=[
+            SkippedSymbol(**check_keys(item, _SKIPPED_KEYS, "a skipped symbol"))
+            for item in data.get("skipped", [])
+        ],
         diagnostics=list(data.get("diagnostics", [])),
     )
+
+    if ignored:
+        # A newer minor: additive by contract, so the module above is still a
+        # faithful subset — but say which fields were dropped, because "the
+        # binding lost an attribute" is otherwise indistinguishable from "the
+        # parser never found it".
+        writer = data.get(WRITER_VERSION_KEY) or "an unknown native2py version"
+        warnings.warn(
+            f"This ir.json declares IR schema {major}.{minor} (written by {writer}); "
+            f"native2py {native2py_version()} implements {SCHEMA_VERSION} and ignored "
+            f"{len(ignored)} unknown field(s): {', '.join(sorted(ignored))}. "
+            "Upgrade native2py, or regenerate the service, if any of them matter.",
+            IRSchemaWarning,
+            stacklevel=2,
+        )
+    return module

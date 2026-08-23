@@ -47,6 +47,7 @@ from .generators import (
     test_gen,
 )
 from .ir import (
+    IRSchemaError,
     ModuleIR,
     NativeTypeError,
     module_from_dict,
@@ -565,7 +566,12 @@ def _load_service_ir(service_dir: Path, name: str) -> ModuleIR:
         raise click.ClickException(
             f"No {ir_path} — run `native2py generate {name}` first."
         )
-    return module_from_dict(json.loads(ir_path.read_text()))
+    try:
+        return module_from_dict(json.loads(ir_path.read_text()))
+    except IRSchemaError as exc:
+        # A version this native2py cannot honestly read has to stop the command,
+        # not surface as a traceback from inside `golden record`.
+        raise click.ClickException(f"{ir_path}: {exc}") from exc
 
 
 @golden.command("record")

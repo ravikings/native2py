@@ -1,0 +1,328 @@
+{
+  "classes": [],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "KRINI",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SWC",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SOR",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SGC",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "EW",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "EO",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "EG",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "KRWM",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "KROM",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "KRGM",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "KRLOAD",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SWTAB",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "KRWTAB",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "KROTAB",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "PCWTAB",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "N",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "KRWAT",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SW",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "KROW",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SW",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "KRGAS",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SG",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "KROIL",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SW",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SG",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "KROGF",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SG",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "PCOW",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "SW",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "TLOOK",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "X",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": true,
+          "is_const": false,
+          "is_optional": false,
+          "name": "Y",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "N",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "XX",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    }
+  ],
+  "language": "fortran",
+  "name": "relperm",
+  "schema_version": "1.0",
+  "skipped": [],
+  "source_file": "libraries/petro/fortran/relperm.f",
+  "structs": []
+}

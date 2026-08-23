@@ -11,10 +11,16 @@ compiler in the loop. The real thing is exercised end-to-end against the
 built `pvt` (F77) and C++ services.
 """
 
+import pathlib
+import shutil
+import subprocess
+import sys
 import types
+import zipfile
 
 import pytest
 
+import native2py
 from native2py import golden
 from native2py.generators import golden_gen
 from native2py.ir import (
@@ -722,3 +728,131 @@ def test_generated_golden_test_uses_the_per_entry_tolerance():
 
     assert 'entry.get("tolerance")' in code
     assert 'entry.get("argument_effects")' in code
+
+
+# --- the generated test ships as a real file, not a string --------------
+#
+# It used to be a `TEMPLATE` string literal inside golden_gen.py, where
+# nothing in this project could see into it: a syntax error or a stale name
+# in the generated test only ever surfaced when somebody ran a generated
+# service. These hold it to being a real, compilable, actually-shipped file.
+
+
+def _project_root() -> pathlib.Path:
+    return pathlib.Path(native2py.__file__).resolve().parent.parent
+
+
+def test_the_shipped_template_is_valid_python_on_its_own():
+    # The point of moving it out of a string: the file is parsed and compiled
+    # here, so a break in it fails this suite instead of a customer's build.
+    source = golden_gen.TEMPLATE_PATH.read_text(encoding="utf-8")
+
+    compile(source, str(golden_gen.TEMPLATE_PATH), "exec")
+
+
+def test_the_shipped_template_carries_every_placeholder_the_generator_substitutes():
+    source = golden_gen.TEMPLATE_PATH.read_text(encoding="utf-8")
+
+    for sentinel in golden_gen.PLACEHOLDERS:
+        assert sentinel in source, f"{sentinel} is substituted but never appears"
+
+
+def test_rendered_output_compiles():
+    code = golden_gen.generate_golden_test("pvt", "pvt", "golden.json")
+
+    compile(code, "test_golden.py", "exec")
+    assert "NATIVE2PY_" not in code, "a placeholder survived substitution"
+
+
+def test_rendered_output_is_byte_identical_across_runs():
+    first = golden_gen.generate_golden_test("pvt", "pvt", "golden.json")
+    second = golden_gen.generate_golden_test("pvt", "pvt", "golden.json")
+
+    assert first == second
+
+
+def test_rendered_output_is_byte_identical_across_processes():
+    # Same generator, separate interpreter: a dict ordering or a cached read
+    # that differed per process would show up here and nowhere else.
+    program = (
+        "from native2py.generators import golden_gen;"
+        "import sys;"
+        "sys.stdout.write(golden_gen.generate_golden_test('pvt', 'pvt', 'golden.json'))"
+    )
+    runs = [
+        subprocess.run(
+            [sys.executable, "-c", program],
+            capture_output=True, text=True, check=True, cwd=str(_project_root()),
+        ).stdout
+        for _ in range(2)
+    ]
+
+    assert runs[0] == runs[1]
+    assert runs[0] == golden_gen.generate_golden_test("pvt", "pvt", "golden.json")
+
+
+def test_the_generated_test_never_imports_native2py():
+    # A generated service is a deployable artifact. If its own test suite
+    # imported the code generator, deploying the service would mean deploying
+    # native2py with it.
+    code = golden_gen.generate_golden_test("pvt", "pvt", "golden.json")
+
+    for line in code.splitlines():
+        stripped = line.strip()
+        assert not stripped.startswith(("import native2py", "from native2py")), line
+
+
+def test_the_template_is_discovered_as_package_data_by_the_declared_layout():
+    # Cheap standing guard for the build test below, which needs build
+    # tooling: `[tool.setuptools.packages.find] include = ["native2py*"]`
+    # only ships the template because `templates` is an importable package.
+    from setuptools import find_packages
+
+    found = find_packages(where=str(_project_root()), include=["native2py*"])
+
+    assert "native2py.templates" in found
+    assert golden_gen.TEMPLATE_PATH.suffix == ".py"
+    assert (golden_gen.TEMPLATE_PATH.parent / "__init__.py").exists()
+
+
+def test_the_template_is_present_in_a_built_distribution(tmp_path):
+    # Discovery config can look right and still not ship the file. This
+    # builds a wheel and looks inside it.
+    build = pytest.importorskip("build", reason="needs `build` to make a wheel")
+    pytest.importorskip("wheel", reason="needs `wheel` to make a wheel")
+
+    source = tmp_path / "src"
+    shutil.copytree(
+        _project_root(),
+        source,
+        ignore=shutil.ignore_patterns(
+            "build", "dist", ".venv", "*.egg-info", "__pycache__", ".pytest_cache",
+        ),
+    )
+    outdir = tmp_path / "out"
+    builder = build.ProjectBuilder(str(source))
+    wheel = builder.build("wheel", str(outdir))
+
+    with zipfile.ZipFile(wheel) as archive:
+        names = archive.namelist()
+        relative = golden_gen.TEMPLATE_PATH.relative_to(_project_root()).as_posix()
+        assert relative in names, f"{relative} is missing from the wheel: {names}"
+        shipped = archive.read(relative).decode("utf-8")
+
+    assert shipped == golden_gen.TEMPLATE_PATH.read_text(encoding="utf-8")
+
+
+def test_the_declared_dependencies_do_not_include_anything_unimported():
+    # jinja2 was declared for templating that never landed. The templates
+    # here are rendered by string substitution and import nothing.
+    root = _project_root()
+    manifest = (root / "pyproject.toml").read_text(encoding="utf-8")
+    requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+
+    assert "jinja2" not in manifest
+    assert "jinja2" not in requirements
+    sources = "\n".join(
+        path.read_text(encoding="utf-8", errors="ignore")
+        for path in (root / "native2py").rglob("*.py")
+    )
+    assert "jinja" not in sources.lower()

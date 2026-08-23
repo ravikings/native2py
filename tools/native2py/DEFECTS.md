@@ -359,23 +359,30 @@ bind a construct must land there rather than defaulting.
 
 ---
 
-## Suggested order
+## The order this was fixed in — all complete
 
-1. **D3** — the `compile()` gate. Cheapest, and it catches B4 and anything like
-   it permanently.
-2. **A1, A2, A7** — make unresolvable Fortran types raise or skip instead of
-   defaulting to `float`. One change, three silent-wrong-answer defects.
-3. **A4, B3, B7** — carry const-ness and enum identity through `_map_type`.
-4. **B2** — add `namespace` to `ir.FunctionDef`. Small, unblocks every
-   namespaced C++ API.
-5. **B1, A5** — overload support via `py::overload_cast`, plus distinct route
-   names.
-6. **A3** — carry the native type spelling in `ir.Parameter` so `py::init<>`
-   stops guessing.
-7. **A6, A8** — extend include expansion to free-form; make encoding explicit.
-8. **C1, C2** — free-form parser parity with the fixed-form fixes.
-9. **B4** — identifier escaping in `ir.validate`.
+Kept as a record of how the sweep was sequenced. **Every item below shipped**;
+this is not a to-do list. For open work see [ROADMAP.md](ROADMAP.md).
 
-Items 1–6 are roughly three weeks and remove every silent-wrong-answer defect
-in Class A except A6/A8. Class C is the fparser2 argument, already scoped in
+| | Items | What it bought |
+|---|---|---|
+| 1 | **D3** | The `compile()` gate. Cheapest, and it catches B4 and anything like it permanently. |
+| 2 | **A1, A2, A7** | Unresolvable Fortran types skip with a reason instead of defaulting to `float` — one change, three silent-wrong-answer defects. |
+| 3 | **A4, B3, B7** | const-ness and enum identity carried through `_map_type`. |
+| 4 | **B2** | `namespace` on `ir.FunctionDef`. Small, unblocked every namespaced C++ API. |
+| 5 | **B1, A5** | `py::overload_cast`, plus distinct route names so no overload is silently unreachable. |
+| 6 | **A3** | Native type spelling in `ir.Parameter`, so `py::init<>` stopped guessing. |
+| 7 | **A6, A8** | Include expansion extended to free-form; encoding made explicit. |
+| 8 | **C1, C2** | Free-form parser parity with the fixed-form fixes. |
+| 9 | **B4** | Identifier escaping, wired into `ir.validate`. |
+
+Steps 1–6 removed every silent-wrong-answer defect in Class A. Verified by
+re-running each probe in this document against the merged tree, not by
+inspection.
+
+**The one item not closed here is Class C**, which is the fparser2 argument:
+`.F90` preprocessed Fortran is detected and warned about but still parsed as
+though every `#ifdef` branch were live, STL and template coverage is unchanged,
+and defects (g) statement functions and (h) `COMMON`/`EQUIVALENCE` outputs need
+the symbol table a real parse tree provides. That work is scoped as W1.4 in
 [ROADMAP.md](ROADMAP.md).

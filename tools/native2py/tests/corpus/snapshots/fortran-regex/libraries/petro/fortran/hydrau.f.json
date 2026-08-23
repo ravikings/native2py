@@ -1,0 +1,333 @@
+{
+  "classes": [],
+  "diagnostics": [],
+  "fortran_module": null,
+  "functions": [
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "BBDPDZ",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "inout",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "P",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "QO",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "QW",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "QG",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "DIA",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "THETA",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "EPS",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "DPDZ",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "HL",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "IREG",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "HLHOR",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "CL",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "NFR",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "IREG",
+          "native_type": null,
+          "type": "int"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "BBCFAC",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "CL",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "NLV",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "NFR",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "IREG",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "THETA",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": false,
+      "name": "FANNIN",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "RE",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "RELR",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "float"
+    },
+    {
+      "fortran_module": null,
+      "is_overloaded": false,
+      "is_subroutine": true,
+      "name": "TRAVER",
+      "namespace": null,
+      "parameters": [
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "PWH",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "QO",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "QW",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "QG",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "DIA",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "EPS",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "TVD",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "in",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "MD",
+          "native_type": null,
+          "type": "float"
+        },
+        {
+          "intent": "inout",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "NSEG",
+          "native_type": null,
+          "type": "int"
+        },
+        {
+          "intent": "out",
+          "is_array": false,
+          "is_const": false,
+          "is_optional": false,
+          "name": "PBH",
+          "native_type": null,
+          "type": "float"
+        }
+      ],
+      "returns": "void"
+    }
+  ],
+  "language": "fortran",
+  "name": "hydrau",
+  "schema_version": "1.0",
+  "skipped": [],
+  "source_file": "libraries/petro/fortran/hydrau.f",
+  "structs": []
+}

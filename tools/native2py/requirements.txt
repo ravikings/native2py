@@ -21,13 +21,18 @@
 # --- native2py CLI runtime (also in pyproject.toml [project.dependencies]) ---
 click>=8.1
 pyyaml>=6.0
-jinja2>=3.1
 
 # --- C++ AST parser (pyproject.toml [clang]) ---
 # Ships its own libclang shared library. Without it the C++ front end falls
 # back to the regex reader: no preprocessor, no templates, no typedef
 # resolution. Set NATIVE2PY_LIBCLANG to use a system libclang instead.
 libclang>=16
+
+# --- Fortran parse-tree backend (pyproject.toml [fparser]) ---
+# Pure Python, so it adds no toolchain. Without it the Fortran front end uses
+# the regex reader and every test in tests/test_fortran_fparser.py skips —
+# which is why it is installed here and in CI rather than left to chance.
+fparser>=0.2,<0.3
 
 # --- building generated C++/Fortran services (pyproject.toml [build]) ---
 scikit-build-core>=0.10

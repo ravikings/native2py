@@ -262,9 +262,8 @@ def test_free_form_honours_an_implicit_statement(tmp_path):
     source = tmp_path / "explicit_implicit.f90"
     source.write_text(
         """
-    implicit integer (x-z)
-
     subroutine accumulate(x)
+        implicit integer (x-z)
         x = x + 1
     end subroutine accumulate
 """
@@ -281,9 +280,8 @@ def test_undeclared_argument_under_implicit_none_is_skipped(tmp_path):
     source = tmp_path / "strict.f90"
     source.write_text(
         """
-    implicit none
-
     subroutine accumulate(x)
+        implicit none
         x = x + 1
     end subroutine accumulate
 """
@@ -349,35 +347,47 @@ def test_bare_end_terminates_a_routine(tmp_path):
     assert module.functions[0].returns == "float"
 
 
-def test_bare_end_does_not_stop_at_a_nested_construct(tmp_path):
-    # C2's trap: `end if` / `end do` must not be mistaken for the routine's
-    # own bare `end`, or the declarations after them are never seen and the
-    # parameter types silently regress to the implicit default.
+def test_bare_end_terminates_at_the_routine_not_a_nested_construct(tmp_path):
+    """C2's trap: `end if` / `end do` must not be taken for the routine's own
+    bare `end`, and the bare `end` must actually stop the block.
+
+    The original version of this test put a declaration *after* the nested
+    constructs and looked for it. That fixture is not legal Fortran — gfortran
+    rejects it with "data declaration statement cannot appear after executable
+    statements" — and it only parsed because the regex reader has no grammar.
+    An fparser2 parse refused it, correctly.
+
+    The property is still testable, just from the other side: a second routine
+    follows, and it declares `n` with a different type. If `clamp`'s block ran
+    past its bare `end`, it would swallow that declaration and `n` would come
+    back as `str` instead of `int`.
+    """
     source = tmp_path / "nested.f90"
     source.write_text(
         """
     subroutine clamp(n, x)
         integer :: n
+        real(8), intent(inout) :: x
         integer :: i
 
         do i = 1, n
-            if (i > 0) then
-                i = i
+            if (x > 0.0d0) then
+                x = x - 1.0d0
             end if
         end do
-
-        real(8), intent(inout) :: x
-        x = x + n
     end
+
+    subroutine other(n)
+        character(len=8) :: n
+    end subroutine other
 """
     )
 
     module = fortran_parser.parse_source(source, ExposeConfig(functions=["clamp"]))
 
-    # `x` is declared *after* the nested constructs; finding it proves the
-    # block did not terminate on `end if` or `end do`.
     params = {p.name: p for p in module.functions[0].parameters}
     assert params["x"].intent == "inout"
+    # `str` here would mean the block swallowed `other`'s declaration.
     assert params["n"].type == "int"
 
 
