@@ -1286,6 +1286,31 @@ def _generate_cpp_service(service_dir: Path, config: ServiceConfig) -> None:
     _write_package(service_dir, config, merged)
 
 
+def _with_shims(text: str, shims: list[str], source: Path) -> str:
+    """Insert generated flattening shims into a module's `_expanded` copy.
+
+    Before `end module`, because the shim constructs the derived type and that
+    type is only visible from inside the module that defines it. This edits
+    the GENERATED copy only — the original tree stays read-only, same rule as
+    every other transform under `_expanded/`.
+    """
+    if not shims:
+        return text
+    import re as _re
+
+    match = None
+    for match in _re.finditer(r"(?im)^\s*end\s+module\b.*$", text):
+        pass  # keep the last one
+    if match is None:
+        raise click.ClickException(
+            f"{source.name}: routines here need a flattening shim, but no "
+            "`end module` line was found to anchor it. This is a native2py "
+            "bug — please report it with the source layout."
+        )
+    insertion = "\n" + "\n\n".join(shims) + "\n\n"
+    return text[: match.start()] + insertion + text[match.start() :]
+
+
 def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
     if not config.expose.functions:
         raise click.ClickException(
@@ -1385,6 +1410,7 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
     remaining = list(config.expose.functions)
     module = None
     intents_by_source: dict[Path, dict[str, dict[str, tuple[str, bool]]]] = {}
+    shims_by_source: dict[Path, list[str]] = {}
 
     for source in sources:
         if not remaining:
@@ -1399,9 +1425,11 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
             )
         except IncludeError as exc:
             raise click.ClickException(str(exc)) from exc
+        shims_by_source[source] = list(parsed.fortran_shims)
         if module is None:
             module = parsed
         else:
+            module.fortran_shims.extend(parsed.fortran_shims)
             # Routines from different Fortran modules (or from a module and
             # from bare fixed-form decks) can coexist: FunctionDef carries its
             # own enclosing module, and generate_init_py re-exports each from
@@ -1470,8 +1498,23 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
         and s not in free_form_include_sources
         and uses_kind_parameters(read_source(s))
     ]
+    # A source whose routines needed a flattening shim must be copied so the
+    # shim has somewhere to live — even when nothing else forces a rewrite.
+    shim_only_sources = [
+        s
+        for s in sources
+        if shims_by_source.get(s)
+        and s not in fixed_form_sources
+        and s not in free_form_include_sources
+        and s not in kind_param_sources
+    ]
 
-    rewritten = fixed_form_sources + free_form_include_sources + kind_param_sources
+    rewritten = (
+        fixed_form_sources
+        + free_form_include_sources
+        + kind_param_sources
+        + shim_only_sources
+    )
     # A library source is always copied under the service, even when it needs
     # no rewriting: it lives outside native/, so referencing it as
     # `native/<name>` would name a file that is not there — and the Docker
@@ -1502,7 +1545,21 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
                 native_sources.append(f"native/_expanded/{source.name}")
             elif source in kind_param_sources:
                 target = expanded_dir / source.name
-                target.write_text(resolve_kind_parameters(read_source(source)))
+                target.write_text(
+                    _with_shims(
+                        resolve_kind_parameters(read_source(source)),
+                        shims_by_source.get(source, []),
+                        source,
+                    )
+                )
+                native_sources.append(f"native/_expanded/{source.name}")
+            elif source in shim_only_sources:
+                target = expanded_dir / source.name
+                target.write_text(
+                    _with_shims(
+                        read_source(source), shims_by_source[source], source
+                    )
+                )
                 native_sources.append(f"native/_expanded/{source.name}")
             elif source in library_set:
                 target = expanded_dir / source.name
@@ -1537,7 +1594,10 @@ def _generate_fortran_service(service_dir: Path, config: ServiceConfig) -> None:
             module,
             config.name,
             native_sources,
-            only_routines=list(config.expose.functions),
+            # The shim name where one exists: f2py must wrap the flattened
+            # entry point, not the original whose derived argument it cannot
+            # express.
+            only_routines=[fn.cpp_name or fn.name for fn in module.functions],
         )
     )
 

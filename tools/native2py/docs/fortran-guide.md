@@ -399,7 +399,51 @@ Fortran. The image now builds and runs, and every entry point returns its
 recorded golden value exactly — including `tubing_bhp`, which is the one that
 reaches `IPRVOG` in `wellib.f`.
 
+### Derived types: flattened through a generated shim
+
+f2py cannot pass a derived type — that has not changed. What changed: for a
+module routine taking one, native2py now generates a **Fortran shim** in the
+`_expanded` copy that takes the components as ordinary scalars, builds the
+type, calls the real routine, and copies output components back:
+
+```fortran
+type :: fluid_state
+    real(dp) :: pressure
+    real(dp) :: temperature
+    integer  :: ncomp
+end type
+
+subroutine density(state, rho)          ! your routine, untouched
+    type(fluid_state), intent(in) :: state
+```
+
+binds as `density(state_pressure, state_temperature, state_ncomp)` — the
+published name is yours; the shim (`density_n2p`) is what f2py actually
+wraps, and `intent(out)`/`inout` components come back in the response.
+Verified by compiling the generated service and calling it.
+
+The preconditions, each refused with its reason when unmet:
+
+- the routine must be **inside the module that defines the type** (the shim
+  constructs the type, and that is the only place it is visible from);
+- components must be **scalar numeric/logical** — arrays, CHARACTER and
+  nested types don't flatten yet;
+- subroutines only for now (wrap a function in one);
+- non-derived companion arguments must be scalars.
+
+### CHARACTER outputs: fixed length binds, assumed length refuses loudly
+
+Measured with numpy 2.5's f2py: `CHARACTER*32, intent(out)` builds and
+returns the value — the old blanket "f2py cannot return a CHARACTER" threw
+that away. It now binds, and the endpoint decodes the blank-padded bytes
+f2py returns into a clean JSON string.
+
+`CHARACTER*(*)` (assumed length) as an output is the dangerous one: it
+**builds, imports, and silently returns an empty string** — measured, and
+worse than a build failure. It stays demoted to an input, and the skip
+message says to give it a length.
+
 ### Not yet supported
 
-- Derived types / structs
 - `COMMON` blocks exposed as readable/writable Python attributes
+- array / CHARACTER / nested components in derived types (scalars flatten)

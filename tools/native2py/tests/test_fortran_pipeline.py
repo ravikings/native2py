@@ -243,7 +243,11 @@ def test_derived_type_argument_is_skipped_not_bound_as_float(tmp_path):
 
     assert module.functions == []
     assert [s.name for s in module.skipped] == ["apply"]
-    assert "st" in module.skipped[0].reason
+    # The reason moved from a blanket "f2py cannot pass a derived type" to the
+    # flattening shim's precondition: this routine is a bare subprogram, and
+    # the shim must live inside the module that defines the type to see it.
+    assert "not inside a module" in module.skipped[0].reason
+    assert "flattening shim" in module.skipped[0].reason
 
 
 def test_optional_attribute_is_carried_into_the_ir(modern_source):

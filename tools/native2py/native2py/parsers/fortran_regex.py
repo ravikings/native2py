@@ -522,26 +522,41 @@ def _parse_fixed_form_source(
             py_type = map_fortran_type(base_type)
             intent = intents.get(key, "in")
 
-            # f2py cannot size a CHARACTER result argument (the length is
-            # not carried through the declaration, and CHARACTER*(*) has none
-            # to carry), so it cannot be an output. Leave it as input and
-            # record why, rather than emitting a directive that fails to build.
+            # Same rule, same message, same recorded spelling as the fparser2
+            # backend — the parity harness holds both to byte-identical IR. A
+            # CHARACTER output binds exactly when its length is fixed in the
+            # declaration; an assumed-length output BUILDS and then silently
+            # returns b'' (measured with numpy 2.5's f2py), so it is demoted
+            # with the reason.
+            char_spelling = (
+                routine.get("char_lengths", {}).get(key)
+                if py_type == "str"
+                else None
+            )
             if py_type == "str" and intent != "in":
-                module.skipped.append(
-                    SkippedSymbol(
-                        f"{name}({param_name})",
-                        "assigned in the routine body, but f2py cannot return a "
-                        "CHARACTER argument; it stays an input and its value is "
-                        "not returned.",
+                if char_spelling is None or not fixed_form.CHAR_FIXED_LEN_RE.match(
+                    char_spelling
+                ):
+                    module.skipped.append(
+                        SkippedSymbol(
+                            f"{name}({param_name})",
+                            f"'{param_name}' is assigned in the body but is "
+                            f"declared '{char_spelling or 'implicitly'}': f2py "
+                            "can only return a CHARACTER whose length is fixed "
+                            "in the declaration. An assumed-length output "
+                            "builds and then silently returns an empty string "
+                            "— measured, not assumed. Give it a length "
+                            "(CHARACTER*80) and it becomes an output.",
+                        )
                     )
-                )
-                intent = "in"
+                    intent = "in"
 
             parameters.append(
                 Parameter(
                     name=param_name,
                     type=py_type,
                     is_array=key in routine["arrays"],
+                    native_type=char_spelling,
                     intent=intent,
                 )
             )

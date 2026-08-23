@@ -144,7 +144,14 @@ _END_RE = re.compile(r"^END\s*$", re.IGNORECASE)
 # `CHARACTER*(*) MSG` unmatched, so MSG fell through to IMPLICIT typing and
 # came back as an *integer* — a binding that compiles, runs, and passes a
 # pointer where the callee expects a string descriptor.
-_LENGTH_SUFFIX = r"(?:\s*\*\s*(?:\d+|\(\s*\*\s*\)))?"
+# `character*32`, `character(len=32)`, `character(32)` — a DEFINITE length,
+# which is what makes a CHARACTER output bindable. `character*(*)` and
+# `character(len=*)` are assumed-length: f2py builds them and then silently
+# returns b'' — measured. One pattern, used by BOTH Fortran backends, so the
+# rule cannot drift between them.
+CHAR_FIXED_LEN_RE = re.compile(r"^character(\*\d+|\(len=\d+\)|\(\d+\))$")
+
+_LENGTH_SUFFIX = r"(?P<length>\s*\*\s*(?:\d+|\(\s*\*\s*\)))?"
 
 _OLD_DECL_RE = re.compile(
     r"^(?P<type>DOUBLE\s+PRECISION|REAL|INTEGER|LOGICAL|CHARACTER|COMPLEX)"
@@ -204,17 +211,24 @@ def find_routine(normalized: str, name: str) -> dict | None:
     body = "\n".join(body_lines)
 
     declared_types: dict[str, str] = {}
+    # CHARACTER length spellings ("character*32", "character*(*)"), kept
+    # separately because the LENGTH decides whether f2py can return the value
+    # — see the demotion in both backends.
+    char_lengths: dict[str, str] = {}
     arrays: set[str] = set()
 
     for line in body_lines:
         decl = _OLD_DECL_RE.match(line)
         if decl:
             base = re.sub(r"\s+", " ", decl.group("type").strip().lower())
+            length = (decl.group("length") or "").replace(" ", "")
             for item in _split_declarator_list(decl.group("names")):
                 var = item.split("(")[0].strip()
                 if not var or not var[0].isalpha():
                     continue
                 declared_types[var.lower()] = base
+                if base == "character":
+                    char_lengths[var.lower()] = f"character{length}"
                 if "(" in item:
                     arrays.add(var.lower())
             continue
@@ -234,6 +248,7 @@ def find_routine(normalized: str, name: str) -> dict | None:
         "params": params,
         "body": body,
         "declared_types": declared_types,
+        "char_lengths": char_lengths,
         "arrays": arrays,
     }
 

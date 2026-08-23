@@ -56,6 +56,8 @@ regex reader when it did not.
 
 from __future__ import annotations
 
+import re
+
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -439,6 +441,8 @@ class _Declarations:
     # `float`, which produces a service that builds, imports, passes its smoke
     # test and returns a wrong number.
     unbindable: dict[str, str] = field(default_factory=dict)
+    # name -> declared intent of a derived-type dummy, for the shim generator.
+    derived_intents: dict[str, str] = field(default_factory=dict)
     # Names given a shape by a standalone DIMENSION statement.
     dimensioned: set[str] = field(default_factory=set)
 
@@ -459,8 +463,12 @@ def _parse_declarations(spec_part) -> _Declarations:
         type_spec = decl.items[0]
         if _is_derived(type_spec):
             spelling = _derived_spelling(type_spec)
+            intent, _, _ = _attributes(decl)
             for name, _ in _entities(decl):
                 result.unbindable[name.lower()] = spelling
+                # A flattening shim needs the declared intent: intent(out)
+                # components must be copied back after the call.
+                result.derived_intents[name.lower()] = intent
             continue
 
         base_type = _base_type_word(type_spec)
@@ -478,6 +486,18 @@ def _parse_declarations(spec_part) -> _Declarations:
                 or key in result.dimensioned,
                 intent=intent,
                 is_optional=optional,
+                # The full spelling — but only for CHARACTER, where the
+                # LENGTH decides bindability: f2py returns a `character*32`
+                # output fine and silently returns b'' for a `character*(*)`
+                # one — measured. Recorded for no other type, so the two
+                # Fortran backends keep producing byte-identical IR (the regex
+                # reader records no spellings at all, and the parity harness
+                # holds both to the same output).
+                native_type=(
+                    str(type_spec).replace(" ", "").lower()
+                    if py_type == "str"
+                    else None
+                ),
             )
 
     # DIMENSION may follow the type declaration, so apply it once more at the
@@ -490,6 +510,167 @@ def _parse_declarations(spec_part) -> _Declarations:
 
 
 # --- shared resolution --------------------------------------------------
+
+
+# Component py_type -> the resolved Fortran spelling a shim declares it with.
+# Resolved (real(8), not real(dp)) so the shim parses under f2py regardless of
+# whether the kind-parameter rewrite pass runs on this file.
+_SHIM_SPELLING = {"float": "real(8)", "int": "integer", "bool": "logical"}
+
+
+def _derived_type_components(tree) -> dict[str, list | str]:
+    """type name -> [(component, py_type)] — or a refusal string.
+
+    Only scalar numeric/logical components flatten in v1. Everything else is
+    recorded as a reason so the routine that uses the type can say exactly why
+    it was refused, instead of the old blanket "f2py cannot pass a derived
+    type".
+    """
+    out: dict[str, list | str] = {}
+    for definition in _walk(tree, _F.Derived_Type_Def):
+        stmt = _walk(definition, _F.Derived_Type_Stmt)[0]
+        type_name = str(stmt.items[1]).lower()
+        components: list = []
+        reason = None
+        for comp_stmt in _walk(definition, _F.Data_Component_Def_Stmt):
+            spec = comp_stmt.items[0]
+            if _is_derived(spec):
+                reason = (
+                    f"component '{_walk(comp_stmt, _F.Component_Decl)[0]}' is "
+                    "itself a derived type; nested types do not flatten"
+                )
+                break
+            base = _base_type_word(spec)
+            try:
+                py_type = map_fortran_type(base)
+            except Exception:
+                reason = f"component type '{base}' has no Python mapping"
+                break
+            if py_type not in _SHIM_SPELLING:
+                reason = (
+                    f"component type '{base}' is not a scalar numeric/logical; "
+                    "only those flatten"
+                )
+                break
+            for declared in _walk(comp_stmt, _F.Component_Decl):
+                comp_name = str(declared.items[0])
+                if declared.items[1] is not None or "dimension" in str(
+                    comp_stmt.items[1] or ""
+                ).lower():
+                    reason = f"component '{comp_name}' is an array; only scalars flatten"
+                    break
+                components.append((comp_name, py_type))
+            if reason:
+                break
+        out[type_name] = reason if reason else components
+    return out
+
+
+def _plan_flattening(
+    routine_name: str,
+    param_names: list[str],
+    decls,
+    derived_types: dict,
+    enclosing_module: str | None,
+) -> tuple[dict, str, str] | str:
+    """Flattened parameters and shim source for a routine with derived args.
+
+    Returns (flat_by_param, shim_name, shim_source) — or a refusal string.
+    f2py cannot pass a derived type, but a generated Fortran shim inside the
+    same module can: it takes the components as ordinary scalars, builds the
+    type, calls the real routine, and copies output components back. The shim
+    lives in the GENERATED _expanded copy; the original tree is never touched.
+    """
+    derived = {
+        p: decls.unbindable[p.lower()]
+        for p in param_names
+        if p.lower() in decls.unbindable
+    }
+    if enclosing_module is None:
+        return (
+            "takes a derived type but is not inside a module, so a flattening "
+            "shim would have nowhere to see the type from. Move the routine "
+            "(or a wrapper) into the module that defines the type."
+        )
+
+    flat_by_param: dict[str, list[Parameter]] = {}
+    shim_args: list[str] = []
+    shim_decls: list[str] = []
+    shim_pre: list[str] = []
+    shim_post: list[str] = []
+    call_args: list[str] = []
+
+    for param in param_names:
+        key = param.lower()
+        if param in derived:
+            spelling = derived[param]  # "type(fluid_state)"
+            type_name = spelling[spelling.index("(") + 1 : spelling.rindex(")")]
+            components = derived_types.get(type_name)
+            if components is None:
+                return (
+                    f"argument '{param}' is declared '{spelling}' and the "
+                    f"definition of '{type_name}' is not in this file, so its "
+                    "components cannot be flattened"
+                )
+            if isinstance(components, str):
+                return (
+                    f"argument '{param}' is declared '{spelling}', which does "
+                    f"not flatten: {components}"
+                )
+            intent = decls.derived_intents.get(key, "inout") or "inout"
+            shim_decls.append(f"        type({type_name}) :: {param}")
+            for comp_name, py_type in components:
+                flat = f"{param}_{comp_name}"
+                shim_args.append(flat)
+                shim_decls.append(
+                    f"        {_SHIM_SPELLING[py_type]}, intent({intent}) :: {flat}"
+                )
+                if intent in ("in", "inout"):
+                    shim_pre.append(f"        {param}%{comp_name} = {flat}")
+                if intent in ("out", "inout"):
+                    shim_post.append(f"        {flat} = {param}%{comp_name}")
+                flat_by_param.setdefault(param, []).append(
+                    Parameter(name=flat, type=py_type, intent=intent)
+                )
+            call_args.append(param)
+        else:
+            declaration = decls.declared.get(key)
+            if declaration is None:
+                return (
+                    f"argument '{param}' has no explicit declaration; a "
+                    "flattening shim cannot re-declare what the source leaves "
+                    "implicit"
+                )
+            if declaration.is_array:
+                return (
+                    f"argument '{param}' is an array alongside a derived-type "
+                    "argument; flattening handles scalar companions only for now"
+                )
+            if declaration.type not in _SHIM_SPELLING:
+                return (
+                    f"argument '{param}' is a {declaration.type}; flattening "
+                    "handles numeric/logical companions only for now"
+                )
+            intent = declaration.intent or "inout"
+            shim_args.append(param)
+            shim_decls.append(
+                f"        {_SHIM_SPELLING[declaration.type]}, "
+                f"intent({intent}) :: {param}"
+            )
+            call_args.append(param)
+
+    shim_name = f"{routine_name}_n2p"
+    lines = [
+        f"    ! Generated by native2py: flattens derived-type argument(s) of",
+        f"    ! '{routine_name}' into scalars f2py can pass. Do not edit.",
+        f"    subroutine {shim_name}({', '.join(shim_args)})",
+        *shim_decls,
+        *shim_pre,
+        f"        call {routine_name}({', '.join(call_args)})",
+        *shim_post,
+        f"    end subroutine {shim_name}",
+    ]
+    return flat_by_param, shim_name, "\n".join(lines)
 
 
 def _resolve_parameters(
@@ -545,15 +726,49 @@ def _prefix_return_type(subprogram) -> str | None:
 
 
 def _free_form_routine(
-    subprogram, is_subroutine: bool, implicit_map: dict[str, str]
-) -> tuple[FunctionDef, str | None]:
+    subprogram,
+    is_subroutine: bool,
+    implicit_map: dict[str, str],
+    derived_types: dict | None = None,
+) -> tuple[FunctionDef, str | None, str | None]:
     name = _routine_name(subprogram)
     decls = _parse_declarations(_specification_part(subprogram))
     declared, unbindable = decls.declared, decls.unbindable
-    parameters = _resolve_parameters(
-        _dummy_args(subprogram), declared, unbindable, implicit_map
-    )
+    param_names = _dummy_args(subprogram)
     enclosing = _enclosing_module(subprogram)
+
+    # A derived-type dummy cannot cross f2py — but a generated shim in the
+    # same module can flatten it into scalars that do. Planned before ordinary
+    # resolution so the flattened parameters take the derived one's place.
+    shim_source: str | None = None
+    flat_by_param: dict[str, list[Parameter]] = {}
+    if any(p.lower() in unbindable for p in param_names):
+        if not is_subroutine:
+            raise _RoutineSkipped(
+                "takes a derived type and is a FUNCTION; the flattening shim "
+                "handles subroutines only for now. Wrap it in a subroutine "
+                "with an intent(out) result."
+            )
+        plan = _plan_flattening(
+            name, param_names, decls, derived_types or {}, enclosing
+        )
+        if isinstance(plan, str):
+            raise _RoutineSkipped(plan)
+        flat_by_param, shim_name, shim_source = plan
+
+    if flat_by_param:
+        parameters = []
+        for param in param_names:
+            if param in flat_by_param:
+                parameters.extend(flat_by_param[param])
+            else:
+                parameters.extend(
+                    _resolve_parameters([param], declared, unbindable, implicit_map)
+                )
+    else:
+        parameters = _resolve_parameters(
+            param_names, declared, unbindable, implicit_map
+        )
 
     if is_subroutine:
         returns = "void"
@@ -586,8 +801,11 @@ def _free_form_routine(
             returns=returns,
             is_subroutine=is_subroutine,
             fortran_module=enclosing,
+            # Published as `name`, imported from the shim when one exists.
+            cpp_name=f"{name}_n2p" if shim_source else None,
         ),
         enclosing,
+        shim_source,
     )
 
 
@@ -598,6 +816,7 @@ def _parse_free_form(path: Path, expose: ExposeConfig) -> ModuleIR:
     module = ModuleIR(name=path.stem, language="fortran", source_file=str(path))
 
     fortran_module_name: str | None = "__unset__"
+    derived_types = _derived_type_components(tree)
     for name in expose.functions:
         subprogram = _find_subprogram(tree, name, "function")
         is_subroutine = False
@@ -611,8 +830,8 @@ def _parse_free_form(path: Path, expose: ExposeConfig) -> ModuleIR:
             )
 
         try:
-            fn, enclosing_module = _free_form_routine(
-                subprogram, is_subroutine, implicit_map
+            fn, enclosing_module, shim_source = _free_form_routine(
+                subprogram, is_subroutine, implicit_map, derived_types
             )
         except (_RoutineSkipped, NativeTypeError) as skipped:
             # Recognised but not bindable: reported through the channel that
@@ -623,6 +842,8 @@ def _parse_free_form(path: Path, expose: ExposeConfig) -> ModuleIR:
             continue
 
         module.functions.append(fn)
+        if shim_source:
+            module.fortran_shims.append(shim_source)
 
         if fortran_module_name == "__unset__":
             fortran_module_name = enclosing_module
@@ -725,20 +946,28 @@ def _parse_fixed_form(path: Path, expose: ExposeConfig, include_paths: list[Path
                 declaration.is_array if declaration else key in decls.dimensioned
             )
 
-            # f2py cannot size a CHARACTER result argument (the length is not
-            # carried through the declaration, and CHARACTER*(*) has none to
-            # carry), so it cannot be an output. Leave it as input and record
-            # why, rather than emitting a directive that fails to build.
+            # A CHARACTER output is bindable exactly when its length is
+            # spelled out. Measured with numpy 2.5's f2py (meson backend):
+            # `character*32, intent(out)` builds and returns the value;
+            # `character*(*), intent(out)` BUILDS, IMPORTS, and silently
+            # returns b'' — the worst failure class there is, so the
+            # assumed-length spelling stays demoted with the reason.
             if py_type == "str" and intent != "in":
-                module.skipped.append(
-                    SkippedSymbol(
-                        f"{name}({param_name})",
-                        "assigned in the routine body, but f2py cannot return a "
-                        "CHARACTER argument; it stays an input and its value is "
-                        "not returned.",
+                spelling = declaration.native_type if declaration else None
+                if spelling is None or not fixed_form.CHAR_FIXED_LEN_RE.match(spelling):
+                    module.skipped.append(
+                        SkippedSymbol(
+                            f"{name}({param_name})",
+                            f"'{param_name}' is assigned in the body but is "
+                            f"declared '{spelling or 'implicitly'}': f2py can "
+                            "only return a CHARACTER whose length is fixed in "
+                            "the declaration. An assumed-length output builds "
+                            "and then silently returns an empty string — "
+                            "measured, not assumed. Give it a length "
+                            "(CHARACTER*80) and it becomes an output.",
+                        )
                     )
-                )
-                intent = "in"
+                    intent = "in"
 
             parameters.append(
                 Parameter(
@@ -746,6 +975,14 @@ def _parse_fixed_form(path: Path, expose: ExposeConfig, include_paths: list[Path
                     type=py_type,
                     is_array=is_array,
                     intent=intent,
+                    # The CHARACTER spelling — the length is what decides
+                    # bindability as an output, and the regex backend records
+                    # it too, so the parity harness holds.
+                    native_type=(
+                        declaration.native_type
+                        if py_type == "str" and declaration is not None
+                        else None
+                    ),
                 )
             )
 

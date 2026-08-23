@@ -102,9 +102,11 @@ def every_field_module() -> ModuleIR:
                 namespace="petro",
                 is_overloaded=True,
                 returns_array=True,
+                cpp_name="solve_n2p",
                 fortran_module="physics",
             )
         ],
+        fortran_shims=["    subroutine solve_n2p(x)\n    end subroutine"],
         structs=[
             StructDef(
                 name="State",

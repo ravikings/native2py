@@ -2,8 +2,10 @@
   "classes": [],
   "diagnostics": [],
   "fortran_module": null,
+  "fortran_shims": [],
   "functions": [
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -63,6 +65,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -86,6 +89,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -109,6 +113,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -132,6 +137,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -155,6 +161,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -178,6 +185,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -201,6 +209,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -224,6 +233,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -271,6 +281,7 @@
       "returns_array": false
     },
     {
+      "cpp_name": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -298,7 +309,7 @@
           "is_scalar_ref": false,
           "length_param": null,
           "name": "MSG",
-          "native_type": null,
+          "native_type": "character*(*)",
           "type": "str"
         }
       ],
@@ -308,11 +319,11 @@
   ],
   "language": "fortran",
   "name": "pvtcor",
-  "schema_version": "1.4",
+  "schema_version": "1.5",
   "skipped": [
     {
       "name": "PVTERR(MSG)",
-      "reason": "assigned in the routine body, but f2py cannot return a CHARACTER argument; it stays an input and its value is not returned."
+      "reason": "'MSG' is assigned in the body but is declared 'character*(*)': f2py can only return a CHARACTER whose length is fixed in the declaration. An assumed-length output builds and then silently returns an empty string \u2014 measured, not assumed. Give it a length (CHARACTER*80) and it becomes an output."
     }
   ],
   "source_file": "libraries/petro/fortran/pvtcor.f",

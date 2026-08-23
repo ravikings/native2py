@@ -139,7 +139,10 @@ What is still broken without it:
   be an element write, so it is a statement function and its definition line
   is skipped by the inferencer.
 - **`COMMON` / `EQUIVALENCE` outputs are invisible.** A routine that writes its
-  result through a COMMON block is scored as having no outputs.
+  result through a COMMON block is scored as having no outputs. (Derived-type
+  arguments and fixed-length CHARACTER outputs, previously in this list's
+  company, now bind — via a generated flattening shim and a measured lift of
+  the blanket demotion respectively.)
 - ~~**Preprocessed Fortran** (`.F90`, `.F`, `.FOR`)~~ — handled: discovered
   (they were not even in the extension table), run through gfortran `-cpp -E`
   into `_expanded/` before any parse, with `fortran: defines:` choosing the

@@ -406,7 +406,11 @@ at the same time.
   The decks are compiled into the extension now (f2py links no target, so they
   are vendored and compiled), and the image builds, runs, and reproduces every
   golden value exactly.
-- Fortran: derived types aren't parsed. F77 argument direction is *inferred*
+- Fortran: **derived-type arguments now bind** (flattened through a
+  generated shim in the `_expanded` copy — scalar components, module
+  routines), and **fixed-length CHARACTER outputs bind** (assumed-length ones
+  are refused with the measured reason: they build and silently return empty).
+  Formerly both were blanket "f2py cannot" refusals. F77 argument direction is *inferred*
   by f2py from the routine body, not declared — usually right, but worth
   checking against the routine's own docs before trusting it. See
   [output parameters](fortran-guide.md#output-parameters-f77-has-no-intent).

@@ -179,3 +179,74 @@ def test_a_character_substring_write_is_still_a_write(tmp_path):
     intents = {p.name: p.intent for p in module.functions[0].parameters}
 
     assert intents["N"] == "in"
+
+
+# --- CHARACTER outputs ----------------------------------------------------
+
+
+def test_a_fixed_length_character_output_binds(tmp_path):
+    # Measured with numpy 2.5's f2py, meson backend: `character*32,
+    # intent(out)` builds and returns the value. The old blanket demotion
+    # ("f2py cannot return a CHARACTER argument") threw this capability away.
+    source = tmp_path / "msg.f"
+    source.write_text(
+        "      SUBROUTINE STATUS(ICODE, MSG)\n"
+        "      INTEGER ICODE\n"
+        "      CHARACTER*32 MSG\n"
+        "      MSG = 'OK'\n"
+        "      END\n"
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["STATUS"]))
+    intents = {p.name: p.intent for p in module.functions[0].parameters}
+
+    assert intents["MSG"] == "out"
+    assert module.skipped == []
+
+
+def test_an_assumed_length_character_output_stays_demoted(tmp_path):
+    # The dangerous one. `character*(*), intent(out)` BUILDS, IMPORTS, and
+    # silently returns b'' — measured, and worse than a build failure. It
+    # stays an input, with the measurement in the reason.
+    source = tmp_path / "msg.f"
+    source.write_text(
+        "      SUBROUTINE STATUS(ICODE, MSG)\n"
+        "      INTEGER ICODE\n"
+        "      CHARACTER*(*) MSG\n"
+        "      MSG = 'OK'\n"
+        "      END\n"
+    )
+
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["STATUS"]))
+    intents = {p.name: p.intent for p in module.functions[0].parameters}
+
+    assert intents["MSG"] == "in"
+    assert "silently returns an empty string" in module.skipped[0].reason
+    assert "CHARACTER*80" in module.skipped[0].reason  # the way out, named
+
+
+def test_the_endpoint_decodes_the_bytes_f2py_returns(tmp_path):
+    # f2py hands CHARACTER back as bytes, blank-padded to the declared length.
+    # Bytes are not JSON; the padding is Fortran bookkeeping, not data.
+    from native2py.generators import python_pkg_gen
+
+    source = tmp_path / "msg.f"
+    source.write_text(
+        "      SUBROUTINE STATUS(ICODE, MSG)\n"
+        "      INTEGER ICODE\n"
+        "      CHARACTER*32 MSG\n"
+        "      MSG = 'OK'\n"
+        "      END\n"
+    )
+    module = fortran_parser.parse_source(source, ExposeConfig(functions=["STATUS"]))
+    module.name = "msg"
+
+    router = python_pkg_gen.generate_router_py(module, "msg")
+
+    assert "_n2p_text(MSG)" in router
+    namespace = {"STATUS": lambda icode: b"FAILED" + b" " * 26}
+    stripped = "\n".join(
+        line for line in router.splitlines() if not line.startswith("from . import")
+    )
+    exec(compile(stripped, "router.py", "exec"), namespace)
+    assert namespace["STATUS_endpoint"](1) == {"MSG": "FAILED"}

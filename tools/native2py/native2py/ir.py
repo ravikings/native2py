@@ -220,6 +220,12 @@ class FunctionDef:
     # `double` in the IR, and the generated endpoint annotates it `float` while
     # pybind11 hands back a list — a wrong type on every response.
     returns_array: bool = False
+    # The native symbol to import when it differs from the published name —
+    # same meaning as Method.cpp_name. A Fortran routine taking a derived type
+    # is published under its own name but reached through a generated
+    # flattening shim (`density` -> `density_n2p`), because f2py cannot pass
+    # the type itself.
+    cpp_name: str | None = None
     # Enclosing `module X ... end module X`, if any. f2py nests those routines
     # under `<ext>.X.<name>` while bare F77 routines land at the top level, so
     # this has to be tracked per routine: a modern F90 facade sitting on top of
@@ -241,6 +247,11 @@ class ModuleIR:
     # Declarations recognised but not bindable, with the reason. Surfaced by
     # the CLI so "nothing was generated" is never silent.
     skipped: list[SkippedSymbol] = field(default_factory=list)
+    # Generated Fortran shim subroutines, one per routine that takes a derived
+    # type. The CLI appends them to the module's `_expanded` copy before the
+    # f2py build; kept in the IR so ir.json records exactly what extra native
+    # code the service compiled.
+    fortran_shims: list[str] = field(default_factory=list)
     # Compiler errors from the parse itself ("'foo.hpp' file not found"), when
     # the parser is a real compiler front end. A header that doesn't compile
     # still yields a partial AST, and binding half a header silently is worse
@@ -404,7 +415,7 @@ def validate(module: "ModuleIR") -> list[Problem]:
 # hand-edited, and quietly ignoring them is how a typo'd "is_cosnt: true"
 # becomes a wrong binding.
 SCHEMA_VERSION_MAJOR = 1
-SCHEMA_VERSION_MINOR = 4
+SCHEMA_VERSION_MINOR = 5
 SCHEMA_VERSION = f"{SCHEMA_VERSION_MAJOR}.{SCHEMA_VERSION_MINOR}"
 
 # What a document with no `schema_version` at all is treated as: everything
@@ -523,6 +534,7 @@ _FUNCTION_KEYS = frozenset(
         "namespace",
         "is_overloaded",
         "returns_array",
+        "cpp_name",
         "fortran_module",
     }
 )
@@ -537,6 +549,7 @@ _MODULE_KEYS = frozenset(
         "structs",
         "fortran_module",
         "skipped",
+        "fortran_shims",
         "diagnostics",
         SCHEMA_VERSION_KEY,
         WRITER_VERSION_KEY,
@@ -637,6 +650,7 @@ def module_from_dict(data: dict) -> ModuleIR:
                 namespace=fn.get("namespace"),
                 is_overloaded=fn.get("is_overloaded", False),
                 returns_array=fn.get("returns_array", False),
+                cpp_name=fn.get("cpp_name"),
             )
             for fn in data.get("functions", [])
         ],
@@ -650,6 +664,7 @@ def module_from_dict(data: dict) -> ModuleIR:
             for struct in data.get("structs", [])
         ],
         fortran_module=data.get("fortran_module"),
+        fortran_shims=list(data.get("fortran_shims", [])),
         skipped=[
             SkippedSymbol(**check_keys(item, _SKIPPED_KEYS, "a skipped symbol"))
             for item in data.get("skipped", [])
