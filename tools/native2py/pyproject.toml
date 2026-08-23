@@ -2,6 +2,15 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# Dependency policy (see constraints.txt):
+#   This file declares RANGES. native2py is installed as a library into other
+#   people's environments, and a library that pins exact versions forces
+#   resolution conflicts on every consumer. Reproducibility is provided by
+#   constraints.txt instead — an exact, hash-verified pin of the full
+#   transitive set, used by developers and CI:
+#       pip install --require-hashes -r constraints.txt && pip install --no-deps -e .
+#   Change a range here; regenerate constraints.txt afterwards.
+
 [project]
 name = "native2py"
 version = "0.1.0"

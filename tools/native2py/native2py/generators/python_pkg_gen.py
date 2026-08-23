@@ -158,8 +158,50 @@ def generate_init_py(module: ModuleIR) -> str:
     return "\n".join(lines) + "\n"
 
 
+# --- serialising native calls (COMMON-block safety) ----------------------
+
+# Why this exists, in the generated file itself: a maintainer who deletes the
+# lock to "fix throughput" reintroduces silently wrong numbers, so the reason
+# has to travel with the code and not only with the docs.
+NATIVE_LOCK_COMMENT = [
+    "# Every native call below is serialised through this one process-wide lock.",
+    "#",
+    "# Fortran COMMON blocks are process-global storage, not per-call state. A",
+    "# routine like PVTINI writes COMMON /FLUID/ and a later call to PVTRS,",
+    "# PVTBO or PVTVIS reads it back — the header's own contract is \"CALL",
+    "# PVTSET(P) THEN USE THE COMMON\". FastAPI runs synchronous `def` endpoints",
+    "# in a threadpool, so without this lock two requests configuring different",
+    "# fluids interleave their writes and reads in the SAME COMMON block and",
+    "# each caller gets numbers computed from the other caller's fluid. Nothing",
+    "# raises, nothing logs; the answers are just wrong.",
+    "#",
+    "# Per-request objects cannot fix this the way they fix a stateful C++ class:",
+    "# COMMON is reachable from every instance because it belongs to the process.",
+    "#",
+    "# DO NOT REMOVE THIS TO IMPROVE THROUGHPUT. It caps native execution at one",
+    "# concurrent call per process on purpose. The supported ways to go faster are",
+    "# more processes, or an API reshaped so a configure+read pair is one call.",
+    "#",
+    "# RLock, not Lock: if one generated endpoint is ever changed to call another,",
+    "# a plain Lock would deadlock the request against itself.",
+]
+
+
+def _serialised(body_lines: list[str]) -> list[str]:
+    """Indent `body_lines` under `with _NATIVE_LOCK:`.
+
+    Only the native call itself belongs inside the lock. Argument marshalling
+    and JSON shaping touch no COMMON storage, and holding the lock across them
+    would lengthen the critical section for no correctness gain.
+    """
+    return ["    with _NATIVE_LOCK:"] + [f"    {line}" for line in body_lines]
+
+
 def _endpoint_for_function(
-    fn: FunctionDef, call_expr: str, names: "_EndpointNames | None" = None
+    fn: FunctionDef,
+    call_expr: str,
+    names: "_EndpointNames | None" = None,
+    serialise: bool = False,
 ) -> list[str]:
     """One FastAPI endpoint for one native routine.
 
@@ -202,29 +244,42 @@ def _endpoint_for_function(
     def _as_json(param) -> str:
         return f"{param.name}.tolist()" if param.is_array else param.name
 
+    # The call is kept separate from the return so it — and only it — can be
+    # wrapped in the COMMON-block lock below.
     if fn.is_subroutine:
         if not outputs:
-            body_lines.append(f"    {call}")
-            body_lines.append('    return {"ok": True}')
+            call_lines = [f"    {call}"]
+            return_line = '    return {"ok": True}'
         elif len(outputs) == 1:
-            body_lines.append(f"    {outputs[0].name} = {call}")
-            body_lines.append(f'    return {{"{outputs[0].name}": {_as_json(outputs[0])}}}')
+            call_lines = [f"    {outputs[0].name} = {call}"]
+            return_line = f'    return {{"{outputs[0].name}": {_as_json(outputs[0])}}}'
         else:
             targets = ", ".join(p.name for p in outputs)
-            body_lines.append(f"    {targets} = {call}")
+            call_lines = [f"    {targets} = {call}"]
             result_expr = ", ".join(f'"{p.name}": {_as_json(p)}' for p in outputs)
-            body_lines.append(f"    return {{{result_expr}}}")
+            return_line = f"    return {{{result_expr}}}"
     elif outputs:
         # A FUNCTION with output arguments: f2py returns the result first,
         # then each output argument, in declaration order.
         targets = ", ".join(["result"] + [p.name for p in outputs])
-        body_lines.append(f"    {targets} = {call}")
+        call_lines = [f"    {targets} = {call}"]
         result_expr = ", ".join(
             ['"result": result'] + [f'"{p.name}": {_as_json(p)}' for p in outputs]
         )
-        body_lines.append(f"    return {{{result_expr}}}")
+        return_line = f"    return {{{result_expr}}}"
+    elif serialise:
+        # Inlining the call into the return would put JSON shaping inside the
+        # lock, so the result is named first.
+        call_lines = [f"    result = {call}"]
+        return_line = '    return {"result": result}'
     else:
-        body_lines.append(f'    return {{"result": {call}}}')
+        call_lines = []
+        return_line = f'    return {{"result": {call}}}'
+
+    if serialise and call_lines:
+        call_lines = _serialised(call_lines)
+    body_lines.extend(call_lines)
+    body_lines.append(return_line)
 
     return [lines[0], lines[1], *body_lines, ""]
 
@@ -258,9 +313,17 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
 
     needs_numpy = any(p.is_array for fn in module.functions for p in fn.parameters)
 
+    # Fortran only. A C++ service already builds a fresh instance per request
+    # (see below), and a C++ free function has no equivalent of COMMON unless
+    # it uses file-scope statics — which the parser cannot see, so a lock there
+    # would be a guess that costs every C++ service its concurrency.
+    serialise = module.language == "fortran"
+
     lines = [
         "# Generated by native2py. Do not edit by hand — re-run `native2py generate`.",
     ]
+    if serialise:
+        lines.append("import threading")
     if needs_numpy:
         lines.append("import numpy as np")
     lines.append("from fastapi import APIRouter")
@@ -284,6 +347,11 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
 
     lines.extend(_struct_models(module, structs))
 
+    if serialise:
+        lines.extend(NATIVE_LOCK_COMMENT)
+        lines.append("_NATIVE_LOCK = threading.RLock()")
+        lines.append("")
+
     lines.append(f'router = APIRouter(tags=["{service_name}"])')
     lines.append("")
 
@@ -292,13 +360,17 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
     names = _EndpointNames()
 
     for cls in module.classes:
-        lines.extend(_endpoints_for_class(cls, structs, class_names, names))
+        lines.extend(
+            _endpoints_for_class(cls, structs, class_names, names, serialise=serialise)
+        )
 
     for fn in module.functions:
         if module.language == "cpp":
             lines.extend(_endpoint_for_cpp_function(fn, structs, class_names, names))
         else:
-            lines.extend(_endpoint_for_function(fn, _py(fn.name), names))
+            lines.extend(
+                _endpoint_for_function(fn, _py(fn.name), names, serialise=serialise)
+            )
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -438,7 +510,11 @@ def _constructor_parameters(cls) -> list | None:
 
 
 def _endpoints_for_class(
-    cls, structs: dict, class_names: set, names: "_EndpointNames | None" = None
+    cls,
+    structs: dict,
+    class_names: set,
+    names: "_EndpointNames | None" = None,
+    serialise: bool = False,
 ) -> list[str]:
     names = names or _EndpointNames()
     lines: list[str] = []
@@ -493,20 +569,28 @@ def _endpoints_for_class(
         route, py_name = names.take(method.name)
         lines.append(f'@router.post("/{route}")')
         lines.append(f"def {py_name}({', '.join(signature)}):")
+        body: list[str] = []
         if method.is_static:
             call = f"{_attr(_py(cls.name), method.name)}({', '.join(call_args)})"
         else:
             # Per request, not per process: a native class with internal state
             # shared across concurrent requests is a correctness bug, and a
             # simulation object is stateful by definition.
-            lines.append(f"    instance = {_py(cls.name)}({', '.join(ctor_args)})")
+            body.append(f"    instance = {_py(cls.name)}({', '.join(ctor_args)})")
             call = f"{_attr('instance', method.name)}({', '.join(call_args)})"
-        result = _wrap_result(call, method.returns, structs)
         if method.returns == "None":
-            lines.append(f"    {call}")
+            body.append(f"    {call}")
+            lines.extend(_serialised(body) if serialise else body)
             lines.append('    return {"ok": True}')
+        elif serialise:
+            body.append(f"    result = {call}")
+            lines.extend(_serialised(body))
+            lines.append(f'    return {{"result": {_wrap_result("result", method.returns, structs)}}}')
         else:
-            lines.append(f'    return {{"result": {result}}}')
+            lines.extend(body)
+            lines.append(
+                f'    return {{"result": {_wrap_result(call, method.returns, structs)}}}'
+            )
         lines.append("")
 
     return lines

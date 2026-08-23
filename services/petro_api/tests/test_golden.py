@@ -2,11 +2,14 @@
 """Numerical regression: the answers must not change.
 
 `golden.json` records what every bound entry point returned for a fixed set
-of inputs. This replays those calls against the currently built extension and
-compares within the tolerance recorded in the file.
+of inputs, the tolerance each entry is held to, and the toolchain the values
+were recorded on. This replays those calls against the currently built
+extension and compares.
 
 A failure here does not necessarily mean a bug — it means the numbers moved.
-Investigate, then re-record deliberately with:
+Two things move them: the code changed, or the toolchain did. The failure
+message reports the recorded toolchain against this one so you can tell which
+before investigating. Then re-record deliberately with:
 
     native2py golden record petro_api
 
@@ -15,6 +18,9 @@ and review the diff in golden.json like any other change to behaviour.
 
 import json
 import math
+import platform
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -24,12 +30,29 @@ import petro_api
 GOLDEN_PATH = Path(__file__).resolve().parent.parent / "golden.json"
 
 
+def _numpy():
+    try:
+        import numpy
+    except ImportError:
+        return None
+    return numpy
+
+
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _materialise(value):
     if isinstance(value, dict) and "__struct__" in value:
         native = getattr(petro_api, value["__struct__"])()
         for name, field in value["fields"].items():
             setattr(native, name, _materialise(field))
         return native
+    if isinstance(value, list) and value and all(_is_number(v) for v in value):
+        numpy = _numpy()
+        if numpy is not None:
+            dtype = "int64" if all(isinstance(v, int) for v in value) else "float64"
+            return numpy.array(value, dtype=dtype)
     return value
 
 
@@ -48,6 +71,12 @@ def _jsonable(value):
 
 
 def _invoke(entry):
+    """Return (result, {argument index: value after the call}).
+
+    A Fortran routine with an `intent(inout)` array argument returns None and
+    writes its answer into the caller's array; comparing only the return value
+    would compare None against None and prove nothing.
+    """
     arguments = [_materialise(a) for a in entry["arguments"]]
     if entry["kind"] == "function":
         target = getattr(petro_api, entry["name"])
@@ -57,7 +86,69 @@ def _invoke(entry):
         cls = getattr(petro_api, entry["class"])
         instance = cls(*[_materialise(a) for a in entry["constructor_arguments"]])
         target = getattr(instance, entry["name"])
-    return _jsonable(target(*arguments))
+    result = _jsonable(target(*arguments))
+    effects = {}
+    for index, (before, after) in enumerate(zip(entry["arguments"], arguments)):
+        if isinstance(before, list):
+            now = _jsonable(after)
+            if now != before:
+                effects[str(index)] = now
+    return result, effects
+
+
+def _tool_version(command):
+    executable = shutil.which(command)
+    if executable is None:
+        return None
+    try:
+        done = subprocess.run(
+            [executable, "--version"], capture_output=True, text=True,
+            timeout=30, check=False,
+        )
+    except OSError:
+        return None
+    lines = (done.stdout or done.stderr or "").strip().splitlines()
+    return lines[0].strip() if lines else None
+
+
+def _environment():
+    """This machine, in the same shape golden.json recorded.
+
+    Source digests are deliberately absent: a deployed service does not ship
+    the native sources, so re-hashing them here is not possible. The recorded
+    digests still say which sources the values came from.
+    """
+    numpy = _numpy()
+    return {
+        "platform": "%s %s" % (platform.system(), platform.release()),
+        "machine": platform.machine(),
+        "python": platform.python_version(),
+        "python_implementation": platform.python_implementation(),
+        "numpy": None if numpy is None else numpy.__version__,
+        "fortran_compiler": _tool_version("gfortran"),
+        "cxx_compiler": _tool_version("clang++") or _tool_version("g++"),
+    }
+
+
+def _toolchain_report(recorded):
+    if not recorded:
+        return "golden.json records no provenance, so a toolchain change cannot be ruled out."
+    current = _environment()
+    moved = [
+        "  %s: recorded %r, now %r" % (key, recorded.get(key), value)
+        for key, value in current.items()
+        if key in recorded and recorded[key] != value
+    ]
+    if not moved:
+        return (
+            "The toolchain matches what golden.json recorded, so this is a change "
+            "in behaviour, not a platform difference."
+        )
+    return (
+        "The toolchain ALSO changed since these values were recorded. A platform "
+        "difference looks exactly like a regression — rule it out first:\n"
+        + "\n".join(moved)
+    )
 
 
 def _close(expected, actual, rtol, atol):
@@ -88,22 +179,45 @@ def _document():
 
 def test_golden_values_are_unchanged():
     document = _document()
-    tolerance = document.get("tolerance") or {}
-    rtol = tolerance.get("rtol", 1e-12)
-    atol = tolerance.get("atol", 0.0)
+    fallback = document.get("tolerance") or {}
 
     differences = []
     for key, entry in (document.get("entries") or {}).items():
+        # Per entry, not one hidden global: a routine that terminates on its
+        # own convergence tolerance cannot be held to the same number as a
+        # closed-form correlation, and saying so in the file is honest where
+        # loosening every entry to match the worst one is not.
+        own = entry.get("tolerance") or {}
+        rtol = own.get("rtol", fallback.get("rtol", 1e-9))
+        atol = own.get("atol", fallback.get("atol", 1e-12))
         try:
-            actual = _invoke(entry)
+            actual, effects = _invoke(entry)
         except Exception as exc:  # noqa: BLE001
             differences.append(f"{key}: recorded, but this build cannot call it — {exc}")
             continue
         expected = entry.get("result")
         if not _close(expected, actual, rtol, atol):
-            differences.append(f"{key}: expected {expected!r}, got {actual!r}")
+            differences.append(
+                f"{key}: expected {expected!r}, got {actual!r} (rtol={rtol}, atol={atol})"
+            )
+        for index, was in (entry.get("argument_effects") or {}).items():
+            if index not in effects:
+                differences.append(
+                    f"{key}: argument {index} was written in place when recorded, "
+                    "and this build does not write it"
+                )
+            elif not _close(was, effects[index], rtol, atol):
+                differences.append(
+                    f"{key}: argument {index} after the call: expected {was!r}, "
+                    f"got {effects[index]!r}"
+                )
 
-    assert not differences, "numerical regression:\n  " + "\n  ".join(differences)
+    assert not differences, (
+        "numerical regression:\n  "
+        + "\n  ".join(differences)
+        + "\n\n"
+        + _toolchain_report(document.get("provenance"))
+    )
 
 
 def test_golden_file_covers_the_api():
@@ -114,4 +228,21 @@ def test_golden_file_covers_the_api():
     assert document.get("entries"), (
         "golden.json records no entry points at all — see its 'skipped' block "
         "for why, then re-record with `native2py golden record petro_api`"
+    )
+
+
+def test_golden_file_records_the_toolchain_it_was_recorded_on():
+    # Without this, a failure above cannot distinguish a regression from a
+    # different compiler — and the documented remedy (re-record) would erase
+    # the only evidence of which it was.
+    document = _document()
+    recorded = document.get("provenance") or {}
+    missing = [
+        field
+        for field in ("platform", "machine", "python", "sources")
+        if not recorded.get(field)
+    ]
+    assert not missing, (
+        "golden.json is missing provenance %r — re-record with "
+        "`native2py golden record petro_api` to capture it" % missing
     )

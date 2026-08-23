@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Cancel superseded runs on the same ref; a stale matrix leg proves nothing.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: tools/native2py/pyproject.toml
+
+      # The suite compiles real extension modules: f2py needs a Fortran
+      # compiler, and the scikit-build-core path needs cmake + ninja.
+      - name: Install system build tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gfortran cmake ninja-build
+
+      # macOS runners ship gfortran with the Homebrew gcc formula; install it
+      # only if it is genuinely missing so the common case stays fast.
+      - name: Install system build tools (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          command -v gfortran >/dev/null 2>&1 || brew install gcc
+          command -v cmake    >/dev/null 2>&1 || brew install cmake
+          command -v ninja    >/dev/null 2>&1 || brew install ninja
+
+      - name: Show toolchain versions
+        run: |
+          gfortran --version | head -1
+          cmake --version | head -1
+          ninja --version
+
+      # An editable install, not a bare `pip install -r`: 15 tests in
+      # tests/test_quickstart.py and tests/test_multifile_cpp.py shell out to
+      # the `native2py` console script. Without the install they fail, and
+      # those failures were dismissed as environmental noise for a long time.
+      # They are not noise — they are the only end-to-end coverage of the CLI.
+      - name: Install native2py with extras
+        working-directory: tools/native2py
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[clang,build,test]"
+
+      - name: Verify the native2py CLI is on PATH
+        run: |
+          command -v native2py
+          native2py --help >/dev/null
+
+      # Guards a real coverage cliff: without a loadable libclang the C++
+      # front end silently degrades to the regex reader (no preprocessor, no
+      # templates) and the suite still goes green on far weaker parsing.
+      - name: Verify the C++ AST parser backend is active
+        working-directory: tools/native2py
+        run: |
+          python -c '
+          import sys
+          from native2py.parsers import cpp_ast
+          if not cpp_ast.is_available():
+              sys.exit(
+                  "FAIL: cpp_ast.is_available() is False - native2py would fall back "
+                  "to the regex C++ reader (no preprocessor, no templates). Reason: "
+                  + cpp_ast.unavailable_reason()
+              )
+          print("OK: clang AST backend is active")
+          '
+
+      - name: Run the test suite
+        working-directory: tools/native2py
+        run: python -m pytest -q

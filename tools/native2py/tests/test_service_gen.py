@@ -614,3 +614,330 @@ def test_validate_catches_a_collision_created_by_escaping():
 
     assert len(problems) == 1
     assert "lambda_" in problems[0].message
+
+
+# --- COMMON-block safety: serialising native calls ------------------------
+#
+# Fortran COMMON blocks are process-global. FastAPI runs synchronous `def`
+# endpoints in a threadpool, so two requests can be inside the generated
+# router at the same time and share one copy of COMMON /FLUID/. Nothing
+# crashes — the numbers are just computed from somebody else's fluid.
+#
+# The generated Fortran router therefore holds a module-level RLock across
+# every native call. These tests pin both the shape of that code and the
+# behaviour it buys, including what it deliberately does NOT buy.
+
+
+import threading
+
+
+
+def fortran_module(**kwargs) -> ModuleIR:
+    base = dict(name="petro", language="fortran", source_file="petro.f")
+    base.update(kwargs)
+    return ModuleIR(**base)
+
+
+def _load_router(code: str, native: dict):
+    """Exec a generated router with a fake native package and a fake FastAPI.
+
+    The generated file starts `from . import PVTINI, ...`, a relative import
+    with no package to resolve against, so the native names are injected
+    directly instead. The point of the exercise is the endpoint bodies.
+    """
+
+    class _FakeRouter:
+        def __init__(self, **kwargs):
+            self.routes = {}
+
+        def post(self, path):
+            def decorate(fn):
+                self.routes[path] = fn
+                return fn
+
+            return decorate
+
+    namespace = dict(native)
+    namespace["APIRouter"] = _FakeRouter
+    stripped = "\n".join(
+        line
+        for line in code.splitlines()
+        if not line.startswith("from . import") and not line.startswith("from fastapi")
+    )
+    exec(compile(stripped, "router.py", "exec"), namespace)  # noqa: S102
+    return namespace["router"]
+
+
+def _with_the_lock_removed(code: str) -> str:
+    """The same router as if a maintainer had deleted the lock for throughput.
+
+    Written as a transform of the real generated source rather than a
+    hand-copied variant, so the "without the lock" arm cannot drift away from
+    what the generator actually emits.
+    """
+    out = []
+    lines = code.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip() == "with _NATIVE_LOCK:":
+            indent = len(line) - len(line.lstrip())
+            i += 1
+            while i < len(lines) and (
+                not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > indent
+            ):
+                out.append(lines[i][4:] if lines[i].strip() else lines[i])
+                i += 1
+            continue
+        out.append(line)
+        i += 1
+    source = "\n".join(out)
+    assert "_NATIVE_LOCK:" not in source
+    return source
+
+
+# --- the generated code shape --------------------------------------------
+
+
+def test_fortran_router_defines_the_lock_and_holds_it_across_native_calls():
+    mod = fortran_module(
+        functions=[
+            FunctionDef(
+                name="PVTINI",
+                parameters=[Parameter(name="api", type="float")],
+                is_subroutine=True,
+            ),
+            FunctionDef(
+                name="PVTRS",
+                parameters=[Parameter(name="p", type="float")],
+                returns="float",
+            ),
+        ]
+    )
+
+    code = python_pkg_gen.generate_router_py(mod, "petro")
+
+    assert "import threading" in code
+    # RLock, not Lock: one generated endpoint calling another must not deadlock
+    # the request against itself.
+    assert "_NATIVE_LOCK = threading.RLock()" in code
+    assert "with _NATIVE_LOCK:\n        PVTINI(api)" in code
+    # A bare function call is hoisted out of the return so JSON shaping stays
+    # outside the critical section.
+    assert "with _NATIVE_LOCK:\n        result = PVTRS(p)" in code
+    assert '    return {"result": result}' in code
+
+
+def test_the_generated_lock_explains_why_it_is_there():
+    # A maintainer who deletes this to "fix throughput" reintroduces silently
+    # wrong answers, so the reason has to be in the generated file itself.
+    mod = fortran_module(
+        functions=[FunctionDef(name="PVTRS", returns="float")]
+    )
+
+    code = python_pkg_gen.generate_router_py(mod, "petro")
+
+    assert "COMMON" in code
+    assert "threadpool" in code
+    assert "DO NOT REMOVE" in code
+
+
+def test_only_the_native_call_is_inside_the_lock():
+    # Array marshalling touches no COMMON storage; holding the lock across it
+    # would lengthen the critical section for no correctness gain.
+    mod = fortran_module(
+        functions=[
+            FunctionDef(
+                name="NORMALIZE",
+                parameters=[
+                    Parameter(name="values", type="float", is_array=True),
+                    Parameter(name="n", type="int"),
+                ],
+                is_subroutine=True,
+            )
+        ]
+    )
+
+    code = python_pkg_gen.generate_router_py(mod, "petro")
+
+    conversion = code.index("values = np.array(")
+    assert code.index("with _NATIVE_LOCK:") > conversion
+
+
+def test_cpp_routers_get_no_lock():
+    # C++ already builds an instance per request, and a free function has no
+    # equivalent of COMMON that native2py can see. Locking every C++ service
+    # would cost real concurrency to guard a hazard that is not there.
+    mod = module(
+        classes=[
+            ClassDef(
+                name="Calculator",
+                methods=[
+                    Method(
+                        name="add",
+                        parameters=[Parameter(name="a", type="float")],
+                        returns="float",
+                    )
+                ],
+            )
+        ],
+        functions=[
+            FunctionDef(
+                name="area",
+                parameters=[Parameter(name="r", type="float")],
+                returns="float",
+            )
+        ],
+    )
+
+    code = router(mod)
+
+    assert "_NATIVE_LOCK" not in code
+    assert "import threading" not in code
+
+
+# --- the behaviour the lock actually buys ---------------------------------
+#
+# The fake native module below stands in for COMMON /FLUID/: module-level
+# state a routine writes and then reads back inside one call. The barrier
+# makes the interleaving deterministic instead of hoping for a scheduler
+# preemption, which is the only way a race test is worth running in CI.
+
+
+def _fake_pvt(barrier):
+    common = {"api": None}
+
+    def PVTSOLVE(api):
+        """PVTINI-then-PVTRS inside one routine: write COMMON, work, read it."""
+        common["api"] = api
+        try:
+            barrier.wait()
+        except threading.BrokenBarrierError:
+            pass
+        return common["api"]
+
+    return {"PVTSOLVE": PVTSOLVE}
+
+
+PVTSOLVE_IR = ModuleIR(
+    name="petro",
+    language="fortran",
+    source_file="petro.f",
+    functions=[
+        FunctionDef(
+            name="PVTSOLVE",
+            parameters=[Parameter(name="api", type="float")],
+            returns="float",
+        )
+    ],
+)
+
+
+def _run_two_fluids(code: str, barrier):
+    router_obj = _load_router(code, _fake_pvt(barrier))
+    endpoint = router_obj.routes["/PVTSOLVE"]
+    seen = {}
+
+    def call(api):
+        seen[api] = endpoint(api)["result"]
+
+    threads = [threading.Thread(target=call, args=(api,)) for api in (30.0, 45.0)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    return seen
+
+
+def test_without_the_lock_two_fluids_contaminate_each_other():
+    """The failure the lock exists to prevent — proved, not assumed.
+
+    Deleting the lock from the real generated source is exactly the "fix
+    throughput" change a future maintainer is tempted to make.
+    """
+    code = _with_the_lock_removed(
+        python_pkg_gen.generate_router_py(PVTSOLVE_IR, "petro")
+    )
+
+    seen = _run_two_fluids(code, threading.Barrier(2, timeout=10))
+
+    # Both threads wrote COMMON before either read it, so both read the same
+    # value and at least one caller got the other caller's fluid.
+    assert seen[30.0] == seen[45.0]
+    contaminated = [api for api, answer in seen.items() if answer != api]
+    assert contaminated, f"expected cross-contamination, got {seen}"
+
+
+def test_with_the_lock_each_caller_sees_its_own_fluid():
+    code = python_pkg_gen.generate_router_py(PVTSOLVE_IR, "petro")
+
+    # The barrier can never be satisfied while the lock is held — only one
+    # thread is ever inside the native call — so it times out and each call
+    # completes on its own fluid.
+    seen = _run_two_fluids(code, threading.Barrier(2, timeout=0.5))
+
+    assert seen == {30.0: 30.0, 45.0: 45.0}
+
+
+def test_the_lock_is_reentrant_so_one_endpoint_may_call_another():
+    """A plain Lock here would deadlock a request against itself."""
+    code = python_pkg_gen.generate_router_py(PVTSOLVE_IR, "petro")
+    endpoint = _load_router(
+        code, _fake_pvt(threading.Barrier(2, timeout=0.1))
+    ).routes["/PVTSOLVE"]
+
+    # Re-enter the same lock around the endpoint, the way a hand-written
+    # composite endpoint calling two generated ones would.
+    module_globals = endpoint.__globals__
+    with module_globals["_NATIVE_LOCK"]:
+        assert endpoint(30.0)["result"] == 30.0
+
+
+def test_the_locked_router_still_compiles_and_is_byte_deterministic():
+    first = python_pkg_gen.generate_router_py(PVTSOLVE_IR, "petro")
+    second = python_pkg_gen.generate_router_py(PVTSOLVE_IR, "petro")
+
+    compile(first, "router.py", "exec")
+    assert first.encode() == second.encode()
+
+
+def test_the_lock_does_not_make_a_configure_then_compute_pair_atomic():
+    """The residual gap, pinned deliberately.
+
+    The lock is held for one native call. A caller that POSTs /PVTINI and then
+    POSTs /PVTRS releases it in between, so a second caller can reconfigure
+    COMMON in the gap. Closing that needs session affinity or a combined
+    endpoint — both out of scope for the lock, both recorded in
+    docs/production-readiness.md. This test exists so nobody reads the lock as
+    a complete fix.
+    """
+    common = {"api": None}
+
+    def PVTINI(api):
+        common["api"] = api
+
+    def PVTRS(p):
+        return common["api"]
+
+    mod = fortran_module(
+        functions=[
+            FunctionDef(
+                name="PVTINI",
+                parameters=[Parameter(name="api", type="float")],
+                is_subroutine=True,
+            ),
+            FunctionDef(
+                name="PVTRS",
+                parameters=[Parameter(name="p", type="float")],
+                returns="float",
+            ),
+        ]
+    )
+    routes = _load_router(
+        python_pkg_gen.generate_router_py(mod, "petro"),
+        {"PVTINI": PVTINI, "PVTRS": PVTRS},
+    ).routes
+
+    routes["/PVTINI"](30.0)
+    routes["/PVTINI"](45.0)  # a second request lands between configure and read
+    assert routes["/PVTRS"](2000.0)["result"] == 45.0
