@@ -15,3 +15,23 @@ expose:
   - last_error
 libraries:
 - petro
+
+# Layer 3 declarations (design-verification-layers.md sections 3.2-3.5).
+# `pvt_set_fluid` sets COMMON-block fluid state that `solution_gor`,
+# `oil_fvf`, `oil_viscosity`, `gas_z_factor`, `bubble_point` and `pvt_state`
+# then read -- that is the API's contract, not leakage, so it is declared
+# rather than left to fail order_independent/idempotent by default.
+state:
+  setup: [pvt_set_fluid]
+  mutating: [pvt_set_fluid]
+  error_flag: last_error
+
+invariants:
+  solution_gor:
+    - bounds: {min: 0.0}
+    - monotone: {in: pressure, direction: nondecreasing}
+  oil_fvf:
+    - bounds: {min: 1.0}          # Bo < 1 is not a physical oil
+
+ranges:
+  pressure: [14.7, 10000.0]

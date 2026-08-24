@@ -240,12 +240,65 @@ split across two workers reads state the other one never wrote.
 
 ## `native2py verify <name>`
 
-Alias for [`native2py golden verify <name>`](#native2py-golden-recordverifyshow-name):
-replay the recorded numbers and fail if any of them moved.
+Run every verification layer, in order, reporting each one by name so one
+layer's failure never masks another's:
+[`oracle check`](#native2py-oracle-checkshow-name) (skipped, visibly, if no
+compiler is on PATH), then
+[`golden verify`](#native2py-golden-recordverifyshow-name), then
+[`invariants verify`](#native2py-invariants-verify-name) (skipped, visibly,
+if no `state:`/`invariants:`/`ranges:` are declared).
 
 ```bash
 native2py verify demo
+# oracle: passed (9 covered, 0 skipped)
+# golden: passed
+# invariants: passed
 ```
+
+See [Verification](../README.md#verification) for what each layer asks,
+compares against, and catches.
+
+## `native2py oracle check|show|record <name>`
+
+Layer 2: is the binding faithful to the legacy binary, not just unchanged?
+`check` generates a driver **in the original language** from `golden.json`'s
+recorded entries, compiles only the driver translation unit, links it
+against the extension's own built objects, and compares every observable
+value **bitwise** against the Python binding, in the same build.
+
+```bash
+native2py oracle check pvt    # generate, build, run, compare bitwise
+native2py oracle show pvt     # coverage + wire slots, no build
+native2py oracle record pvt   # run a full check, then write oracle.json provenance
+```
+
+`check` needs a compiler; it needs no committed file, and regenerates the
+driver on every run so a stale one can never pass. `record` only writes
+`oracle.json` on a passing check — the file is provenance for later runs
+(driver hash, extracted compile flags, linked-object hash), never the gate
+itself. When `oracle.json` exists, `check` also verifies the driver hasn't
+gone stale and, only if the recorded build provenance still matches the
+current one, diffs today's bits against the recorded ones — bitwise, with no
+tolerance mode. See [Verification](../README.md#verification).
+
+## `native2py invariants verify <name>`
+
+Layer 3: are the declared properties true over a swept lattice? Runs T10's
+structural properties (`finite`, `total`, `no_error_flag`, `idempotent`,
+`order_independent`) and T11's declared properties (`bounds`, `monotone`,
+`sum_to_one`, declared under `invariants:` in `native2py.yaml`) over
+`golden.json`'s recorded entries, swept per `ranges:`, and writes
+`services/<name>/invariants.json`.
+
+```bash
+native2py invariants verify pvt
+# 6 function(s) checked, 1 uncovered (services/pvt/invariants.json)
+```
+
+A parameter with no declared `ranges:` entry is not skipped silently — it is
+recorded under `invariants.json`'s `uncovered` block. A run whose `checked`
+block comes out empty is a hard failure, never a quiet pass. See
+[Verification](../README.md#verification).
 
 ## `native2py test <name>`
 

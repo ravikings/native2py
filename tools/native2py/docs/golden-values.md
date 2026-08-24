@@ -3,6 +3,26 @@
 For a re-host of decades-old PVT, well or reservoir code, "it builds and
 imports" is not the acceptance criterion. **The answers did not change** is.
 
+This is **layer 1** of native2py's three verification layers. It is the
+cheapest layer — no compiler, no toolchain, runs against an installed wheel
+anywhere — and it is deliberately narrow: it only proves the binding is
+*unchanged* since the last recording, never that the recording was *right*,
+and it only asserts about the one input tuple it recorded. The other two
+layers close those two gaps and are documented alongside each other in the
+[README's Verification section](../README.md#verification):
+
+- **`oracle check`** compares the binding bitwise against the legacy
+  binary itself, in the same build — it catches a wrong *first* recording
+  (a transposed array, a swapped argument, a narrowed type) that golden, by
+  construction, certifies forever once it exists.
+- **`invariants verify`** checks declared properties (`bounds`, `monotone`,
+  `sum_to_one`, ...) and structural properties (`finite`, `total`,
+  `idempotent`, ...) over a swept lattice — it catches "wrong away from the
+  one point golden recorded."
+
+`native2py verify <name>` runs all three, in order (oracle, then golden, then
+invariants), and reports each one by name.
+
 Everything native2py touches can move a number without failing a build: a
 regenerate that picks a different overload, a compiler or flag change, a
 `-ffast-math` in a CMake preset, a parser upgrade that maps a type

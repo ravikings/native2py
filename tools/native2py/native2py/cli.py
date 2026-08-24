@@ -7,6 +7,7 @@ both end-to-end through `generate` and `build`.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -36,7 +37,10 @@ from .preprocess import (
     uses_kind_parameters,
 )
 from . import golden as golden_lib
+from . import invariants as invariants_lib
 from . import locking
+from . import oracle as oracle_lib
+from . import structural_invariants as si_lib
 from .suggest import POOR, READY, WORKABLE, analyse_tree
 from .generators import (
     cmake_gen,
@@ -694,15 +698,283 @@ def golden_show(name: str) -> None:
         click.echo(f"  [skipped] {key}: {reason}")
 
 
+def _package_namespace_for(module: ModuleIR, package):
+    """The object `golden.invoke()`/T10/T11's runners call attributes on --
+    same rule as `oracle._package_namespace`: f2py nests everything under
+    the enclosing `module X` block, if there is one."""
+    if module.fortran_module:
+        return getattr(package, module.fortran_module)
+    return package
+
+
+def _subprocess_target_for(name: str, module: ModuleIR) -> si_lib.SubprocessTarget:
+    """How T10's fresh-process worker re-imports the *installed* package --
+    no `sys_path` entry needed (unlike oracle's freshly-built extension,
+    which lives in a temp build dir), since `_import_service_package`
+    already required this be importable."""
+    attr_path = (module.fortran_module,) if module.fortran_module else ()
+    return si_lib.SubprocessTarget(module_name=name, sys_path=(), attr_path=attr_path)
+
+
+def _invariants_verify(name: str) -> None:
+    """Shared by `invariants verify` and the `verify` aggregate (spec section
+    2.6: `native2py verify` runs invariants "if `invariants.json` exists" --
+    read here as "if `state:`/`invariants:`/`ranges:` are declared", since
+    those declarations are the source of truth and the file is a result."""
+    service_dir = _service_dir(name)
+    module = _load_service_ir(service_dir, name)
+    try:
+        config = ServiceConfig.load(service_dir)
+    except FileNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+    try:
+        config.verification.validate_against_ir(module)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    golden_path = service_dir / golden_lib.GOLDEN_FILENAME
+    if not golden_path.exists():
+        raise click.ClickException(
+            f"No {golden_path} — record one first with `native2py golden record {name}` "
+            "(declared invariants are checked against golden.json's recorded arguments)."
+        )
+    document = golden_lib.read(golden_path)
+    package = _import_service_package(name)
+    target = _subprocess_target_for(name, module)
+
+    try:
+        result = invariants_lib.verify_invariants(
+            module, document, config.verification, _package_namespace_for(module, package), target
+        )
+    except invariants_lib.EmptyCheckedError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    path = service_dir / invariants_lib.INVARIANTS_FILENAME
+    invariants_lib.write(path, result.document)
+
+    checked, uncovered = invariants_lib.coverage(result.document)
+    click.echo(f"{checked} function(s) checked, {uncovered} uncovered ({path}):")
+    for key, entry in result.document["checked"].items():
+        click.echo(
+            f"  {key}: {entry['status']} ({len(entry['properties'])} propert(y/ies), "
+            f"{entry['points']} point(s))"
+        )
+    for key, reason in result.document["uncovered"].items():
+        click.echo(f"  [uncovered] {key}: {reason}")
+
+    if not result.passed:
+        click.echo(f"{len(result.failure_messages)} invariant failure(s):")
+        for message in result.failure_messages:
+            click.echo(f"  - {message}")
+        raise click.ClickException(f"Declared/structural invariants failed for '{name}'.")
+
+
+@main.group()
+def invariants() -> None:
+    """Layer 3: are the declared properties true over the swept lattice?
+
+    `verify` runs T10's structural properties (`finite`, `total`,
+    `no_error_flag`, `idempotent`, `order_independent`) and T11's declared
+    properties (`bounds`, `monotone`, `sum_to_one`) over golden.json's
+    recorded entries, swept per native2py.yaml's `ranges:`, and writes
+    services/<name>/invariants.json (design-verification-layers.md section
+    3.7).
+    """
+
+
+@invariants.command("verify")
+@click.argument("name")
+def invariants_verify(name: str) -> None:
+    """Check services/<name>'s declared invariants and write invariants.json."""
+    _invariants_verify(name)
+
+
+def _toolchain_present() -> bool:
+    """Whether *a* compiler this repo could build a driver with is on PATH --
+    `oracle check` needs one (design-verification-layers.md section 5: "needs
+    a compiler"); `golden`/`invariants` do not."""
+    return any(shutil.which(tool) for tool in ("gfortran", "clang++", "g++"))
+
+
 @main.command()
 @click.argument("name")
 def verify(name: str) -> None:
-    """Check that services/<name> still returns its recorded numbers.
+    """Run every verification layer for services/<name>, reporting each
+    separately.
 
-    The same check as `native2py golden verify <name>`, under the name people
-    reach for. Re-hosting is only finished when the answers have not moved.
+    Order (design-verification-layers.md section 2.6 / section 5's CI
+    ordering, restated verbatim): **oracle check first** — a faithful
+    binding is a precondition for the other two layers meaning anything —
+    **then golden, then invariants**. `oracle check` needs a compiler and is
+    skipped (visibly, not silently) if none is on PATH; `golden verify` and
+    `invariants verify` need only the installed wheel. A failure in one
+    layer is reported by name and does not stop the others from running, so
+    one layer's failure can never mask another's.
     """
-    _golden_verify(name)
+    service_dir = _service_dir(name)
+    failed_layers: list[str] = []
+
+    # 1. oracle check --------------------------------------------------------
+    if not _toolchain_present():
+        click.echo("oracle: skipped, no toolchain")
+    else:
+        try:
+            report = oracle_lib.oracle_check(name, service_dir=service_dir)
+        except oracle_lib.OracleError as exc:
+            click.echo(f"oracle: FAILED — {exc}")
+            failed_layers.append("oracle")
+        else:
+            for line in report.failures:
+                click.echo(f"  - {line}")
+            if report.passed:
+                click.echo(
+                    f"oracle: passed ({report.covered} covered, {len(report.skipped)} skipped)"
+                )
+            else:
+                click.echo(f"oracle: FAILED ({len(report.failures)} failure(s))")
+                failed_layers.append("oracle")
+
+    # 2. golden ---------------------------------------------------------------
+    try:
+        _golden_verify(name)
+    except click.ClickException as exc:
+        click.echo(f"golden: FAILED — {exc.message}")
+        failed_layers.append("golden")
+    else:
+        click.echo("golden: passed")
+
+    # 3. invariants -------------------------------------------------------------
+    config = None
+    config_invalid = False
+    try:
+        config = ServiceConfig.load(service_dir)
+    except FileNotFoundError:
+        pass
+    except ConfigError as exc:
+        # A malformed native2py.yaml must be reported as this layer's
+        # failure, same as every other invariants error below — never let it
+        # propagate as a raw traceback that aborts golden/oracle's already
+        # -reported results too.
+        click.echo(f"invariants: FAILED — {exc}")
+        failed_layers.append("invariants")
+        config_invalid = True
+
+    if config_invalid:
+        pass
+    elif config is None or config.verification.is_empty:
+        click.echo("invariants: skipped, no state/invariants/ranges declared")
+    else:
+        try:
+            _invariants_verify(name)
+        except click.ClickException as exc:
+            click.echo(f"invariants: FAILED — {exc.message}")
+            failed_layers.append("invariants")
+        else:
+            click.echo("invariants: passed")
+
+    if failed_layers:
+        raise click.ClickException(
+            f"verification failed for '{name}': {', '.join(failed_layers)} layer(s) failed."
+        )
+
+
+@main.group()
+def oracle() -> None:
+    """Layer 2: is the binding faithful to the legacy binary, not just unchanged?
+
+    `check` generates a native driver from the entries recorded in
+    golden.json (never from a fresh sample plan — see design-verification-
+    layers.md section 2.2), builds and runs it, executes the same calls
+    through the Python binding in the same build, and compares every
+    observable value bitwise. It regenerates and recompiles the driver every
+    time — there is no committed file to go stale, and none is needed to
+    fail a build (design-verification-layers.md section 2.6).
+    """
+
+
+@oracle.command("check")
+@click.argument("name")
+def oracle_check(name: str) -> None:
+    """Generate, build and run the oracle driver for services/<name>, and
+    compare it bitwise against the Python binding, in this build."""
+    service_dir = _service_dir(name)
+    try:
+        report = oracle_lib.oracle_check(name, service_dir=service_dir)
+    except oracle_lib.OracleError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if report.failures:
+        click.echo(f"{len(report.failures)} oracle failure(s):")
+        for line in report.failures:
+            click.echo(f"  - {line}")
+
+    click.echo(
+        f"{report.covered} covered, {len(report.skipped)} skipped"
+        + (
+            " (" + ", ".join(f"{k}: {v}" for k, v in report.skipped.items()) + ")"
+            if report.skipped
+            else ""
+        )
+    )
+
+    if report.historical_diff_refused:
+        click.echo(report.historical_diff_refused)
+    elif report.historical_diff:
+        click.echo(f"{len(report.historical_diff)} bit(s) differ from the recorded oracle.json:")
+        for line in report.historical_diff:
+            click.echo(f"  - {line}")
+
+    if not report.passed:
+        raise click.ClickException(
+            f"The oracle disagrees with the Python binding for '{name}' — "
+            "the binding is not faithful to the native code it was "
+            "generated from, or the check covered nothing."
+        )
+
+
+@oracle.command("record")
+@click.argument("name")
+def oracle_record(name: str) -> None:
+    """Run a full oracle check for services/<name> and, on pass, write
+    oracle.json — provenance, not the gate (design-verification-layers.md
+    section 2.6). A future `check` in the same build image additionally
+    diffs against it bitwise; anywhere else, the CLI refuses that historical
+    comparison rather than falling back to a tolerance."""
+    service_dir = _service_dir(name)
+    try:
+        document = oracle_lib.oracle_record(name, service_dir=service_dir)
+    except oracle_lib.OracleError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    path = service_dir / oracle_lib.ORACLE_FILENAME
+    covered, skipped = len(document["entries"]), len(document["skipped"])
+    click.echo(f"Recorded {covered} entry point(s) to {path}.")
+    if skipped:
+        click.echo(f"{skipped} entry point(s) not covered:")
+        for key, reason in document["skipped"].items():
+            click.echo(f"  - {key}: {reason}")
+
+
+@oracle.command("show")
+@click.argument("name")
+def oracle_show(name: str) -> None:
+    """Print services/<name>'s golden.json entries, their expected wire
+    slots, and the skips — without building, compiling, or running anything."""
+    service_dir = _service_dir(name)
+    try:
+        report = oracle_lib.oracle_show(name, service_dir=service_dir)
+    except oracle_lib.OracleError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo(f"{len(report.entries)} entries, {len(report.skipped)} skipped:")
+    for entry in report.entries:
+        args = ", ".join(repr(a) for a in entry.arguments)
+        if entry.slots is None:
+            click.echo(f"  {entry.key}({args}) -> [no matching function in the IR]")
+        else:
+            click.echo(f"  {entry.key}({args}) -> {', '.join(entry.slots) or '(no observable slots)'}")
+    for key, reason in report.skipped.items():
+        click.echo(f"  [skipped] {key}: {reason}")
 
 
 @main.command()

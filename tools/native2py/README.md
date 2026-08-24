@@ -295,10 +295,31 @@ time with the reason — the failure mode that costs the most time is a header
 with thirty methods producing a module with twenty-six and nothing saying
 which four are missing.
 
-## Numerical regression
+## Verification
 
 For re-hosted engineering code, "it builds and imports" is not the acceptance
-criterion — **the answers did not change** is.
+criterion. Three gates sit beside each other, each answering a different
+question that the others structurally cannot:
+
+| | asks | compares against | catches |
+|---|---|---|---|
+| `golden.json` | did it change? | its own past | compiler/flag drift, a regenerate picking a different overload, a refactor of the native source |
+| `oracle` | is it faithful? | the legacy binary | transposed arrays, wrong intent, narrowing, units, argument-order swaps, a wrong first recording |
+| `invariants.json` | is it possible? | mathematics | wrong away from the sample point, NaN at domain edges, hidden process-global state |
+
+Run every layer at once, in the order CI runs them — oracle first (a
+faithful binding is a precondition for the other two meaning anything), then
+golden, then invariants — with each layer reported by name so one layer's
+failure never masks another's:
+
+```bash
+native2py verify pvt
+# oracle: passed (9 covered, 0 skipped)
+# golden: passed
+# invariants: passed
+```
+
+### Layer 1 — golden.json: did the answer change?
 
 ```bash
 native2py golden record pvt     # services/pvt/golden.json — commit this
@@ -312,6 +333,68 @@ pressure, a real API gravity); they survive future re-records. The generated
 so CI catches drift with no extra wiring. Changing a conversion constant from
 `14.5037738` to `14.5038` fails the check — a change no compiler, type
 checker or unit test would flag.
+
+Its limit is structural: golden only asserts about the one input tuple it
+recorded, and only proves the binding is *unchanged*, never that the first
+recording was *right*.
+
+### Layer 2 — oracle: is the binding faithful to the legacy code?
+
+```bash
+native2py oracle check pvt
+# 9 covered, 0 skipped
+```
+
+`oracle check` generates a driver **in the original language** from
+`golden.json`'s recorded entries (never from a fresh sample plan), compiles
+only the driver translation unit, links it against the extension's own built
+objects (never a second compilation of the library sources), runs both
+paths in the same build, and compares every observable value **bitwise** —
+16 hex digits of IEEE-754, no tolerance, because the same machine code
+produced both sides. It needs a compiler; it needs no committed file, and
+regenerates the driver on every run so a stale one can never pass. A failing
+comparison is classified (argument order, transposition, `float32`
+narrowing, a missing in-place output, ...) so the fix is obvious from the
+message rather than from a difference alone.
+
+### Layer 3 — invariants.json: is it possible?
+
+```bash
+native2py invariants verify pvt
+# 6 function(s) checked, 1 uncovered (services/pvt/invariants.json):
+#   solution_gor: pass (6 propert(y/ies), 33 point(s))
+#   [uncovered] tubing_bhp: no range declared for parameter(s) rate
+```
+
+Declare what a function's answer must satisfy in `native2py.yaml`:
+
+```yaml
+state:
+  setup: [pvt_set_fluid]     # replayed before every property evaluation
+  mutating: [pvt_set_fluid]  # this routine's job IS to change state
+  error_flag: last_error
+
+invariants:
+  solution_gor:
+    - bounds: {min: 0.0}
+    - monotone: {in: pressure, direction: nondecreasing}
+
+ranges:
+  pressure: [14.7, 10000.0]  # swept, 33 points, inclusive
+```
+
+`invariants verify` checks two kinds of property over a fixed, declared
+lattice (a per-parameter sweep, never random, never a cartesian explosion):
+**structural** properties (`finite`, `total`, `no_error_flag`, `idempotent`,
+`order_independent` — derived from the IR plus the `state:` declaration, no
+domain knowledge needed) and **declared** properties (`bounds`, `monotone`,
+`sum_to_one` — a closed, non-`eval`'d vocabulary authored by a human). A
+failing declared property reports the first failing lattice point and
+bisects to the tightest bracket it can prove. A swept parameter with no
+declared range is not skipped silently — it is recorded under `uncovered`,
+and **a run whose `checked` block comes out empty is a hard failure**, never
+a quiet pass: an invariants file that checks nothing must not look like one
+that does.
 
 ## Layout
 

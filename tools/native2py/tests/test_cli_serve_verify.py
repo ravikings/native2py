@@ -47,11 +47,17 @@ def test_verify_needs_a_recorded_golden_file(tmp_path):
     assert "native2py golden record unbuilt_demo" in result.output
 
 
-def test_verify_is_the_same_check_as_golden_verify(tmp_path):
-    """Both spellings must reach one implementation, not two that can drift."""
+def test_verify_reports_the_golden_layer_by_name(tmp_path):
+    """`native2py verify` is the aggregate gate (design-verification-layers.md
+    section 2.6/T12) — it runs oracle, then golden, then invariants, and
+    names each layer in its output rather than only ever speaking for
+    `golden verify`, the way it used to before T12."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path) as cwd:
         _service(Path(cwd))
-        short = runner.invoke(main, ["verify", "unbuilt_demo"])
-        long = runner.invoke(main, ["golden", "verify", "unbuilt_demo"])
-    assert short.output == long.output
+        result = runner.invoke(main, ["verify", "unbuilt_demo"])
+    assert result.exit_code != 0
+    assert "oracle:" in result.output
+    assert "golden: FAILED" in result.output
+    assert "native2py golden record unbuilt_demo" in result.output
+    assert "invariants: skipped, no state/invariants/ranges declared" in result.output
