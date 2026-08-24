@@ -34,21 +34,24 @@ one property/one sweep at a time, not on the whole file):
   T9), whether or not that entry carries a declared invariant at all --
   this is what surfaces `tubing_bhp`'s undeclared `rate` range even though
   no `invariants: tubing_bhp: ...` block exists in `native2py.yaml`.
-* **`corners`/`scatter` are not yet authored in `native2py.yaml`.** T8's
-  `VerificationConfig` parses `state:`/`invariants:`/`ranges:` only; there is
-  no YAML surface for declared corners or a scatter count/seed. This module
-  therefore always reports `lattice.corners: []` and
-  `lattice.scatter: {"count": 0, "seed": null}` unless a caller passes them
-  explicitly (`corners=`/`scatter_seed=`/`scatter_count=` -- kept as
-  parameters, not silently dropped, so a future config surface can wire
-  straight into this function without changing its signature). This is a
-  real gap flagged back to the task, not a silent narrowing of the schema.
+* **`corners`/`scatter`/`n` default from `VerificationConfig.lattice`.**
+  T8's `VerificationConfig` now parses a `lattice:` block (`n`,
+  `scatter: {seed, count}`, `corners:`) -- see `config.LatticeConfig`. Every
+  `n=`/`scatter_seed=`/`scatter_count=`/`corners=` keyword below defaults to
+  `None`, meaning "take it from `verification.lattice`"; an explicit
+  argument (still accepted, for tests and any other direct caller) always
+  wins over the declared config. `corners` is reported in `invariants.json`
+  as a mapping of function name to its declared corner tuples (matching
+  `LatticeConfig.corners`'s own shape) rather than the flat list this module
+  used before the config surface existed, since a flat list cannot say which
+  function each corner belongs to once more than one function declares
+  corners.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
@@ -261,13 +264,27 @@ def build_invariants_document(
     declared_uncovered: dict[str, list[str]],
     lattices: dict[str, EntryLattice],
     *,
-    n: int = lattice.DEFAULT_SWEEP_POINTS,
+    n: int | None = None,
     scatter_seed: int | None = None,
-    scatter_count: int = 0,
-    corners: list | None = None,
+    scatter_count: int | None = None,
+    corners: dict[str, list] | None = None,
     environment: dict | None = None,
 ) -> dict:
-    """The `invariants.json` contents, per spec section 3.7's schema."""
+    """The `invariants.json` contents, per spec section 3.7's schema.
+
+    `n`/`scatter_seed`/`scatter_count`/`corners` each default to `None`,
+    meaning "read it from `verification.lattice`" (see the module
+    docstring) -- an explicit argument always overrides the declared
+    config.
+    """
+    if n is None:
+        n = verification.lattice.n if verification.lattice.n is not None else lattice.DEFAULT_SWEEP_POINTS
+    if scatter_seed is None:
+        scatter_seed = verification.lattice.scatter.seed
+    if scatter_count is None:
+        scatter_count = verification.lattice.scatter.count
+    if corners is None:
+        corners = verification.lattice.corners
     checked: dict[str, dict] = {}
     uncovered: dict[str, str] = {}
 
@@ -352,7 +369,10 @@ def build_invariants_document(
         "lattice": {
             "points_per_sweep": n,
             "ranges": {name: [rng.lo, rng.hi] for name, rng in verification.ranges.items()},
-            "corners": corners or [],
+            "corners": {
+                fn_name: [list(corner) for corner in fn_corners]
+                for fn_name, fn_corners in (corners or {}).items()
+            },
             "scatter": {"count": scatter_count, "seed": scatter_seed},
         },
         "state": {
@@ -378,24 +398,56 @@ def verify_invariants(
     package,
     target: si.SubprocessTarget,
     *,
-    n: int = lattice.DEFAULT_SWEEP_POINTS,
+    n: int | None = None,
     points_limit: int | None = None,
     scatter_seed: int | None = None,
-    scatter_count: int = 0,
-    corners: list | None = None,
+    scatter_count: int | None = None,
+    corners: dict[str, list] | None = None,
     environment: dict | None = None,
     python_executable: str | None = None,
 ) -> InvariantsResult:
     """Run structural (T10) + declared (T11) properties and assemble the
     `invariants.json` document (spec section 3.7).
 
+    `n`/`scatter_seed`/`scatter_count`/`corners` default to `None`, meaning
+    "read it from `verification.lattice`" -- see the module docstring and
+    `config.LatticeConfig`. An explicit argument always overrides the
+    declared config. `n` in particular also controls how many points
+    `si.build_lattices` (and therefore every structural/declared check)
+    actually evaluates, not just what is reported in the document.
+
     Raises `EmptyCheckedError` if the resulting `checked` block is empty --
     per spec, that must never be reported as a pass. Otherwise returns an
     `InvariantsResult` whose `.passed` reflects every checked entry's status
     and whose `.document` is ready to be written with `write()`.
     """
+    if n is None:
+        n = verification.lattice.n if verification.lattice.n is not None else lattice.DEFAULT_SWEEP_POINTS
+
+    # `si.build_lattices` reads corners/scatter straight off
+    # `verification.lattice` -- it has no override parameters of its own. If
+    # this call's explicit `scatter_seed`/`scatter_count`/`corners` differ
+    # from what's declared, build the lattices against an overridden copy of
+    # `verification` so the points actually checked below match what
+    # `build_invariants_document` (called with these same explicit
+    # arguments, further down) reports as having been checked -- otherwise
+    # the report would describe a sweep this call never actually ran.
+    lattice_verification = verification
+    if scatter_seed is not None or scatter_count is not None or corners is not None:
+        effective_scatter = replace(
+            verification.lattice.scatter,
+            seed=verification.lattice.scatter.seed if scatter_seed is None else scatter_seed,
+            count=verification.lattice.scatter.count if scatter_count is None else scatter_count,
+        )
+        effective_lattice = replace(
+            verification.lattice,
+            scatter=effective_scatter,
+            corners=verification.lattice.corners if corners is None else corners,
+        )
+        lattice_verification = replace(verification, lattice=effective_lattice)
+
     functions_by_name = {fn.name: fn for fn in module.functions}
-    lattices = si.build_lattices(document, functions_by_name, verification, n=n)
+    lattices = si.build_lattices(document, functions_by_name, lattice_verification, n=n)
 
     structural_results = si.run_structural_invariants(
         module,

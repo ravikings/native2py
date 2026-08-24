@@ -390,3 +390,125 @@ def test_petro_api_native2py_yaml_parses_and_validates_against_real_ir():
 
     module = fortran.parse_source(service_dir / "native" / "petro_api.f90", cfg.expose)
     v.validate_against_ir(module)  # must not raise: real function/param names
+
+
+# --- `lattice:` — corners/scatter YAML surface (gap 1) ---------------------
+
+
+LATTICE_YAML = """
+ranges:
+  pressure: [14.7, 10000.0]
+lattice:
+  n: 9
+  scatter:
+    seed: 12345
+    count: 8
+  corners:
+    solution_gor:
+      - [14.7, 60.0, 0.65]
+      - [10000.0, 60.0, 0.65]
+"""
+
+
+def test_lattice_block_parses_into_typed_objects(tmp_path):
+    service_dir = _write_service(tmp_path, LATTICE_YAML)
+    cfg = ServiceConfig.load(service_dir)
+    lat = cfg.verification.lattice
+
+    assert lat.n == 9
+    assert lat.scatter.seed == 12345
+    assert lat.scatter.count == 8
+    assert lat.corners == {
+        "solution_gor": [(14.7, 60.0, 0.65), (10000.0, 60.0, 0.65)]
+    }
+    assert not lat.is_empty
+
+
+def test_lattice_block_round_trips_through_save(tmp_path):
+    service_dir = _write_service(tmp_path, LATTICE_YAML)
+    cfg = ServiceConfig.load(service_dir)
+    cfg.save(service_dir)
+
+    reloaded = ServiceConfig.load(service_dir)
+    assert reloaded.verification.lattice == cfg.verification.lattice
+    assert reloaded.verification == cfg.verification
+
+
+def test_no_lattice_block_yields_empty_lattice_config(tmp_path):
+    service_dir = _write_service(tmp_path, "")
+    cfg = ServiceConfig.load(service_dir)
+    assert cfg.verification.lattice.is_empty
+    assert cfg.verification.lattice.n is None
+    assert cfg.verification.lattice.scatter.count == 0
+    assert cfg.verification.lattice.corners == {}
+    assert cfg.verification.is_empty
+
+
+def test_lattice_n_must_be_an_integer_ge_2(tmp_path):
+    service_dir = _write_service(tmp_path, "lattice:\n  n: 1\n")
+    with pytest.raises(ConfigError, match=">= 2"):
+        ServiceConfig.load(service_dir)
+
+
+def test_lattice_n_rejects_non_integer(tmp_path):
+    service_dir = _write_service(tmp_path, "lattice:\n  n: 3.5\n")
+    with pytest.raises(ConfigError, match="integer"):
+        ServiceConfig.load(service_dir)
+
+
+def test_lattice_block_rejects_unknown_keys(tmp_path):
+    service_dir = _write_service(tmp_path, "lattice:\n  bogus: 1\n")
+    with pytest.raises(ConfigError, match="unrecognised key"):
+        ServiceConfig.load(service_dir)
+
+
+def test_scatter_block_rejects_unknown_keys(tmp_path):
+    service_dir = _write_service(tmp_path, "lattice:\n  scatter:\n    bogus: 1\n")
+    with pytest.raises(ConfigError, match="unrecognised key"):
+        ServiceConfig.load(service_dir)
+
+
+def test_scatter_count_must_be_non_negative(tmp_path):
+    service_dir = _write_service(
+        tmp_path, "lattice:\n  scatter:\n    seed: 1\n    count: -1\n"
+    )
+    with pytest.raises(ConfigError, match=">= 0"):
+        ServiceConfig.load(service_dir)
+
+
+def test_scatter_count_requires_a_seed(tmp_path):
+    service_dir = _write_service(tmp_path, "lattice:\n  scatter:\n    count: 8\n")
+    with pytest.raises(ConfigError, match="seed"):
+        ServiceConfig.load(service_dir)
+
+
+def test_scatter_seed_must_be_an_integer(tmp_path):
+    service_dir = _write_service(
+        tmp_path, "lattice:\n  scatter:\n    seed: not-a-number\n    count: 1\n"
+    )
+    with pytest.raises(ConfigError, match="integer"):
+        ServiceConfig.load(service_dir)
+
+
+def test_corners_must_reference_an_exposed_function(tmp_path):
+    service_dir = _write_service(
+        tmp_path, "lattice:\n  corners:\n    not_exposed:\n      - [1.0]\n"
+    )
+    with pytest.raises(ConfigError, match="not in"):
+        ServiceConfig.load(service_dir)
+
+
+def test_corners_entry_must_be_a_non_empty_list(tmp_path):
+    service_dir = _write_service(
+        tmp_path, "lattice:\n  corners:\n    solution_gor: []\n"
+    )
+    with pytest.raises(ConfigError, match="non-empty"):
+        ServiceConfig.load(service_dir)
+
+
+def test_corners_each_entry_must_be_a_list(tmp_path):
+    service_dir = _write_service(
+        tmp_path, "lattice:\n  corners:\n    solution_gor: [14.7]\n"
+    )
+    with pytest.raises(ConfigError, match="positional argument"):
+        ServiceConfig.load(service_dir)

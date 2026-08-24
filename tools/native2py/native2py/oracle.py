@@ -58,7 +58,8 @@ from pathlib import Path
 
 from . import buildinfo, driverbuild, golden
 from . import wire
-from .drivers.fortran import generate_driver
+from .drivers.fortran import generate_driver as generate_fortran_driver
+from .drivers.cpp import generate_driver as generate_cpp_driver
 from .ir import FunctionDef, ModuleIR, module_from_dict
 from .wire import Slot, format_value, slots_for_entry, unpack_float
 
@@ -433,6 +434,43 @@ def _facade_source_name(module: ModuleIR, source_names: list) -> str:
     )
 
 
+# --- C++ (T7 integration): the same jobs `_fortran_sources`/
+# `_facade_source_name` do for the Fortran path, above ---------------------
+
+
+def _cpp_sources(service_dir: Path) -> tuple[Path, list]:
+    """The directory and filenames of the C++ implementation sources the
+    extension actually compiles (`native/`; C++ has no `_expanded` step)."""
+    directory = service_dir / "native"
+    names = sorted(
+        p.name
+        for p in directory.iterdir()
+        if p.is_file() and p.suffix.lower() in (".cpp", ".cc", ".cxx")
+    )
+    if not names:
+        raise OracleError(f"no C++ sources found under {directory}")
+    return directory, names
+
+
+def _cpp_facade_source_name(module: ModuleIR, source_names: list) -> str:
+    """The implementation `.cpp` the IR's header (`module.source_file`)
+    pairs with — same-stem, the pairing `quickstart` itself uses
+    (`calculator.hpp` <-> `calculator.cpp`). Falls back to the sole source
+    when there is exactly one, so a single-file service never needs the
+    stems to match by convention."""
+    stem = Path(module.source_file).stem
+    candidates = [n for n in source_names if Path(n).stem == stem]
+    if candidates:
+        return candidates[0]
+    if len(source_names) == 1:
+        return source_names[0]
+    raise OracleError(
+        f"cannot tell which of the extension's compiled sources {source_names} "
+        f"implements the IR's header {module.source_file!r} — expected a "
+        "same-stem .cpp, and there is more than one candidate source"
+    )
+
+
 def _sanitize_module_name(name: str) -> str:
     return "n2p_oracle_" + re.sub(r"\W", "_", name)
 
@@ -578,7 +616,15 @@ def oracle_check(
     oracle_path = _oracle_path(service_dir)
     recorded_document = json.loads(oracle_path.read_text()) if oracle_path.exists() else None
 
-    driver = generate_driver(document, module)
+    is_cpp = module.language == "cpp"
+    if is_cpp:
+        # T7's driver — see drivers/cpp.py — needs the header(s) it #includes
+        # to see the declarations it calls; the IR's own source_file is that
+        # header (spec section 4: passed explicitly rather than embedding
+        # whatever absolute path a parser run captured).
+        driver = generate_cpp_driver(document, module, Path(module.source_file).name)
+    else:
+        driver = generate_fortran_driver(document, module)
 
     if recorded_document is not None:
         recorded_driver_sha = (recorded_document.get("provenance") or {}).get("driver_sha256")
@@ -587,27 +633,61 @@ def oracle_check(
 
     work_root = Path(tempfile.mkdtemp(prefix=f"n2p_oracle_{re.sub(r'[^A-Za-z0-9_]', '_', name)}_"))
     try:
-        sources_dir, source_names = _fortran_sources(service_dir)
-        extension_source_name = _facade_source_name(module, source_names)
-        module_name = _sanitize_module_name(name)
+        if is_cpp:
+            sources_dir, source_names = _cpp_sources(service_dir)
+            extension_source_name = _cpp_facade_source_name(module, source_names)
+            module_name = _sanitize_module_name(name)
 
-        build_dir = work_root / "ext_build"
-        compile_commands = driverbuild.build_extension_with_compile_commands(
-            [sources_dir / n for n in source_names], module_name, build_dir
-        )
+            build_dir = work_root / "ext_build"
+            compile_commands = driverbuild.build_cxx_extension_with_compile_commands(
+                module,
+                Path(module.source_file).name,
+                [sources_dir / n for n in source_names],
+                module_name,
+                build_dir,
+            )
 
-        driver_result = driverbuild.build_and_run_driver(
-            driver.source,
-            compile_commands,
-            extension_source_name,
-            source_names,
-            work_root / "driver",
-        )
+            driver_result = driverbuild.build_and_run_driver(
+                driver.source,
+                compile_commands,
+                extension_source_name,
+                source_names,
+                work_root / "driver",
+                language="cpp",
+            )
 
-        driver_slots = driver_slots_by_key(document, module, driver.skipped, driver_result.stdout)
+            driver_slots = driver_slots_by_key(document, module, driver.skipped, driver_result.stdout)
 
-        extension = _import_extension(module_name, _f2py_extension_cwd(build_dir))
-        package = _package_namespace(module, extension)
+            # The pybind11 module symbol is `<module.name>_cpp` (see
+            # generators/pybind_gen.py / cmake_gen.py) — `module_name` above
+            # is `_sanitize_module_name(name)`, used only to name the CMake
+            # project, not the compiled Python extension symbol.
+            extension = _import_extension(
+                f"{module.name}_cpp", driverbuild._cxx_extension_search_dir(build_dir)
+            )
+            package = _package_namespace(module, extension)
+        else:
+            sources_dir, source_names = _fortran_sources(service_dir)
+            extension_source_name = _facade_source_name(module, source_names)
+            module_name = _sanitize_module_name(name)
+
+            build_dir = work_root / "ext_build"
+            compile_commands = driverbuild.build_extension_with_compile_commands(
+                [sources_dir / n for n in source_names], module_name, build_dir
+            )
+
+            driver_result = driverbuild.build_and_run_driver(
+                driver.source,
+                compile_commands,
+                extension_source_name,
+                source_names,
+                work_root / "driver",
+            )
+
+            driver_slots = driver_slots_by_key(document, module, driver.skipped, driver_result.stdout)
+
+            extension = _import_extension(module_name, _f2py_extension_cwd(build_dir))
+            package = _package_namespace(module, extension)
 
         functions_by_name = {fn.name: fn for fn in module.functions}
         python_slots: dict = {}

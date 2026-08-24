@@ -673,3 +673,105 @@ def test_oracle_check_refuses_historical_diff_on_provenance_mismatch_but_still_c
     assert "pinned to the build image" in report.historical_diff_refused
     assert "platform" in report.historical_diff_refused
     assert "live oracle check above still ran" in report.historical_diff_refused
+
+
+# --- Gap A (T5/T7 integration): oracle_check dispatches to the C++ path ----
+#
+# T7's C++ driver generator (drivers/cpp.py) and the generalized
+# driverbuild.py (language="cpp") existed but were never wired into
+# oracle_check/oracle_show/oracle_record for a C++ module — this proves the
+# actual integration: a real pybind11 extension, a real C++ oracle driver,
+# built and run through the same `oracle_check` entry point the Fortran path
+# uses, bitwise-comparing a real extension call against the driver.
+
+requires_cxx_cmake = pytest.mark.skipif(
+    shutil.which("cmake") is None
+    or (shutil.which("clang++") is None and shutil.which("g++") is None),
+    reason="cmake and a C++ compiler are required",
+)
+
+
+def _pybind11_importable() -> bool:
+    try:
+        import pybind11  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+CPP_FIXTURE_HEADER = "#pragma once\nint n2p_add_ints(int a, int b);\n"
+CPP_FIXTURE_IMPL = (
+    '#include "fixture.hpp"\n\nint n2p_add_ints(int a, int b) { return a + b; }\n'
+)
+
+
+def _cpp_oracle_service_dir(tmp_path: Path) -> Path:
+    from native2py.ir import FunctionDef, ModuleIR, Parameter, module_to_dict
+
+    service_dir = tmp_path / "services" / "synth_cpp"
+    native_dir = service_dir / "native"
+    native_dir.mkdir(parents=True, exist_ok=True)
+    (native_dir / "fixture.hpp").write_text(CPP_FIXTURE_HEADER)
+    (native_dir / "fixture.cpp").write_text(CPP_FIXTURE_IMPL)
+
+    module = ModuleIR(
+        name="synth_cpp",
+        language="cpp",
+        source_file="fixture.hpp",
+        functions=[
+            FunctionDef(
+                name="n2p_add_ints",
+                parameters=[
+                    Parameter(name="a", type="int", intent="in"),
+                    Parameter(name="b", type="int", intent="in"),
+                ],
+                returns="int",
+            )
+        ],
+    )
+    ir_path = service_dir / oracle.IR_RELATIVE_PATH
+    ir_path.parent.mkdir(parents=True, exist_ok=True)
+    ir_path.write_text(json.dumps(module_to_dict(module)))
+
+    golden_document = {
+        "format": 2,
+        "service": "synth_cpp",
+        "language": "cpp",
+        "entries": {
+            "n2p_add_ints": {
+                "kind": "function",
+                "name": "n2p_add_ints",
+                "arguments": [2, 3],
+                "result": 5,
+            }
+        },
+        "skipped": {},
+    }
+    golden.write(service_dir / golden.GOLDEN_FILENAME, golden_document)
+    return service_dir
+
+
+@requires_cxx_cmake
+def test_oracle_check_builds_and_runs_a_real_cpp_driver(tmp_path):
+    if not _pybind11_importable():
+        pytest.skip("pybind11 is not importable from this interpreter")
+
+    service_dir = _cpp_oracle_service_dir(tmp_path)
+
+    report = oracle.oracle_check("synth_cpp", service_dir=service_dir)
+
+    assert report.passed, report.failures
+    assert report.covered == 1
+    assert report.failures == []
+
+
+@requires_cxx_cmake
+def test_oracle_show_lists_cpp_entries_without_building(tmp_path):
+    if not _pybind11_importable():
+        pytest.skip("pybind11 is not importable from this interpreter")
+
+    service_dir = _cpp_oracle_service_dir(tmp_path)
+    report = oracle.oracle_show("synth_cpp", service_dir=service_dir)
+
+    assert [e.key for e in report.entries] == ["n2p_add_ints"]
+    assert report.entries[0].slots == ["return"]

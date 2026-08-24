@@ -133,7 +133,7 @@ def test_invariants_document_is_byte_stable(tmp_path):
     assert doc["lattice"] == {
         "points_per_sweep": 3,
         "ranges": {"x": [0.0, 10.0]},
-        "corners": [],
+        "corners": {},
         "scatter": {"count": 0, "seed": None},
     }
     assert doc["state"] == {
@@ -222,3 +222,109 @@ def test_uncovered_reports_tubing_bhps_undeclared_ranges():
     for p in tubing_bhp_fn.parameters:
         if p.name != "pressure":
             assert p.name in doc["uncovered"]["tubing_bhp"]
+
+
+# --- gap 1: corners/scatter/n sourced from VerificationConfig.lattice ------
+
+
+def _fixture_verification_with_lattice(**lattice_kwargs) -> VerificationConfig:
+    from native2py.config import LatticeConfig, ScatterDeclaration
+
+    return VerificationConfig(
+        state=StateConfig(setup=[], mutating=[], error_flag="last_error"),
+        invariants={
+            "f": [
+                BoundsProperty(min=1.0),
+                MonotoneProperty(parameter="x", direction="nondecreasing"),
+            ]
+        },
+        ranges={"x": RangeDeclaration(lo=0.0, hi=10.0)},
+        lattice=LatticeConfig(**lattice_kwargs),
+    )
+
+
+def test_build_invariants_document_sources_n_scatter_corners_from_config(tmp_path):
+    """`build_invariants_document`'s `n`/`scatter_seed`/`scatter_count`/
+    `corners` kwargs must not require an explicit caller any more -- a
+    `VerificationConfig.lattice` populated from `native2py.yaml` (gap 1)
+    is enough. No explicit kwarg is passed to `build_invariants_document`
+    below beyond the mandatory positional arguments."""
+    from native2py.config import ScatterDeclaration
+
+    package, target = _import_fixture(tmp_path)
+    module = _fixture_module()
+    document = _fixture_document()
+    verification = _fixture_verification_with_lattice(
+        n=7,
+        scatter=ScatterDeclaration(seed=99, count=2),
+        corners={"f": [(3.0,), (4.0,)]},
+    )
+
+    functions_by_name = {fn.name: fn for fn in module.functions}
+    lattices = si.build_lattices(document, functions_by_name, verification, n=7)
+
+    doc = inv.build_invariants_document(
+        module, document, verification,
+        si.StructuralInvariantResults(()), {}, {}, lattices,
+        environment={},
+    )
+
+    assert doc["lattice"]["points_per_sweep"] == 7
+    assert doc["lattice"]["scatter"] == {"count": 2, "seed": 99}
+    assert doc["lattice"]["corners"] == {"f": [[3.0], [4.0]]}
+
+
+def test_build_invariants_document_explicit_kwargs_override_config(tmp_path):
+    """An explicit kwarg still wins over the declared config -- callers
+    (tests, or any other direct caller) are not forced onto the YAML
+    surface.
+
+    Note (design ambiguity, flagged rather than silently decided): `None`
+    is used as the "not overridden, read from config" sentinel for
+    `scatter_seed`/`corners`, which is indistinguishable from a caller
+    explicitly wanting "no seed"/"no corners" -- there is no `object()`
+    sentinel here, matching this module's existing style for `n`/
+    `points_limit`/etc. `n` and `scatter_count` (whose domains exclude
+    `None`) are unambiguous and are asserted here; `corners={}` (falsy, not
+    `None`) also overrides cleanly since the check is `is None`, not
+    truthiness.
+    """
+    package, target = _import_fixture(tmp_path)
+    module = _fixture_module()
+    document = _fixture_document()
+    from native2py.config import ScatterDeclaration
+
+    verification = _fixture_verification_with_lattice(
+        n=7, scatter=ScatterDeclaration(seed=99, count=2), corners={"f": [(3.0,)]}
+    )
+    functions_by_name = {fn.name: fn for fn in module.functions}
+    lattices = si.build_lattices(document, functions_by_name, verification, n=3)
+
+    doc = inv.build_invariants_document(
+        module, document, verification,
+        si.StructuralInvariantResults(()), {}, {}, lattices,
+        n=3, scatter_count=0, corners={},
+        environment={},
+    )
+
+    assert doc["lattice"]["points_per_sweep"] == 3
+    assert doc["lattice"]["scatter"]["count"] == 0
+    assert doc["lattice"]["corners"] == {}
+
+
+def test_verify_invariants_lattice_config_reaches_actual_checks(tmp_path):
+    """The declared `lattice:` block does not just change what gets
+    *reported* -- it changes which points `si.build_lattices` (and
+    therefore every structural/declared check) actually evaluates. `n=7`
+    declared via config, with no `n=` kwarg passed to `verify_invariants`,
+    must produce the same `points_per_sweep` as passing `n=7` explicitly."""
+    package, target = _import_fixture(tmp_path)
+    module = _fixture_module()
+    document = _fixture_document()
+    verification = _fixture_verification_with_lattice(n=7)
+
+    result = inv.verify_invariants(
+        module, document, verification, package, target,
+        points_limit=2, environment={},
+    )
+    assert result.document["lattice"]["points_per_sweep"] == 7

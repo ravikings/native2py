@@ -154,6 +154,26 @@ def test_f2py_backend_is_pinned_to_meson(reservoir_source):
     assert cmake.index("--backend meson") < cmake.index("-m pressure")
 
 
+def test_f2py_build_dir_is_pinned_under_native2py_tree(reservoir_source):
+    # Left unpassed, f2py's meson backend falls back to tempfile.mkdtemp()
+    # for its build directory (numpy/f2py/f2py2e.py:run_compile) — nothing
+    # ever removes that directory, and nothing records where it went either,
+    # so a real `native2py build <name>` left no discoverable
+    # compile_commands.json or object files behind (see driverbuild.py's
+    # module docstring). Pinning --build-dir to a location under the
+    # service's own .native2py/ tree (the same convention as
+    # .native2py/ir.json) makes the build tree persistent and discoverable.
+    module = fortran_parser.parse_source(
+        reservoir_source, ExposeConfig(functions=["calculate_pressure"])
+    )
+    cmake = f2py_gen.generate_cmake(module, "reservoir", ["native/pressure.f90"])
+
+    assert "--build-dir" in cmake
+    assert "${CMAKE_CURRENT_SOURCE_DIR}/.native2py/build" in cmake
+    # Before -m, because f2py treats everything after the module name as source.
+    assert cmake.index("--build-dir") < cmake.index("-m pressure")
+
+
 def test_generates_router_without_shadowing_import(reservoir_source):
     module = fortran_parser.parse_source(reservoir_source, ExposeConfig(functions=["calculate_pressure"]))
     router_py = python_pkg_gen.generate_router_py(module, "reservoir")

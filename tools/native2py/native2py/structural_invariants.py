@@ -43,6 +43,26 @@ whose wording ("the fix ... is adding the routine to `mutating` in
 review") is load-bearing per spec section 3.5's own text and is asserted
 verbatim in tests.
 
+`error_flag` exemption (design decision, not literal spec text)
+------------------------------------------------------------------
+
+The declared `state.error_flag` accessor (T8's `StateConfig.error_flag` --
+e.g. petro_api's `last_error`/`PVTERR`, which reads AND CLEARS the stored
+error code) is excluded from `idempotent` the same way a `mutating` routine
+is, and excluded from being chosen as the interposed `g` routine in
+`order_independent` (it may still appear as the `f` under test, same as any
+other non-mutating routine, since nothing about clear-on-read makes *that*
+suspect). Calling a clear-on-read accessor twice in a row legitimately
+returns different bits on the second call -- the first call returns
+whatever was stored, the second returns the cleared value -- so checking
+`idempotent` against it literally, or using it to perturb another routine's
+state in `order_independent`, would fail on every run for a reason that has
+nothing to do with an actual bug. `design-verification-layers.md` §3.5 does
+not say this explicitly; this is the same "the check would condemn the
+API's own contract" reasoning already applied to `mutating` above, extended
+to a second kind of intentional statefulness. See `StateConfig`'s docstring
+in `config.py` for the mirrored note there.
+
 The subprocess worker
 ----------------------
 
@@ -239,6 +259,14 @@ def build_lattices(
     *that* is golden's/the IR's job, not this module's; it simply is not
     counted for structural checking, the same way an uncovered parameter
     is not swept.
+
+    `verification.lattice` (T8's `LatticeConfig` -- `corners:`/`scatter:`
+    declared in `native2py.yaml`) is consulted per entry: a function's
+    declared corners (`verification.lattice.corners.get(name, ())`) and the
+    single declared scatter seed/count are threaded straight into
+    `lattice.build_entry_lattice`, so a declared `lattice:` block actually
+    changes which points get checked here -- not only what gets reported in
+    `invariants.json` (see `invariants.py`'s module docstring).
     """
     lattices: dict[str, "lattice.EntryLattice"] = {}
     for key, entry in document.get("entries", {}).items():
@@ -252,7 +280,13 @@ def build_lattices(
             continue
         try:
             lattices[key] = lattice.build_entry_lattice(
-                entry, parameter_names, verification.ranges, n=n
+                entry,
+                parameter_names,
+                verification.ranges,
+                n=n,
+                corners=verification.lattice.corners.get(name, ()),
+                scatter_seed=verification.lattice.scatter.seed,
+                scatter_count=verification.lattice.scatter.count,
             )
         except ValueError:
             continue
@@ -490,6 +524,10 @@ def _check_idempotent(
     python_executable: str | None,
 ) -> list[PropertyOutcome]:
     mutating = set(verification.state.mutating)
+    # `error_flag` is excluded from `idempotent` the same way `mutating`
+    # routines are -- see the module docstring's "error_flag exemption".
+    if verification.state.error_flag:
+        mutating = mutating | {verification.state.error_flag}
     setup_calls = _setup_calls(document, verification)
     base_index = len(setup_calls)
     outcomes: list[PropertyOutcome] = []
@@ -543,6 +581,14 @@ def _check_order_independent(
     python_executable: str | None,
 ) -> list[PropertyOutcome]:
     mutating = set(verification.state.mutating)
+    # `error_flag` is excluded from being chosen as the interposed `g`
+    # routine -- but NOT from being the `f` under test -- the same
+    # asymmetric treatment described in the module docstring's "error_flag
+    # exemption" (a clear-on-read accessor is a bad *perturbation*, since
+    # calling it as `g` would itself clear state as a side effect
+    # unrelated to whatever `f` is being tested; there is nothing
+    # suspect about checking `f`'s own order-independence).
+    g_excluded = mutating | ({verification.state.error_flag} if verification.state.error_flag else set())
     setup_calls = _setup_calls(document, verification)
     base_index = len(setup_calls)
 
@@ -550,7 +596,7 @@ def _check_order_independent(
     non_mutating: list[tuple[str, dict]] = [
         (entry.get("name") or key, entry)
         for key, entry in entries.items()
-        if (entry.get("name") or key) not in mutating
+        if (entry.get("name") or key) not in g_excluded
     ]
 
     outcomes: list[PropertyOutcome] = []

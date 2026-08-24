@@ -33,39 +33,37 @@ runs (spec section 2.3's stated consequence). This module links exactly
 those files, in the order the caller names their sources, plus the freshly
 compiled driver object — nothing else.
 
-**A build-pipeline gap this module works around, not silently fixes:**
-`native2py build <name>` today runs `pip wheel .`, which drives
+**A build-pipeline gap this module used to work around, now fixed for the
+Fortran path:** `native2py build <name>` runs `pip wheel .`, which drives
 scikit-build-core → CMake → the generated `add_custom_command` that shells
 out to `python -m numpy.f2py -c --backend meson ...` (see
-`generators/f2py_gen.py`). That command does not pass `--build-dir`, so f2py
-picks `tempfile.mkdtemp()` for its meson build directory (see
-`numpy/f2py/f2py2e.py:run_compile`) and — traced end to end — nothing in f2py
-ever removes it, but nothing in the generated CMake records where it went
-either, and `pip wheel`'s own build isolation adds a second layer of
-ephemeral temp directories on top. The upshot: after a real
-`native2py build petro_api`, there is no discoverable
-`compile_commands.json` or object-file set to link against; the artifacts
-this module needs are real (meson always writes them) but orphaned. This is
-the "investigate what native2py build leaves behind" instruction's answer
-for the Fortran path — it currently leaves nothing reachable. The correct
-long-term fix is almost certainly threading an explicit, persistent
-`--build-dir` through `f2py_gen.py`'s generated CMake command (analogous to
-the already-known C++/`cmake_gen.py` gap for `CMAKE_EXPORT_COMPILE_COMMANDS`)
-so both gaps get closed the same way; that is out of this task's scope per
-the brief, so `build_extension_with_compile_commands` below reproduces the
-*exact* f2py invocation `CMakeLists.txt` generates, adding only an explicit
-`--build-dir` so the artifacts persist. It performs the library's one and
-only compilation — the driver then links its outputs — so it does not
-violate "never recompile the library sources"; it is a workaround for the
-pipeline not handing this module a location to find them, not a second
-compile of anything the driver also links.
+`generators/f2py_gen.py`). That command now passes an explicit
+`--build-dir "${CMAKE_CURRENT_SOURCE_DIR}/.native2py/build"`, so f2py no
+longer falls back to `tempfile.mkdtemp()` for its meson build directory (see
+`numpy/f2py/f2py2e.py:run_compile`) and the build tree survives at a fixed,
+documented location: `services/<name>/.native2py/build/bbdir/compile_commands.json`,
+with the corresponding `.o` files alongside it. After a real
+`native2py build petro_api`, that `compile_commands.json` is directly
+loadable by `buildinfo.load_compile_commands` and usable by this module's
+`link_objects_for_sources`/`build_and_run_driver` without any workaround.
+The analogous C++/`cmake_gen.py` gap (`CMAKE_EXPORT_COMPILE_COMMANDS`
+pointing into a throwaway CMake build tree rather than a pinned one) is a
+separate, still-open gap — out of scope here.
+`build_extension_with_compile_commands` below is kept as a
+test/CI-isolation helper: it reproduces the same f2py invocation
+`CMakeLists.txt` now generates (including the `--build-dir` flag) but lets a
+test hand it its own throwaway `build_dir` instead of writing into a real
+service's `.native2py/` tree, so tests don't mutate checked-out fixture
+directories. It performs the library's one and only compilation — the
+driver then links its outputs — so it does not violate "never recompile the
+library sources"; it exists purely for test isolation now, not to route
+around a missing location.
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
-import shlex
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -84,6 +82,7 @@ __all__ = [
     "run_driver",
     "build_and_run_driver",
     "build_extension_with_compile_commands",
+    "build_cxx_extension_with_compile_commands",
 ]
 
 
@@ -153,16 +152,12 @@ def link_objects_for_sources(
     return objects
 
 
-def _entry_argv(entry: dict) -> list[str]:
-    if "arguments" in entry:
-        return list(entry["arguments"])
-    if "command" in entry:
-        return shlex.split(entry["command"])
-    raise ValueError(f"compile command entry has neither 'command' nor 'arguments': {entry!r}")
-
-
 def _output_from_argv(entry: dict) -> str | None:
-    argv = _entry_argv(entry)
+    # buildinfo.entry_argv is the single shared implementation of "turn a
+    # compile_commands.json entry's arguments/command into an argv list" —
+    # this module used to keep its own private copy; see buildinfo.py's
+    # entry_argv docstring.
+    argv = buildinfo.entry_argv(entry)
     for i, token in enumerate(argv):
         if token == "-o" and i + 1 < len(argv):
             return argv[i + 1]
@@ -172,7 +167,7 @@ def _output_from_argv(entry: dict) -> str | None:
 def _compiler_executable(entry: dict) -> str:
     """argv[0] of the entry's own compile command — the same compiler, not
     whatever happens to be first on PATH."""
-    return _entry_argv(entry)[0]
+    return buildinfo.entry_argv(entry)[0]
 
 
 def _module_search_flags(flags: Sequence[str], base_dir: Path) -> list[str]:
@@ -207,6 +202,12 @@ def _module_search_flags(flags: Sequence[str], base_dir: Path) -> list[str]:
 
 # --- compiling the driver TU only ------------------------------------------
 
+# Source suffix for the driver TU, by language — the only thing that used to
+# be hardcoded to Fortran here. Everything else (which compiler to invoke,
+# which flags to use) already came from the extension's own
+# compile_commands.json entry, so it was already language-agnostic.
+_DRIVER_SUFFIX = {"fortran": ".f90", "cpp": ".cpp"}
+
 
 def compile_driver_tu(
     driver_source: str,
@@ -215,11 +216,22 @@ def compile_driver_tu(
     work_dir: Path,
     *,
     driver_flags: Sequence[str] | None = None,
+    language: str = "fortran",
 ) -> tuple[Path, list[str], list[str], list[str]]:
     """Compile ONLY the driver translation unit.
 
     Never touches a library source. Returns
     `(driver_object_path, compile_argv, extracted_flags, codegen_flags)`.
+
+    `language` selects the driver TU's source suffix/filename —
+    `"fortran"` (default, `.f90`, unchanged behavior) or `"cpp"` (`.cpp`).
+    It does NOT select which compiler runs: the compiler is always
+    `argv[0]` of the extension's own compile_commands.json entry for
+    `extension_source_name` — the same compiler (and, via
+    `driver_flags`/`use_codegen` below, the same codegen-affecting flags)
+    that built the extension, whether that happens to be gfortran, clang++,
+    or g++. This is what keeps the driver and the extension's objects one
+    body of machine code (spec section 2.3) regardless of source language.
 
     Preconditions enforced here (spec section 2.8), both hard errors:
 
@@ -233,6 +245,13 @@ def compile_driver_tu(
     """
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
+
+    suffix = _DRIVER_SUFFIX.get(language)
+    if suffix is None:
+        raise ValueError(
+            f"unknown driver language {language!r} — expected one of "
+            f"{sorted(_DRIVER_SUFFIX)}"
+        )
 
     commands = buildinfo.load_compile_commands(Path(compile_commands_path))
     ext_entry = buildinfo.find_entry(commands, extension_source_name)
@@ -260,7 +279,7 @@ def compile_driver_tu(
     ext_directory = Path(ext_entry.get("directory") or Path(compile_commands_path).parent)
     search_flags = _module_search_flags(extracted_flags, ext_directory)
 
-    driver_path = work_dir / "n2p_oracle_driver.f90"
+    driver_path = work_dir / f"n2p_oracle_driver{suffix}"
     driver_path.write_text(driver_source)
 
     obj_path = work_dir / "n2p_oracle_driver.o"
@@ -346,9 +365,14 @@ def build_and_run_driver(
     *,
     driver_flags: Sequence[str] | None = None,
     extra_link_args: Sequence[str] = (),
+    language: str = "fortran",
 ) -> DriverBuildResult:
     """Compile the driver TU, link it against the extension's own built
     objects, run it under the pinned environment, and report provenance.
+
+    `language` — `"fortran"` (default) or `"cpp"` — selects the driver TU's
+    source suffix; see `compile_driver_tu` for what it does and does not
+    control.
 
     Raises `buildinfo.UnsafeFlagError` (fast-math in the extension's flags),
     `DriverFlagMismatchError` (driver/extension codegen flags diverge), or
@@ -364,6 +388,7 @@ def build_and_run_driver(
         extension_source_name,
         work_dir,
         driver_flags=driver_flags,
+        language=language,
     )
 
     link_objects = link_objects_for_sources(compile_commands_path, link_source_names)
@@ -466,3 +491,118 @@ def build_extension_with_compile_commands(
             "(meson's build directory layout may have changed)"
         )
     return compile_commands
+
+
+def build_cxx_extension_with_compile_commands(
+    module,
+    header_names: str | list[str],
+    native_sources: Sequence[Path],
+    module_name: str,
+    build_dir: Path,
+) -> Path:
+    """The C++/pybind11 analogue of `build_extension_with_compile_commands`.
+
+    Generates a pybind11 bindings TU (`generators.pybind_gen`) and a
+    `CMakeLists.txt` (`generators.cmake_gen` — already emits
+    `CMAKE_EXPORT_COMPILE_COMMANDS ON`, see that module's docstring) for
+    `module`/`native_sources`, then configures and builds them with an
+    explicit `-B build_dir`, so — unlike a real `native2py build`'s `pip
+    wheel .` (which drives scikit-build-core into a throwaway, pip-managed
+    build tree; see this module's docstring for the analogous, still-open
+    f2py-era gap on the CMake side) — `compile_commands.json` and the
+    compiled `.o`/extension files persist at a known location afterwards.
+
+    This performs `native_sources`' ONE compilation; a driver subsequently
+    linking the resulting objects is not looking at a second body of
+    machine code. Like its Fortran counterpart, it exists purely for
+    test/CI isolation — `build_and_run_driver` never calls this itself.
+
+    Returns the path to `<build_dir>/compile_commands.json`. The built
+    extension module itself lands directly under `build_dir` (CMake's
+    default `pybind11_add_module` output location for a single-config
+    generator) — see `_cxx_extension_search_dir`.
+    """
+    from .generators import cmake_gen, pybind_gen
+
+    try:
+        import pybind11
+    except ImportError as exc:  # pragma: no cover - environment-dependent
+        raise DriverRunError(
+            "building the C++/pybind11 extension requires the 'pybind11' "
+            "package to be importable (for its CMake package config dir)"
+        ) from exc
+
+    build_dir = Path(build_dir)
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    src_dir = build_dir.parent / f"{build_dir.name}-src"
+    native_dir = src_dir / "native"
+    native_dir.mkdir(parents=True, exist_ok=True)
+
+    for src in native_sources:
+        src = Path(src)
+        (native_dir / src.name).write_bytes(src.read_bytes())
+
+    # The implementation sources #include their own header(s) by name, so
+    # those headers must live alongside them in native_dir too — copied from
+    # wherever the caller's sources actually are (the same directory as
+    # native_sources, since that is the service's own native/ tree).
+    if native_sources:
+        source_dir = Path(native_sources[0]).parent
+        for header_name in ([header_names] if isinstance(header_names, str) else header_names):
+            header_src = source_dir / header_name
+            if header_src.exists():
+                (native_dir / header_name).write_bytes(header_src.read_bytes())
+
+    bindings_source = pybind_gen.generate_bindings(module, header_names)
+    bindings_name = f"{module.name}_bindings.cpp"
+    (native_dir / bindings_name).write_text(bindings_source)
+
+    cmake_sources = [f"native/{Path(s).name}" for s in native_sources] + [
+        f"native/{bindings_name}"
+    ]
+    cmake_text = cmake_gen.generate_cmake(module, module_name, cmake_sources)
+    (src_dir / "CMakeLists.txt").write_text(cmake_text)
+
+    configure_argv = [
+        "cmake",
+        "-S",
+        str(src_dir),
+        "-B",
+        str(build_dir),
+        f"-Dpybind11_DIR={pybind11.get_cmake_dir()}",
+        f"-DPython_EXECUTABLE={sys.executable}",
+    ]
+    completed = subprocess.run(configure_argv, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise DriverRunError(
+            f"configuring the C++/pybind11 extension failed ({completed.returncode}):\n"
+            f"  $ {' '.join(configure_argv)}\n{completed.stdout}\n{completed.stderr}"
+        )
+
+    build_argv = ["cmake", "--build", str(build_dir)]
+    completed = subprocess.run(build_argv, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise DriverRunError(
+            f"building the C++/pybind11 extension failed ({completed.returncode}):\n"
+            f"  $ {' '.join(build_argv)}\n{completed.stdout}\n{completed.stderr}"
+        )
+
+    compile_commands = build_dir / "compile_commands.json"
+    if not compile_commands.exists():
+        raise FileNotFoundError(
+            f"expected {compile_commands} after building the extension, found nothing "
+            "(CMake's build directory layout may have changed)"
+        )
+    return compile_commands
+
+
+def _cxx_extension_search_dir(build_dir: Path) -> Path:
+    """Where the built pybind11 extension `.so`/`.pyd` lands.
+
+    CMake's default `LIBRARY_OUTPUT_DIRECTORY` for a `pybind11_add_module`
+    target, with no `install()` step run and a single-config generator
+    (Unix Makefiles/Ninja — what `cmake`'s platform default resolves to on
+    the platforms this runs on), is the build directory itself.
+    """
+    return Path(build_dir)

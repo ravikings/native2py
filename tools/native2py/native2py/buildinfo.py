@@ -126,13 +126,17 @@ def load_compile_commands(path: Path) -> list[dict]:
     return data
 
 
-def _entry_argv(entry: dict) -> list[str]:
+def entry_argv(entry: dict) -> list[str]:
     """The full argv for one compile command entry, compiler included.
 
     CMake's `CMAKE_EXPORT_COMPILE_COMMANDS` and Meson (and therefore `f2py -c
     --backend meson`, which shells out to Meson/ninja) both write a `command`
     field holding a single shell-quoted string. Newer CMake can instead write
     an `arguments` array directly. Support both rather than assuming one.
+
+    Public (T4/T5/cli.py all need this same argv-from-entry logic) — kept
+    under this name rather than duplicated per caller, per the dedup called
+    out in the verification-layers cleanup pass.
     """
     if "arguments" in entry:
         return list(entry["arguments"])
@@ -197,7 +201,7 @@ def flags_for_source(commands: Sequence[dict], source_name: str) -> list[str]:
     actually saw.
     """
     entry = find_entry(commands, source_name)
-    argv = _entry_argv(entry)
+    argv = entry_argv(entry)
     if not argv:
         return []
 

@@ -83,6 +83,12 @@ project({service_name} LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Emitted unconditionally so a normal `native2py build` leaves a
+# compile_commands.json in the build directory, the same way the f2py/meson
+# path does through meson's own default — see buildinfo.py, which reads this
+# file to extract per-source compile flags for the C++ oracle driver.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 find_package(pybind11 CONFIG REQUIRED)
 {numpy_block}{library_block}
 pybind11_add_module({module_symbol}

@@ -174,6 +174,21 @@ class StateConfig:
     would condemn `petro_api`'s own contract (`pvt_set_fluid` mutates COMMON
     state by design). Declaring this here is what makes an *undeclared*
     mutator mechanically detectable instead of a matter of trust.
+
+    Design decision (not literal spec text, design-verification-layers.md
+    §3.5 does not say this explicitly -- flagged here rather than decided
+    silently): the declared `error_flag` accessor is ALSO implicitly
+    excluded from `idempotent` and from being chosen as the interposed `g`
+    routine in `order_independent`, the same way `mutating` routines are.
+    `error_flag` names a clear-on-read accessor (e.g. petro_api's
+    `last_error`/`PVTERR`, which returns the stored error code and then
+    resets it) -- calling it twice legitimately returns different bits on
+    the second call, which would make `idempotent` fail not because of a
+    bug but because clear-on-read is not idempotent by construction. This
+    is the same "the check would condemn the API's own contract" reasoning
+    already applied to `mutating` above, just for a different kind of
+    intentional statefulness. See `structural_invariants.py`'s exemption
+    logic for where this is enforced.
     """
 
     setup: list[str] = field(default_factory=list)
@@ -194,8 +209,51 @@ class RangeDeclaration:
 
 
 @dataclass
+class ScatterDeclaration:
+    """`lattice.scatter: {seed: ..., count: ...}` (spec §3.4 item 3).
+
+    `seed` is required once `count` > 0 -- `lattice.build_entry_lattice`
+    raises `ValueError` for a positive count with no seed, and this loader
+    catches the same mistake earlier, at config-load time, with a message
+    that names the file.
+    """
+
+    seed: int | None = None
+    count: int = 0
+
+
+@dataclass
+class LatticeConfig:
+    """`lattice:` — declares the YAML surface for `lattice.py`'s (T9)
+    sweep point count, scatter seed/count, and per-function corners (spec
+    §3.4 items 1-3).
+
+    Design decision (not literal spec text, flagged here rather than
+    decided silently): `lattice.py`'s `build_entry_lattice`/`scatter`
+    already implement corners and scatter sampling and accept them as bare
+    keyword arguments, but until this task there was no `native2py.yaml`
+    surface to *declare* them -- only explicit Python callers (tests) could
+    populate them. This dataclass is that surface. `corners` is keyed by
+    exposed function name, each value a list of full positional argument
+    tuples passed through to `lattice.build_entry_lattice`'s `corners=`
+    verbatim (see that function's docstring: "passed through completely
+    unmodified... this function does not validate their arity or clamp them
+    to any range") -- this loader does not validate arity either, only that
+    the function name is exposed.
+    """
+
+    n: int | None = None
+    scatter: ScatterDeclaration = field(default_factory=ScatterDeclaration)
+    corners: dict[str, list[tuple]] = field(default_factory=dict)
+
+    @property
+    def is_empty(self) -> bool:
+        return self.n is None and self.scatter.count == 0 and self.scatter.seed is None and not self.corners
+
+
+@dataclass
 class VerificationConfig:
-    """Parsed `state:` / `invariants:` / `ranges:` blocks
+    """Parsed `state:` / `invariants:` / `ranges:` / `lattice:` blocks
     (design-verification-layers.md §3.2-3.5).
 
     This is the single place declared invariant semantics live; T9/T10/T11's
@@ -206,6 +264,7 @@ class VerificationConfig:
     state: StateConfig = field(default_factory=StateConfig)
     invariants: dict[str, list[InvariantProperty]] = field(default_factory=dict)
     ranges: dict[str, RangeDeclaration] = field(default_factory=dict)
+    lattice: LatticeConfig = field(default_factory=LatticeConfig)
 
     @property
     def is_empty(self) -> bool:
@@ -215,6 +274,7 @@ class VerificationConfig:
             and self.state.error_flag is None
             and not self.invariants
             and not self.ranges
+            and self.lattice.is_empty
         )
 
     def has_range(self, parameter: str) -> bool:
@@ -282,7 +342,10 @@ def _load_verification(
     state = _load_state(data.get("state"), config_path, known_functions)
     invariants = _load_invariants(data.get("invariants"), config_path, known_functions)
     ranges = _load_ranges(data.get("ranges"), config_path)
-    return VerificationConfig(state=state, invariants=invariants, ranges=ranges)
+    lattice_config = _load_lattice(data.get("lattice"), config_path, known_functions)
+    return VerificationConfig(
+        state=state, invariants=invariants, ranges=ranges, lattice=lattice_config
+    )
 
 
 def _load_state(
@@ -523,6 +586,121 @@ def _load_ranges(ranges_data, config_path: Path) -> dict[str, RangeDeclaration]:
     return result
 
 
+def _load_lattice(
+    lattice_data, config_path: Path, known_functions: set[str] | None
+) -> LatticeConfig:
+    """Read the `lattice:` block: `n`, `scatter: {seed, count}`, `corners:`.
+
+    See `LatticeConfig`'s docstring for why this exists. Matches the rest of
+    this module's style: closed set of recognised keys, explicit errors
+    naming what's wrong, functions referenced in `corners:` must be exposed
+    (mirroring `_require_known_functions`'s treatment of `state:`/
+    `invariants:`).
+    """
+    lattice_data = lattice_data or {}
+    if not isinstance(lattice_data, dict):
+        raise ConfigError(
+            f"{config_path}: `lattice:` must be a block, got {type(lattice_data).__name__}."
+        )
+    allowed_keys = {"n", "scatter", "corners"}
+    unknown_keys = set(lattice_data) - allowed_keys
+    if unknown_keys:
+        raise ConfigError(
+            f"{config_path}: `lattice:` has unrecognised key(s) "
+            f"{sorted(unknown_keys)}. Only {sorted(allowed_keys)} are understood."
+        )
+
+    n = None
+    if "n" in lattice_data and lattice_data["n"] is not None:
+        n_raw = lattice_data["n"]
+        if isinstance(n_raw, bool) or not isinstance(n_raw, int):
+            raise ConfigError(f"{config_path}: `lattice.n` must be an integer, got {n_raw!r}.")
+        if n_raw < 2:
+            raise ConfigError(
+                f"{config_path}: `lattice.n` must be >= 2 (need both endpoints), got {n_raw!r}."
+            )
+        n = n_raw
+
+    scatter = _load_scatter(lattice_data.get("scatter"), config_path)
+    corners = _load_corners(lattice_data.get("corners"), config_path, known_functions)
+
+    return LatticeConfig(n=n, scatter=scatter, corners=corners)
+
+
+def _load_scatter(scatter_data, config_path: Path) -> ScatterDeclaration:
+    scatter_data = scatter_data or {}
+    if not isinstance(scatter_data, dict):
+        raise ConfigError(
+            f"{config_path}: `lattice.scatter:` must be a block, got "
+            f"{type(scatter_data).__name__}."
+        )
+    allowed_keys = {"seed", "count"}
+    unknown_keys = set(scatter_data) - allowed_keys
+    if unknown_keys:
+        raise ConfigError(
+            f"{config_path}: `lattice.scatter:` has unrecognised key(s) "
+            f"{sorted(unknown_keys)}. Only {sorted(allowed_keys)} are understood."
+        )
+
+    seed_raw = scatter_data.get("seed")
+    seed = None
+    if seed_raw is not None:
+        if isinstance(seed_raw, bool) or not isinstance(seed_raw, int):
+            raise ConfigError(
+                f"{config_path}: `lattice.scatter.seed` must be an integer, got {seed_raw!r}."
+            )
+        seed = seed_raw
+
+    count_raw = scatter_data.get("count", 0)
+    if isinstance(count_raw, bool) or not isinstance(count_raw, int):
+        raise ConfigError(
+            f"{config_path}: `lattice.scatter.count` must be an integer, got {count_raw!r}."
+        )
+    if count_raw < 0:
+        raise ConfigError(
+            f"{config_path}: `lattice.scatter.count` must be >= 0, got {count_raw!r}."
+        )
+    if count_raw > 0 and seed is None:
+        raise ConfigError(
+            f"{config_path}: `lattice.scatter.count` is {count_raw!r} but "
+            "`lattice.scatter.seed` is missing. A positive count needs a "
+            "seed to be reproducible -- there is no default."
+        )
+    return ScatterDeclaration(seed=seed, count=count_raw)
+
+
+def _load_corners(
+    corners_data, config_path: Path, known_functions: set[str] | None
+) -> dict[str, list[tuple]]:
+    corners_data = corners_data or {}
+    if not isinstance(corners_data, dict):
+        raise ConfigError(
+            f"{config_path}: `lattice.corners:` must be a mapping of function "
+            f"name to a list of argument tuples, got {type(corners_data).__name__}."
+        )
+    result: dict[str, list[tuple]] = {}
+    for fn_name, entries in corners_data.items():
+        _require_known_functions(
+            [fn_name], "lattice.corners", config_path, known_functions
+        )
+        if not isinstance(entries, list) or not entries:
+            raise ConfigError(
+                f"{config_path}: `lattice.corners.{fn_name}` must be a "
+                f"non-empty list of argument tuples, got {entries!r}."
+            )
+        tuples: list[tuple] = []
+        for entry in entries:
+            if not isinstance(entry, (list, tuple)):
+                raise ConfigError(
+                    f"{config_path}: `lattice.corners.{fn_name}` entry {entry!r} "
+                    "must be a list of positional argument values (one full "
+                    "call's worth), passed through verbatim."
+                )
+            tuples.append(tuple(entry))
+        result[str(fn_name)] = tuples
+    return result
+
+
 def _dump_property(prop: InvariantProperty) -> dict:
     """Serialize one typed property back to its `native2py.yaml` shape.
 
@@ -571,6 +749,22 @@ def _dump_verification(verification: VerificationConfig) -> dict:
         data["ranges"] = {
             name: [rng.lo, rng.hi] for name, rng in verification.ranges.items()
         }
+    lattice_config = verification.lattice
+    if not lattice_config.is_empty:
+        lattice_block: dict = {}
+        if lattice_config.n is not None:
+            lattice_block["n"] = lattice_config.n
+        if lattice_config.scatter.count or lattice_config.scatter.seed is not None:
+            lattice_block["scatter"] = {
+                "seed": lattice_config.scatter.seed,
+                "count": lattice_config.scatter.count,
+            }
+        if lattice_config.corners:
+            lattice_block["corners"] = {
+                fn_name: [list(corner) for corner in corners]
+                for fn_name, corners in lattice_config.corners.items()
+            }
+        data["lattice"] = lattice_block
     return data
 
 

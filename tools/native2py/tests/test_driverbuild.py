@@ -21,12 +21,15 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
 from native2py import buildinfo, driverbuild, wire
+from native2py.cli import main as native2py_main
 from native2py.drivers.fortran import generate_driver
 from native2py.ir import module_from_dict
 
@@ -324,3 +327,228 @@ def test_fast_math_in_the_real_extensions_flags_is_refused(petro_extension_build
             FORTRAN_SOURCES,
             tmp_path,
         )
+
+
+# --- `native2py build` itself leaves a discoverable compile_commands.json --
+
+
+LIBRARIES_PETRO = REPO / "libraries" / "petro"
+
+
+def _require_petro_service_fixture():
+    _require_petro_fixture()
+    if not LIBRARIES_PETRO.exists():
+        pytest.skip("libraries/petro is not present in this checkout")
+
+
+@requires_gfortran
+def test_native2py_build_leaves_a_discoverable_compile_commands_json(tmp_path):
+    """The gap driverbuild.py's module docstring used to describe: f2py's
+    meson backend defaults to `tempfile.mkdtemp()` for its build directory,
+    so a real `native2py build <name>` left no discoverable
+    `compile_commands.json` or object files behind. `f2py_gen.generate_cmake`
+    now pins `--build-dir` under the service's own `.native2py/` tree, so
+    running the real CLI commands (`generate` then `build`) against a copy
+    of `services/petro_api` must leave a `compile_commands.json` at the
+    documented location, parseable by `buildinfo.load_compile_commands` and
+    directly usable by `driverbuild.link_objects_for_sources`."""
+    _require_petro_service_fixture()
+    _require_numpy()
+
+    root = tmp_path / "workspace"
+    (root / "libraries").mkdir(parents=True)
+    (root / "services").mkdir(parents=True)
+    shutil.copytree(LIBRARIES_PETRO, root / "libraries" / "petro")
+    shutil.copytree(REPO / "services" / "petro_api", root / "services" / "petro_api")
+    # Force regeneration from source rather than trusting whatever
+    # CMakeLists.txt happens to be checked in — it may predate this fix.
+    (root / "services" / "petro_api" / ".native2py" / "build").mkdir(
+        parents=True, exist_ok=True
+    )
+    for junk in ("dist", "build"):
+        shutil.rmtree(root / "services" / "petro_api" / junk, ignore_errors=True)
+
+    runner = CliRunner()
+    cwd = Path.cwd()
+    try:
+        import os
+
+        os.chdir(root)
+        generate_result = runner.invoke(native2py_main, ["generate", "petro_api"])
+        assert generate_result.exit_code == 0, generate_result.output
+
+        cmake_text = (root / "services" / "petro_api" / "CMakeLists.txt").read_text()
+        assert "--build-dir" in cmake_text
+        assert "${CMAKE_CURRENT_SOURCE_DIR}/.native2py/build" in cmake_text
+
+        build_result = runner.invoke(native2py_main, ["build", "petro_api"])
+        assert build_result.exit_code == 0, build_result.output
+    finally:
+        os.chdir(cwd)
+
+    compile_commands = (
+        root / "services" / "petro_api" / ".native2py" / "build" / "bbdir"
+        / "compile_commands.json"
+    )
+    assert compile_commands.exists(), (
+        f"expected {compile_commands} after `native2py build petro_api` — "
+        "meson always writes it, the gap was that nothing recorded where"
+    )
+
+    # Parseable by T1 (buildinfo.py) and directly usable by T4's own
+    # object-location helper, with no workaround needed.
+    commands = buildinfo.load_compile_commands(compile_commands)
+    objects = driverbuild.link_objects_for_sources(compile_commands, FORTRAN_SOURCES)
+    assert len(objects) == len(FORTRAN_SOURCES)
+    for obj in objects:
+        assert obj.exists(), f"recorded object file {obj} does not exist on disk"
+
+    flags = buildinfo.flags_for_source(commands, "petro_api.f90")
+    assert "-ffast-math" not in flags
+
+
+# --- Gap A: driverbuild.py generalized to build a C++ driver too -----------
+#
+# `compile_driver_tu`/`build_and_run_driver` used to hardcode
+# `n2p_oracle_driver.f90` — T7's C++ driver generator (drivers/cpp.py) could
+# not be run through the same compile/link/run pipeline the Fortran driver
+# uses. This proves the generalized `language="cpp"` path actually compiles
+# a real C++ driver and links it against a real, separately-compiled C++
+# "extension" object — never a second compilation of that object (the same
+# "one set of object code" contract the Fortran path has always had).
+
+from native2py.drivers.cpp import generate_driver as generate_cpp_driver
+from native2py.ir import FunctionDef, ModuleIR, Parameter
+
+requires_cxx = pytest.mark.skipif(
+    shutil.which("clang++") is None and shutil.which("g++") is None,
+    reason="neither clang++ nor g++ is installed",
+)
+
+
+def _cxx() -> str:
+    return shutil.which("clang++") or shutil.which("g++")
+
+
+CXX_FIXTURE_HEADER = "#pragma once\nint n2p_add_ints(int a, int b);\n"
+CXX_FIXTURE_IMPL = (
+    '#include "fixture.hpp"\n\nint n2p_add_ints(int a, int b) { return a + b; }\n'
+)
+
+
+def _cxx_module() -> ModuleIR:
+    return ModuleIR(
+        name="synth",
+        language="cpp",
+        source_file="fixture.hpp",
+        functions=[
+            FunctionDef(
+                name="n2p_add_ints",
+                parameters=[
+                    Parameter(name="a", type="int", intent="in"),
+                    Parameter(name="b", type="int", intent="in"),
+                ],
+                returns="int",
+            )
+        ],
+    )
+
+
+def _cxx_document() -> dict:
+    return {
+        "format": 2,
+        "service": "synth",
+        "language": "cpp",
+        "entries": {
+            "n2p_add_ints": {
+                "kind": "function",
+                "name": "n2p_add_ints",
+                "arguments": [2, 3],
+                "result": 5,
+            }
+        },
+        "skipped": {},
+    }
+
+
+def _cxx_extension_compile_commands(tmp_path: Path) -> Path:
+    """A real compile_commands.json entry for one really-compiled C++ TU —
+    mirroring `_fixture_compile_commands` above but for the C++ toolchain,
+    so `compile_driver_tu`'s `language="cpp"` path has a real extension
+    object (never recompiled) to link the driver against."""
+    directory = tmp_path / "extbuild"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "fixture.hpp").write_text(CXX_FIXTURE_HEADER)
+    impl = directory / "fixture.cpp"
+    impl.write_text(CXX_FIXTURE_IMPL)
+
+    compiler = _cxx()
+    # `-I.` lets `driverbuild._module_search_flags` (which reads -I/-J out of
+    # the extension's own recorded flags) find fixture.hpp when the driver
+    # TU is compiled from a different working directory.
+    flags = ["-std=c++17", "-O2", "-fPIC", "-I."]
+    output = "fixture.cpp.o"
+    argv = [compiler, *flags, "-c", "fixture.cpp", "-o", output]
+    completed = subprocess.run(argv, cwd=directory, capture_output=True, text=True, check=False)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    entry = {
+        "directory": str(directory),
+        "command": " ".join(argv),
+        "file": "fixture.cpp",
+        "output": output,
+    }
+    path = tmp_path / "compile_commands.json"
+    path.write_text(json.dumps([entry]))
+    return path
+
+
+@requires_cxx
+def test_build_and_run_a_real_cpp_driver_through_the_generalized_pipeline(tmp_path):
+    module = _cxx_module()
+    document = _cxx_document()
+    driver = generate_cpp_driver(document, module, "fixture.hpp")
+    assert driver.skipped == {}
+
+    compile_commands = _cxx_extension_compile_commands(tmp_path)
+
+    result = driverbuild.build_and_run_driver(
+        driver.source,
+        compile_commands,
+        "fixture.cpp",
+        ["fixture.cpp"],
+        tmp_path / "driver",
+        language="cpp",
+    )
+
+    assert result.returncode == 0
+    parsed = wire.parse_lines(result.stdout.splitlines())
+    assert parsed["n2p_add_ints"][wire.Slot(role="return")] == "5"
+
+    # "never recompile the library source" — the compile argv this module
+    # actually ran only ever names the driver TU, never fixture.cpp.
+    assert all("fixture.cpp" not in tok or "driver" in tok for tok in result.compile_argv)
+    assert str(compile_commands.parent / "fixture.cpp") not in result.compile_argv
+
+
+@requires_cxx
+def test_cpp_driver_language_defaults_to_fortran_suffix_when_unset(tmp_path):
+    """`language` defaults to `"fortran"` — the pre-existing behavior for
+    every caller that does not pass it must be unchanged."""
+    compile_commands = _fixture_compile_commands(tmp_path)
+    stub = tmp_path / "stub_cc2.sh"
+    stub.write_text("#!/bin/sh\nfor a in \"$@\"; do :; done\ntouch \"${@: -1}\"\n")
+    stub.chmod(0o755)
+    data = json.loads(compile_commands.read_text())
+    data[0]["command"] = data[0]["command"].replace("gfortran", str(stub), 1)
+    compile_commands.write_text(json.dumps(data))
+
+    obj, argv, extracted, codegen = driverbuild.compile_driver_tu(
+        "program p\nend program p\n",
+        compile_commands,
+        "mod.f90",
+        tmp_path / "work2",
+        driver_flags=["-fvisibility=hidden", "-O3"],
+    )
+    assert obj.name == "n2p_oracle_driver.o"
+    assert (tmp_path / "work2" / "n2p_oracle_driver.f90").exists()

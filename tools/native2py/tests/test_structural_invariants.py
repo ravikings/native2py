@@ -145,6 +145,195 @@ def test_hidden_global_fails_order_independent_with_add_to_mutating_message(tmp_
     assert idempotent["f"].status == "pass"
 
 
+# --- synthetic fixture: clear-on-read error_flag, no compiler needed ------
+
+_CLEAR_ON_READ_FIXTURE = '''
+"""A stand-in extension whose error accessor clears on read -- exactly the
+shape `structural_invariants.py`'s error_flag exemption exists for."""
+
+_error_code = 7
+
+
+def f(x):
+    return float(x)
+
+
+def last_error():
+    global _error_code
+    value = _error_code
+    _error_code = 0
+    return value
+'''
+
+
+def _write_clear_on_read_fixture(tmp_path: Path) -> Path:
+    fixture_dir = tmp_path / "fixture_pkg"
+    fixture_dir.mkdir()
+    (fixture_dir / "clear_on_read_fixture.py").write_text(_CLEAR_ON_READ_FIXTURE)
+    return fixture_dir
+
+
+def _clear_on_read_module_and_document():
+    module = ModuleIR(
+        name="clear_on_read_fixture",
+        language="cpp",
+        source_file="clear_on_read_fixture.py",
+        functions=[
+            FunctionDef(name="f", parameters=[Parameter(name="x", type="float")], returns="float"),
+            FunctionDef(name="last_error", parameters=[], returns="int"),
+        ],
+    )
+    document = {
+        "entries": {
+            "f": {
+                "kind": "function", "class": None, "name": "f",
+                "constructor_arguments": [], "arguments": [1.0], "result": 1.0,
+            },
+            "last_error": {
+                "kind": "function", "class": None, "name": "last_error",
+                "constructor_arguments": [], "arguments": [], "result": 7,
+            },
+        }
+    }
+    return module, document
+
+
+def test_clear_on_read_error_flag_would_fail_idempotent_without_the_exemption(tmp_path):
+    """Without the error_flag exemption, `last_error` (which really does
+    return different bits on successive calls, by design) would be checked
+    by `idempotent` and would fail -- demonstrating the gap 2 bug directly,
+    on a fixture with no compiler and no petro_api build involved."""
+    fixture_dir = _write_clear_on_read_fixture(tmp_path)
+    sys.path.insert(0, str(fixture_dir))
+    try:
+        package = importlib.import_module("clear_on_read_fixture")
+    finally:
+        sys.path.remove(str(fixture_dir))
+
+    module, document = _clear_on_read_module_and_document()
+    target = si.SubprocessTarget(
+        module_name="clear_on_read_fixture", sys_path=(str(fixture_dir),)
+    )
+
+    # With the declared error_flag: exempted, so no spurious idempotent
+    # failure and not even checked.
+    verification = VerificationConfig(
+        state=StateConfig(setup=[], mutating=[], error_flag="last_error")
+    )
+    results = si.run_structural_invariants(
+        module, document, verification, package, target, points_limit=1
+    )
+    idempotent = {o.function: o for o in results.by_property("idempotent")}
+    assert "last_error" not in idempotent
+
+    # Without declaring it as error_flag, `idempotent` genuinely does catch
+    # the clear-on-read behaviour -- confirming the exemption above is doing
+    # real work, not papering over a check that would have passed anyway.
+    undeclared_verification = VerificationConfig(state=StateConfig(setup=[], mutating=[]))
+    undeclared_results = si.run_structural_invariants(
+        module, document, undeclared_verification, package, target, points_limit=1
+    )
+    undeclared_idempotent = {o.function: o for o in undeclared_results.by_property("idempotent")}
+    assert undeclared_idempotent["last_error"].status == "fail"
+
+
+# --- clear-on-read error_flag used as `g`: order_independent's own gap ----
+
+_ERROR_SENSITIVE_FIXTURE = '''
+"""`f`'s result depends on whether an error is still pending; `last_error`
+clears it on read. If `last_error` is not excluded from being chosen as the
+interposed `g` routine, order_independent spuriously reports `f` as
+perturbed by its own exempted error accessor."""
+
+_error_code = 5
+
+
+def f(x):
+    return float(x) + (1.0 if _error_code else 0.0)
+
+
+def last_error():
+    global _error_code
+    value = _error_code
+    _error_code = 0
+    return value
+'''
+
+
+def _write_error_sensitive_fixture(tmp_path: Path) -> Path:
+    fixture_dir = tmp_path / "fixture_pkg"
+    fixture_dir.mkdir()
+    (fixture_dir / "error_sensitive_fixture.py").write_text(_ERROR_SENSITIVE_FIXTURE)
+    return fixture_dir
+
+
+def _error_sensitive_module_and_document():
+    module = ModuleIR(
+        name="error_sensitive_fixture",
+        language="cpp",
+        source_file="error_sensitive_fixture.py",
+        functions=[
+            FunctionDef(name="f", parameters=[Parameter(name="x", type="float")], returns="float"),
+            FunctionDef(name="last_error", parameters=[], returns="int"),
+        ],
+    )
+    document = {
+        "entries": {
+            "f": {
+                "kind": "function", "class": None, "name": "f",
+                "constructor_arguments": [], "arguments": [1.0], "result": 2.0,
+            },
+            "last_error": {
+                "kind": "function", "class": None, "name": "last_error",
+                "constructor_arguments": [], "arguments": [], "result": 5,
+            },
+        }
+    }
+    return module, document
+
+
+def test_clear_on_read_error_flag_excluded_as_g_in_order_independent(tmp_path):
+    fixture_dir = _write_error_sensitive_fixture(tmp_path)
+    sys.path.insert(0, str(fixture_dir))
+    try:
+        package = importlib.import_module("error_sensitive_fixture")
+    finally:
+        sys.path.remove(str(fixture_dir))
+
+    module, document = _error_sensitive_module_and_document()
+    target = si.SubprocessTarget(
+        module_name="error_sensitive_fixture", sys_path=(str(fixture_dir),)
+    )
+
+    # Declared as error_flag: `last_error` must never be chosen as `g`, so
+    # `f`'s order_independent passes (its own worker process starts with
+    # _error_code == 5 fresh each time, unaffected by anything but
+    # last_error, which is never interposed).
+    verification = VerificationConfig(
+        state=StateConfig(setup=[], mutating=[], error_flag="last_error")
+    )
+    results = si.run_structural_invariants(
+        module, document, verification, package, target, points_limit=1
+    )
+    order_independent = {o.function: o for o in results.by_property("order_independent")}
+    assert order_independent["f"].status == "pass"
+
+    # Undeclared: `last_error` IS chosen as `g`, and genuinely does perturb
+    # `f` (clearing `_error_code` changes `f`'s second-call result) --
+    # confirming the exemption above prevents a real, reproducible spurious
+    # failure, not a scenario that would have passed anyway.
+    undeclared_verification = VerificationConfig(state=StateConfig(setup=[], mutating=[]))
+    undeclared_results = si.run_structural_invariants(
+        module, document, undeclared_verification, package, target, points_limit=1
+    )
+    undeclared_order_independent = {
+        o.function: o for o in undeclared_results.by_property("order_independent")
+    }
+    outcome = undeclared_order_independent["f"]
+    assert outcome.status == "fail"
+    assert "last_error" in outcome.failures[0].detail
+
+
 # --- real petro_api: pvt_set_fluid exempted, no_error_flag catches a point -
 
 FORTRAN_SOURCES = [
@@ -235,6 +424,70 @@ def test_pvt_set_fluid_is_exempted_from_idempotent_and_order_independent(petro_e
             f"{property_name} must exempt the declared mutator pvt_set_fluid "
             "(spec section 3.5), but it was checked"
         )
+
+
+@requires_gfortran
+def test_last_error_is_exempted_from_idempotent_and_order_independent(petro_extension):
+    """`last_error` (`state.error_flag`, `PVTERR` in
+    libraries/petro/fortran/pvtcor.f) reads AND CLEARS the stored error
+    code: calling it twice legitimately returns different bits, the first
+    call the code, the second 0. `idempotent`/`order_independent` must
+    exempt it the same way `pvt_set_fluid` (`state.mutating`) is exempted,
+    or this structural check fails on a routine working exactly as
+    designed, not on a bug (see StateConfig's docstring / this task's gap
+    2)."""
+    package, target = petro_extension
+    module, document = _load_petro_module_and_document()
+    config = ServiceConfig.load(PETRO_SERVICE_DIR)
+    config.verification.validate_against_ir(module)
+    assert config.verification.state.error_flag == "last_error"
+
+    results = si.run_structural_invariants(
+        module, document, config.verification, package, target, points_limit=1
+    )
+
+    # `idempotent` fully excludes the error_flag accessor (calling it twice
+    # in a row is not idempotent by construction), the same way `mutating`
+    # routines are excluded.
+    idempotent_functions = {o.function for o in results.by_property("idempotent")}
+    assert "last_error" not in idempotent_functions, (
+        "idempotent must exempt the declared error_flag accessor last_error "
+        "(clear-on-read is not idempotent by construction), but it was checked"
+    )
+
+    # `order_independent` still checks `last_error` as `f` (nothing suspect
+    # about that on its own) -- it must pass, i.e. it must not have been
+    # spuriously perturbed by being interposed as someone else's `g` either
+    # (see the dedicated fixture test for the direct demonstration of that).
+    order_independent = {o.function: o for o in results.by_property("order_independent")}
+    assert order_independent["last_error"].status == "pass"
+
+
+@requires_gfortran
+def test_last_error_regression_against_a_triggered_error(petro_extension):
+    """Regression for gap 2: before the exemption, driving pvt_set_fluid's
+    api_gravity out of range (the same sabotage
+    test_no_error_flag_catches_an_out_of_range_setup uses) makes
+    `last_error()` return a nonzero code on the first call of any
+    idempotent-style pair and 0 on the second -- a real, reproducible
+    "different bits on the second call" that has nothing to do with a bug.
+    With the exemption in place, `last_error` must not even be checked by
+    `idempotent`/`order_independent`, so this never surfaces as a spurious
+    failure."""
+    package, target = petro_extension
+    module, document = _load_petro_module_and_document()
+    config = ServiceConfig.load(PETRO_SERVICE_DIR)
+    config.verification.validate_against_ir(module)
+
+    sabotaged_document = copy.deepcopy(document)
+    sabotaged_document["entries"]["pvt_set_fluid"]["arguments"] = [0.5, 0.65, 180.0, 2]
+
+    results = si.run_structural_invariants(
+        module, sabotaged_document, config.verification, package, target, points_limit=1
+    )
+
+    idempotent_functions = {o.function for o in results.by_property("idempotent")}
+    assert "last_error" not in idempotent_functions
 
 
 @requires_gfortran

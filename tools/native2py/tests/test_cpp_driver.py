@@ -13,9 +13,11 @@ Mirrors test_fortran_driver.py's (T3) two kinds of test:
   struct-by-value skip.
 
 No `services/` C++ demo exists in this checkout (verified: `services/`
-holds only `petro_api`, a Fortran service) and `cmake_gen.py` has no
-`CMAKE_EXPORT_COMPILE_COMMANDS` wiring to produce one, so per the task
-brief this module's fixture lives here rather than under `services/`.
+holds only `petro_api`, a Fortran service), so per the task brief this
+module's fixture lives here rather than under `services/`. (`cmake_gen.py`
+now sets `CMAKE_EXPORT_COMPILE_COMMANDS ON` — see test_cmake_gen.py for an
+end-to-end test that configures a generated CMakeLists.txt for real and
+checks the resulting compile_commands.json.)
 """
 
 from __future__ import annotations
@@ -51,6 +53,8 @@ def _hex(value: float) -> str:
 FIXTURE_HPP = """\
 #pragma once
 
+#include <vector>
+
 namespace geo {
 
 class Box {
@@ -82,6 +86,22 @@ inline double with_array(const double* arr, int n) {
     double total = 0.0;
     for (int i = 0; i < n; ++i) total += arr[i];
     return total;
+}
+
+inline void fill_buffer(double* out, int n) {
+    for (int i = 0; i < n; ++i) out[i] = i * 1.5;
+}
+
+inline std::vector<double> make_range(int n) {
+    std::vector<double> v;
+    for (int i = 0; i < n; ++i) v.push_back(i * 2.0);
+    return v;
+}
+
+inline double sum_mystery(const double* arr) {
+    // No length is derivable from the signature alone — the length_param-
+    // less skip case.
+    return arr[0];
 }
 """
 
@@ -163,6 +183,34 @@ def _synthetic_module() -> ModuleIR:
                 ],
                 returns="float",
             ),
+            FunctionDef(
+                name="fill_buffer",
+                parameters=[
+                    Parameter(
+                        name="out",
+                        type="float",
+                        is_mutable_buffer=True,
+                        intent="inout",
+                        native_type="double*",
+                        length_param="n",
+                    ),
+                    Parameter(name="n", type="int", intent="in"),
+                ],
+                returns="void",
+            ),
+            FunctionDef(
+                name="make_range",
+                parameters=[Parameter(name="n", type="int", intent="in")],
+                returns="float",
+                returns_array=True,
+            ),
+            FunctionDef(
+                name="sum_mystery",
+                parameters=[
+                    Parameter(name="arr", type="float", is_array=True, intent="in")
+                ],
+                returns="float",
+            ),
         ],
     )
 
@@ -219,6 +267,30 @@ def _synthetic_document() -> dict:
                 "name": "with_array",
                 "arguments": [[1.0, 2.0, 3.0], 3],
                 "result": 6.0,
+            },
+            "fill_buffer": {
+                "kind": "function",
+                "name": "fill_buffer",
+                # The mutable buffer has no recorded initial content (golden.py
+                # does not populate one for an output-only buffer today) — the
+                # driver must size it from length_param "n"'s recorded value.
+                "arguments": [None, 3],
+                "result": None,
+                "argument_effects": {"0": [0.0, 1.5, 3.0]},
+            },
+            "make_range": {
+                "kind": "function",
+                "name": "make_range",
+                "arguments": [3],
+                "result": [0.0, 2.0, 4.0],
+            },
+            "sum_mystery": {
+                "kind": "function",
+                "name": "sum_mystery",
+                # No recorded list value and no length_param — genuinely
+                # unsizeable; must be skipped, not guessed.
+                "arguments": [None],
+                "result": 1.0,
             },
         },
         "skipped": {"Existing.symbol": "recorded by golden, not by the driver"},
@@ -323,15 +395,56 @@ def test_struct_by_value_row_is_skipped_with_a_reason():
     assert "with_struct(" not in result.source
 
 
-def test_array_parameter_is_skipped_with_a_reason():
-    """Documented v1 scope limit — see drivers/cpp.py's module docstring."""
+def test_array_parameter_is_supported():
+    """An `is_array` parameter with a known length is fully emitted, not skipped."""
     module = _synthetic_module()
     document = _synthetic_document()
     result = generate_driver(document, module, "fixture.hpp", return_kinds=RETURN_KINDS)
 
-    assert "with_array" in result.skipped
-    assert "array" in result.skipped["with_array"] or "buffer" in result.skipped["with_array"]
-    assert "with_array(" not in result.source
+    assert "with_array" not in result.skipped
+    assert "double n2p_6_arg0[3] = {1.0, 2.0, 3.0};" in result.source
+    assert "with_array(n2p_6_arg0, 3)" in result.source
+
+
+def test_mutable_buffer_parameter_sized_by_length_param_is_supported():
+    """An `is_mutable_buffer` parameter with no recorded content is sized from
+    its `length_param`'s recorded value, and its elements are emitted as
+    `arg:<i>[<n>]` wire slots — mirroring drivers/fortran.py's intent(out)
+    array handling."""
+    module = _synthetic_module()
+    document = _synthetic_document()
+    result = generate_driver(document, module, "fixture.hpp", return_kinds=RETURN_KINDS)
+
+    assert "fill_buffer" not in result.skipped
+    assert "double n2p_7_arg0[3] = {};" in result.source
+    assert "fill_buffer(n2p_7_arg0, 3)" in result.source
+    assert '"fill_buffer", "arg:0[0]"' in result.source
+    assert '"fill_buffer", "arg:0[2]"' in result.source
+
+
+def test_vector_return_is_supported():
+    """A `returns_array` function's `std::vector<T>` return is captured and
+    each element printed as `return[<n>]`."""
+    module = _synthetic_module()
+    document = _synthetic_document()
+    result = generate_driver(document, module, "fixture.hpp", return_kinds=RETURN_KINDS)
+
+    assert "make_range" not in result.skipped
+    assert "std::vector<double> n2p_8_result = make_range(3);" in result.source
+    assert '"make_range", "return[0]"' in result.source
+    assert '"make_range", "return[2]"' in result.source
+
+
+def test_array_parameter_with_no_length_param_is_skipped_with_a_reason():
+    """The one remaining hard skip: no recorded list value AND no
+    length_param — genuinely unsizeable, mirroring T3's own fallback."""
+    module = _synthetic_module()
+    document = _synthetic_document()
+    result = generate_driver(document, module, "fixture.hpp", return_kinds=RETURN_KINDS)
+
+    assert "sum_mystery" in result.skipped
+    assert "length_param" in result.skipped["sum_mystery"]
+    assert "sum_mystery(" not in result.source
 
 
 def test_golden_skips_are_reproduced_verbatim():
@@ -393,9 +506,31 @@ def test_synthetic_driver_compiles_and_prints_the_documented_slots(tmp_path):
     assert by_key_slot[("Box.scale", "return")] == _hex(6.0)
     assert by_key_slot[("increment", "arg:0")] == "6"
     assert by_key_slot[("half", "return")] == _hex(1.5)
+    assert by_key_slot[("with_array", "return")] == _hex(6.0)
+    assert by_key_slot[("fill_buffer", "arg:0[0]")] == _hex(0.0)
+    assert by_key_slot[("fill_buffer", "arg:0[1]")] == _hex(1.5)
+    assert by_key_slot[("fill_buffer", "arg:0[2]")] == _hex(3.0)
+    assert by_key_slot[("make_range", "return[0]")] == _hex(0.0)
+    assert by_key_slot[("make_range", "return[1]")] == _hex(2.0)
+    assert by_key_slot[("make_range", "return[2]")] == _hex(4.0)
+
+    # slot names emitted match wire.slots_for_entry's expectations exactly.
+    from native2py import wire
+
+    with_array_fn = next(f for f in module.functions if f.name == "with_array")
+    expected = [str(s) for s in wire.slots_for_entry(document["entries"]["with_array"], with_array_fn)]
+    assert expected == ["return"]
+
+    fill_buffer_fn = next(f for f in module.functions if f.name == "fill_buffer")
+    expected = [str(s) for s in wire.slots_for_entry(document["entries"]["fill_buffer"], fill_buffer_fn)]
+    assert expected == ["arg:0[0]", "arg:0[1]", "arg:0[2]"]
+
+    make_range_fn = next(f for f in module.functions if f.name == "make_range")
+    expected = [str(s) for s in wire.slots_for_entry(document["entries"]["make_range"], make_range_fn)]
+    assert expected == ["return[0]", "return[1]", "return[2]"]
 
     # file order preserved among the keys that did print (with_struct and
-    # with_array are skipped and print nothing).
+    # sum_mystery are skipped and print nothing).
     keys_in_order = []
     for key, _slot, _value in lines:
         if key not in keys_in_order:

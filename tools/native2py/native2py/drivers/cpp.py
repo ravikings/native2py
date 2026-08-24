@@ -28,20 +28,26 @@ Turns a `(golden.json document, ModuleIR)` pair into ONE C++ driver that:
   padding bits (spec section 2.4's "narrow floats widen; they do not get
   their own channel").
 
-**Scope decision, not spec text (flagged per the task brief rather than
-decided silently).** Spec section 2.9 says "C++ free functions and static
-methods: full support" without carving out array/buffer parameters, and
-this module does not implement them: a parameter that is an array
-(`Parameter.is_array`), a raw-pointer buffer (`Parameter.length_param` /
-`Parameter.is_mutable_buffer`), or a `std::vector<T>` return
-(`returns_array`) is recorded as skipped, with a reason, exactly like a
-struct-by-value entry is (spec section 2.9's one explicit v1 skip). Building
-precise, allocation-free marshalling for those shapes was judged out of
-proportion to this task's slice — the explicitly enumerated test rows this
-module must cover are free function, static method, instance method with
-constructor arguments, and the struct-by-value skip, and none of those need
-arrays. Revisit this if a later task's fixture needs a bound array/buffer
-routine oracle-checked.
+**Array/buffer parameters and `std::vector<T>` returns are supported.** A
+parameter that is an array (`Parameter.is_array`) or a raw-pointer buffer
+(`Parameter.is_mutable_buffer` / `Parameter.length_param`) is emitted as a
+fixed-size local C array, initialised from the recorded value when one was
+recorded (an array's `arguments` entry is a plain list — see
+`golden.py`'s `sample_arguments`) and otherwise zero-initialised; its size
+comes from `len(value)` when the recorded value is a list, or otherwise
+from the `length_param`'s materialised value in the same entry (mirroring
+`drivers/fortran.py`'s `intent(out)` array handling, the same underlying
+"a length-carrying array needs the driver to know the length" problem in a
+different language). Each element is printed as its own wire slot
+(`arg:<i>[<n>]`) with the same `memcpy`-into-`uint64_t`/widen-to-double
+discipline scalar values already use. A `std::vector<T>` return is captured
+into a local `std::vector<...>` and its elements printed as `return[<n>]`
+the same way. The only remaining hard skip in this module — mirroring T3's
+own "genuinely no way to know the length" fallback — is an array/buffer
+parameter that has neither a recorded list value nor a resolvable
+`length_param`; that is the one case this driver truly cannot size at the
+call site. Struct-by-value entries remain out of scope (see below) and are
+still skipped, unchanged.
 
 **wire.py note.** Unlike `drivers/fortran.py` (written before `wire.py`
 existed), this module imports `wire.slots_for_entry` directly rather than
@@ -104,6 +110,18 @@ def _quote(text: str) -> str:
 
 
 def _scalar_literal(value, python_type: str) -> str:
+    if isinstance(value, (list, dict)):
+        # A nested/2D array element, or a struct-shaped element, reaching
+        # here (e.g. from `_plan_array`'s per-element loop) is a call-site
+        # shape this v1 driver does not understand -- `int(value)`/
+        # `float(value)` on a list/dict raises an unhandled `TypeError`
+        # instead of the clean, caught `_SkipEntry` every other unsupported
+        # shape in this module produces. Skip cleanly instead.
+        raise _SkipEntry(
+            f"array element {value!r} is not a scalar -- nested arrays and "
+            "struct-valued array elements are not supported by the C++ "
+            "driver (v1)"
+        )
     if python_type == "bool":
         return _bool_literal(value)
     if python_type == "int":
@@ -169,20 +187,13 @@ def _is_struct_value(value) -> bool:
 
 
 def _refuse_unsupported_shapes(fn_or_method, entry: dict) -> None:
-    """Hard-skip anything outside this module's v1 scope. See module docstring."""
-    for param in fn_or_method.parameters:
-        if param.is_array or getattr(param, "length_param", None) or getattr(
-            param, "is_mutable_buffer", False
-        ):
-            raise _SkipEntry(
-                f"array/buffer parameter '{param.name}' is not supported by the "
-                "C++ driver (v1) — see drivers/cpp.py's module docstring"
-            )
-    if getattr(fn_or_method, "returns_array", False):
-        raise _SkipEntry(
-            "a std::vector<T> return is not supported by the C++ driver (v1) — "
-            "see drivers/cpp.py's module docstring"
-        )
+    """Hard-skip anything outside this module's v1 scope. See module docstring.
+
+    Array/buffer parameters and `std::vector<T>` returns are supported (see
+    `_plan_array`/`_resolve_array_size` and the return-array handling in
+    `_emit_call`) and are therefore NOT refused here — only structs by value
+    remain an unconditional skip.
+    """
     for value in (entry.get("arguments") or []) + (entry.get("constructor_arguments") or []):
         if _is_struct_value(value):
             raise _SkipEntry("structs by value are not supported by the C++ driver (v1)")
@@ -200,6 +211,8 @@ class _Slot:
     var: str | None  # the local variable name, if one was declared; else None
     decl: str | None  # the full declaration+init statement, or None
     is_ref: bool  # True when this parameter is a scalar reference (address-of a local)
+    is_array: bool = False  # True when this parameter is an array/buffer local
+    size: int | None = None  # element count, for an array/buffer slot
 
 
 def _matching_constructor(cls: ClassDef, n: int) -> list[Parameter] | None:
@@ -207,6 +220,66 @@ def _matching_constructor(cls: ClassDef, n: int) -> list[Parameter] | None:
         if len(ctor) == n:
             return ctor
     return None
+
+
+def _resolve_array_size(param: Parameter, value, value_by_name: dict) -> int:
+    """The element count for an array/buffer parameter at this call site.
+
+    Prefers the recorded value's own length (a plain list, per
+    `golden.py`'s `sample_arguments`) — the same precedent
+    `drivers/fortran.py` uses for a Fortran `intent(in)` array. Falls back
+    to the `length_param`'s materialised value in this same entry — the
+    same "no direct value, use the length parameter" fallback
+    `drivers/fortran.py` uses for its `intent(out)` array case — when the
+    recorded value is not itself a list (e.g. an output-only mutable
+    buffer, which golden.py does not populate with sample content today).
+    """
+    if isinstance(value, list):
+        return len(value)
+    length_param = getattr(param, "length_param", None)
+    if not length_param:
+        raise _SkipEntry(
+            f"array/buffer parameter '{param.name}' has no recorded list value "
+            "and no length_param — the C++ driver cannot size it at the call site"
+        )
+    size_value = value_by_name.get(length_param)
+    if size_value is None:
+        raise _SkipEntry(
+            f"array/buffer parameter '{param.name}' is sized by "
+            f"'{length_param}', which is not a visible argument"
+        )
+    return int(size_value)
+
+
+def _plan_array(
+    idx: int, prefix: str, position: int, param: Parameter, value, value_by_name: dict
+) -> _Slot:
+    """Resolve one array/buffer call-site argument as a local C array.
+
+    The local decays to a pointer at the call site, matching the callee's
+    `const T*`/`T*` parameter — no `&` is needed (unlike `_plan_scalar`'s
+    scalar-reference case).
+    """
+    size = _resolve_array_size(param, value, value_by_name)
+    if size == 0:
+        # A zero-length C array declaration (`T name[0]`) is not valid
+        # standard C++ -- a legitimately empty buffer/array call at this
+        # entry cannot be represented as a local array the way every
+        # non-empty case is, so skip it cleanly rather than emit source a
+        # standards-conforming compiler will reject.
+        raise _SkipEntry(
+            f"array/buffer parameter '{param.name}' has length 0 at this "
+            "call site -- a zero-length local array is not valid C++"
+        )
+    is_float32 = _is_float32(_pointee_native_type(param.native_type)) if param.native_type else False
+    elem_type = _decl_type(param.type, is_float32)
+    var = f"n2p_{idx}_{prefix}{position}"
+    if isinstance(value, list):
+        init = ", ".join(_scalar_literal(v, param.type) for v in value)
+    else:
+        init = ""  # zero-initialised: an output-only buffer with no recorded content
+    decl = f"    {elem_type} {var}[{size}] = {{{init}}};"
+    return _Slot(param=param, expr=var, var=var, decl=decl, is_ref=False, is_array=True, size=size)
 
 
 def _plan_scalar(
@@ -242,10 +315,13 @@ def _plan_call(
             "recorded arguments do not match the current signature "
             f"({len(arguments)} recorded, {len(params)} expected)"
         )
-    slots = [
-        _plan_scalar(idx, "arg", i, param, value, param.type)
-        for i, (param, value) in enumerate(zip(params, arguments))
-    ]
+    value_by_name = {p.name: v for p, v in zip(params, arguments)}
+    slots = []
+    for i, (param, value) in enumerate(zip(params, arguments)):
+        if param.is_array or getattr(param, "is_mutable_buffer", False):
+            slots.append(_plan_array(idx, "arg", i, param, value, value_by_name))
+        else:
+            slots.append(_plan_scalar(idx, "arg", i, param, value, param.type))
     return slots, params
 
 
@@ -374,11 +450,16 @@ def _emit_call(
     else:
         target = _qualified(fn.name, getattr(fn, "namespace", None))
 
+    returns_array = bool(getattr(fn, "returns_array", False))
     call_expr = f"{target}({call_args})"
     if has_result:
         result_var = f"n2p_{idx}_result"
         is_float32 = fn.returns == "float" and (return_kind or "").strip().lower() == "float"
-        decl_type = _decl_type(fn.returns, is_float32) if fn.returns != "void" else "void"
+        if returns_array:
+            elem_type = _decl_type(fn.returns, is_float32)
+            decl_type = f"std::vector<{elem_type}>"
+        else:
+            decl_type = _decl_type(fn.returns, is_float32) if fn.returns != "void" else "void"
         lines.append(f"    {decl_type} {result_var} = {call_expr};")
     else:
         lines.append(f"    {call_expr};")
@@ -390,25 +471,39 @@ def _emit_call(
     for wslot in wire_slots:
         if wslot.role == "return":
             if wslot.element is not None:
-                raise _SkipEntry(
-                    "a tuple/array return is not supported by the C++ driver (v1)"
-                )
-            lines.extend(_print_scalar_slot(key, str(wslot), result_var, fn.returns))
+                if not returns_array:
+                    raise _SkipEntry(
+                        "a tuple return is not supported by the C++ driver (v1)"
+                    )
+                expr = f"{result_var}[{wslot.element}]"
+            else:
+                expr = result_var
+            lines.extend(_print_scalar_slot(key, str(wslot), expr, fn.returns))
         else:
             slot = arg_by_index.get(wslot.arg_index)
             param = visible_params[wslot.arg_index] if wslot.arg_index < len(visible_params) else None
-            if slot is None or not slot.is_ref:
+            if slot is None or not (slot.is_ref or slot.is_array):
                 raise _SkipEntry(
                     f"argument {wslot.arg_index} was recorded as modified in place, "
-                    "but is not a scalar-reference parameter the C++ driver (v1) can "
-                    "read back"
+                    "but is not a scalar-reference or array/buffer parameter the "
+                    "C++ driver (v1) can read back"
                 )
             if wslot.element is not None:
-                raise _SkipEntry(
-                    "an array in-place effect is not supported by the C++ driver (v1)"
-                )
+                if not slot.is_array:
+                    raise _SkipEntry(
+                        "an array element effect was recorded for a non-array "
+                        f"argument {wslot.arg_index}"
+                    )
+                expr = f"{slot.var}[{wslot.element}]"
+            else:
+                if slot.is_array:
+                    raise _SkipEntry(
+                        f"argument {wslot.arg_index} is an array/buffer parameter but "
+                        "was recorded with a scalar effect"
+                    )
+                expr = slot.var
             python_type = param.type if param is not None else "float"
-            lines.extend(_print_scalar_slot(key, str(wslot), slot.var, python_type))
+            lines.extend(_print_scalar_slot(key, str(wslot), expr, python_type))
 
     return lines
 
@@ -508,6 +603,7 @@ def _assemble(headers: list[str], lines: list[str]) -> str:
         "#include <cstdint>\n"
         "#include <cstring>\n"
         "#include <string>\n"
+        "#include <vector>\n"
         "\n"
         f"{include_lines}\n"
         "\n"
