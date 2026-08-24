@@ -4,7 +4,7 @@ from __future__ import annotations
 
 _BUILD_REQUIRES = {
     "cpp": '["scikit-build-core", "pybind11"]',
-    "fortran": '["scikit-build-core", "numpy"]',
+    "fortran": '["scikit-build-core", "numpy", "meson", "ninja"]',
 }
 
 # gunicorn supervises the worker processes; see docker_gen's CMD and

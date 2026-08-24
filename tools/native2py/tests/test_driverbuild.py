@@ -116,7 +116,9 @@ def test_matching_driver_flags_are_accepted_without_a_compiler(tmp_path, monkeyp
     # Rewrite the fixture's compiler to a stub that just touches its -o file,
     # so this test does not require gfortran to be installed.
     stub = tmp_path / "stub_cc.sh"
-    stub.write_text("#!/bin/sh\nfor a in \"$@\"; do :; done\ntouch \"${@: -1}\"\n")
+    stub.write_text(
+        "#!/bin/sh\nfor a in \"$@\"; do last=\"$a\"; done\ntouch \"$last\"\n"
+    )
     stub.chmod(0o755)
     data = json.loads(compile_commands.read_text())
     data[0]["command"] = data[0]["command"].replace("gfortran", str(stub), 1)
@@ -537,7 +539,9 @@ def test_cpp_driver_language_defaults_to_fortran_suffix_when_unset(tmp_path):
     every caller that does not pass it must be unchanged."""
     compile_commands = _fixture_compile_commands(tmp_path)
     stub = tmp_path / "stub_cc2.sh"
-    stub.write_text("#!/bin/sh\nfor a in \"$@\"; do :; done\ntouch \"${@: -1}\"\n")
+    stub.write_text(
+        "#!/bin/sh\nfor a in \"$@\"; do last=\"$a\"; done\ntouch \"$last\"\n"
+    )
     stub.chmod(0o755)
     data = json.loads(compile_commands.read_text())
     data[0]["command"] = data[0]["command"].replace("gfortran", str(stub), 1)
