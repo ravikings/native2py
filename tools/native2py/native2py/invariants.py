@@ -98,6 +98,16 @@ class InvariantsResult:
 # --- picking which sweep(s) a declared property runs against ---------------
 
 
+def _resolve_n(n: int | None, verification: VerificationConfig) -> int:
+    """`n`'s "explicit argument, else declared config, else the module
+    default" resolution rule -- shared by `build_invariants_document` and
+    `verify_invariants` so the two entry points can never silently disagree
+    on what an unset `n` means for the same `VerificationConfig`."""
+    if n is not None:
+        return n
+    return verification.lattice.n if verification.lattice.n is not None else lattice.DEFAULT_SWEEP_POINTS
+
+
 def _sweeps_for_property(
     prop, entry_lattice: EntryLattice, parameter_names: Sequence[str]
 ) -> list[tuple[ParameterSweep, int]]:
@@ -277,8 +287,7 @@ def build_invariants_document(
     docstring) -- an explicit argument always overrides the declared
     config.
     """
-    if n is None:
-        n = verification.lattice.n if verification.lattice.n is not None else lattice.DEFAULT_SWEEP_POINTS
+    n = _resolve_n(n, verification)
     if scatter_seed is None:
         scatter_seed = verification.lattice.scatter.seed
     if scatter_count is None:
@@ -421,8 +430,7 @@ def verify_invariants(
     `InvariantsResult` whose `.passed` reflects every checked entry's status
     and whose `.document` is ready to be written with `write()`.
     """
-    if n is None:
-        n = verification.lattice.n if verification.lattice.n is not None else lattice.DEFAULT_SWEEP_POINTS
+    n = _resolve_n(n, verification)
 
     # `si.build_lattices` reads corners/scatter straight off
     # `verification.lattice` -- it has no override parameters of its own. If

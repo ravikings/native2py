@@ -146,6 +146,13 @@ def test_hidden_global_fails_order_independent_with_add_to_mutating_message(tmp_
 
 
 # --- synthetic fixture: clear-on-read error_flag, no compiler needed ------
+#
+# Both fixtures below (clear-on-read, and error-sensitive-to-a-`g`-call)
+# share the same shape -- a module with `f(x)` and a clear-on-read
+# `last_error()`, an IR describing exactly those two functions, and a
+# matching golden.json-style document -- so the write/import/IR/document
+# scaffolding is factored into one set of helpers, parameterised by the
+# module's source text and its two functions' recorded results.
 
 _CLEAR_ON_READ_FIXTURE = '''
 """A stand-in extension whose error accessor clears on read -- exactly the
@@ -166,18 +173,29 @@ def last_error():
 '''
 
 
-def _write_clear_on_read_fixture(tmp_path: Path) -> Path:
+def _write_fixture_module(tmp_path: Path, module_name: str, source: str) -> Path:
     fixture_dir = tmp_path / "fixture_pkg"
     fixture_dir.mkdir()
-    (fixture_dir / "clear_on_read_fixture.py").write_text(_CLEAR_ON_READ_FIXTURE)
+    (fixture_dir / f"{module_name}.py").write_text(source)
     return fixture_dir
 
 
-def _clear_on_read_module_and_document():
+def _import_fixture(fixture_dir: Path, module_name: str):
+    sys.path.insert(0, str(fixture_dir))
+    try:
+        return importlib.import_module(module_name)
+    finally:
+        sys.path.remove(str(fixture_dir))
+
+
+def _f_and_last_error_module_and_document(module_name: str, f_result: float, error_result: int):
+    """An `f(x)`/`last_error()` `ModuleIR` + matching document, parameterised
+    by each function's recorded golden.json result -- the two fixtures in
+    this section differ only in these values and in their source text."""
     module = ModuleIR(
-        name="clear_on_read_fixture",
+        name=module_name,
         language="cpp",
-        source_file="clear_on_read_fixture.py",
+        source_file=f"{module_name}.py",
         functions=[
             FunctionDef(name="f", parameters=[Parameter(name="x", type="float")], returns="float"),
             FunctionDef(name="last_error", parameters=[], returns="int"),
@@ -187,11 +205,11 @@ def _clear_on_read_module_and_document():
         "entries": {
             "f": {
                 "kind": "function", "class": None, "name": "f",
-                "constructor_arguments": [], "arguments": [1.0], "result": 1.0,
+                "constructor_arguments": [], "arguments": [1.0], "result": f_result,
             },
             "last_error": {
                 "kind": "function", "class": None, "name": "last_error",
-                "constructor_arguments": [], "arguments": [], "result": 7,
+                "constructor_arguments": [], "arguments": [], "result": error_result,
             },
         }
     }
@@ -203,14 +221,10 @@ def test_clear_on_read_error_flag_would_fail_idempotent_without_the_exemption(tm
     return different bits on successive calls, by design) would be checked
     by `idempotent` and would fail -- demonstrating the gap 2 bug directly,
     on a fixture with no compiler and no petro_api build involved."""
-    fixture_dir = _write_clear_on_read_fixture(tmp_path)
-    sys.path.insert(0, str(fixture_dir))
-    try:
-        package = importlib.import_module("clear_on_read_fixture")
-    finally:
-        sys.path.remove(str(fixture_dir))
+    fixture_dir = _write_fixture_module(tmp_path, "clear_on_read_fixture", _CLEAR_ON_READ_FIXTURE)
+    package = _import_fixture(fixture_dir, "clear_on_read_fixture")
 
-    module, document = _clear_on_read_module_and_document()
+    module, document = _f_and_last_error_module_and_document("clear_on_read_fixture", 1.0, 7)
     target = si.SubprocessTarget(
         module_name="clear_on_read_fixture", sys_path=(str(fixture_dir),)
     )
@@ -260,47 +274,11 @@ def last_error():
 '''
 
 
-def _write_error_sensitive_fixture(tmp_path: Path) -> Path:
-    fixture_dir = tmp_path / "fixture_pkg"
-    fixture_dir.mkdir()
-    (fixture_dir / "error_sensitive_fixture.py").write_text(_ERROR_SENSITIVE_FIXTURE)
-    return fixture_dir
-
-
-def _error_sensitive_module_and_document():
-    module = ModuleIR(
-        name="error_sensitive_fixture",
-        language="cpp",
-        source_file="error_sensitive_fixture.py",
-        functions=[
-            FunctionDef(name="f", parameters=[Parameter(name="x", type="float")], returns="float"),
-            FunctionDef(name="last_error", parameters=[], returns="int"),
-        ],
-    )
-    document = {
-        "entries": {
-            "f": {
-                "kind": "function", "class": None, "name": "f",
-                "constructor_arguments": [], "arguments": [1.0], "result": 2.0,
-            },
-            "last_error": {
-                "kind": "function", "class": None, "name": "last_error",
-                "constructor_arguments": [], "arguments": [], "result": 5,
-            },
-        }
-    }
-    return module, document
-
-
 def test_clear_on_read_error_flag_excluded_as_g_in_order_independent(tmp_path):
-    fixture_dir = _write_error_sensitive_fixture(tmp_path)
-    sys.path.insert(0, str(fixture_dir))
-    try:
-        package = importlib.import_module("error_sensitive_fixture")
-    finally:
-        sys.path.remove(str(fixture_dir))
+    fixture_dir = _write_fixture_module(tmp_path, "error_sensitive_fixture", _ERROR_SENSITIVE_FIXTURE)
+    package = _import_fixture(fixture_dir, "error_sensitive_fixture")
 
-    module, document = _error_sensitive_module_and_document()
+    module, document = _f_and_last_error_module_and_document("error_sensitive_fixture", 2.0, 5)
     target = si.SubprocessTarget(
         module_name="error_sensitive_fixture", sys_path=(str(fixture_dir),)
     )

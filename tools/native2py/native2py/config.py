@@ -356,13 +356,7 @@ def _load_state(
         raise ConfigError(
             f"{config_path}: `state:` must be a block, got {type(state_data).__name__}."
         )
-    allowed_keys = {"setup", "mutating", "error_flag"}
-    unknown_keys = set(state_data) - allowed_keys
-    if unknown_keys:
-        raise ConfigError(
-            f"{config_path}: `state:` has unrecognised key(s) "
-            f"{sorted(unknown_keys)}. Only {sorted(allowed_keys)} are understood."
-        )
+    _reject_unknown_keys(state_data, {"setup", "mutating", "error_flag"}, "state:", config_path)
 
     setup = _require_known_functions(
         list(state_data.get("setup") or []), "state.setup", config_path, known_functions
@@ -375,6 +369,22 @@ def _load_state(
         error_flag = str(error_flag)
         _require_known_functions([error_flag], "state.error_flag", config_path, known_functions)
     return StateConfig(setup=setup, mutating=mutating, error_flag=error_flag)
+
+
+def _reject_unknown_keys(data: dict, allowed: set[str], where: str, config_path: Path) -> None:
+    """Closed-key check shared by every `{where}:` block in this module.
+
+    Every declared block (`state:`, `bounds`, `monotone`,
+    `scales_linearly_in`, `lattice:`, `lattice.scatter:`, ...) rejects any
+    key outside its own fixed set the same way -- factored here so the
+    wording only needs to be right, and only needs updating, in one place.
+    """
+    unknown_keys = set(data) - allowed
+    if unknown_keys:
+        raise ConfigError(
+            f"{config_path}: `{where}` has unrecognised key(s) "
+            f"{sorted(unknown_keys)}. Only {sorted(allowed)} are understood."
+        )
 
 
 def _require_known_functions(
@@ -482,9 +492,7 @@ def _load_bounds(payload, where: str, config_path: Path) -> BoundsProperty:
         raise ConfigError(
             f"{config_path}: `{where}` needs at least one of `min`/`max`."
         )
-    unknown = set(payload) - {"min", "max"}
-    if unknown:
-        raise ConfigError(f"{config_path}: `{where}` has unrecognised key(s) {sorted(unknown)}.")
+    _reject_unknown_keys(payload, {"min", "max"}, where, config_path)
     return BoundsProperty(
         min=float(minimum) if minimum is not None else None,
         max=float(maximum) if maximum is not None else None,
@@ -494,9 +502,7 @@ def _load_bounds(payload, where: str, config_path: Path) -> BoundsProperty:
 def _load_monotone(payload, where: str, config_path: Path) -> MonotoneProperty:
     if not isinstance(payload, dict):
         raise ConfigError(f"{config_path}: `{where}` must be a mapping, got {payload!r}.")
-    unknown = set(payload) - {"in", "direction"}
-    if unknown:
-        raise ConfigError(f"{config_path}: `{where}` has unrecognised key(s) {sorted(unknown)}.")
+    _reject_unknown_keys(payload, {"in", "direction"}, where, config_path)
     parameter = payload.get("in")
     direction = payload.get("direction")
     if not parameter or not isinstance(parameter, str):
@@ -542,9 +548,7 @@ def _load_scales_linearly_in(payload, where: str, config_path: Path) -> ScalesLi
     if isinstance(payload, str):
         parameter = payload
     elif isinstance(payload, dict):
-        unknown = set(payload) - {"in"}
-        if unknown:
-            raise ConfigError(f"{config_path}: `{where}` has unrecognised key(s) {sorted(unknown)}.")
+        _reject_unknown_keys(payload, {"in"}, where, config_path)
         parameter = payload.get("in")
     else:
         raise ConfigError(
@@ -602,13 +606,7 @@ def _load_lattice(
         raise ConfigError(
             f"{config_path}: `lattice:` must be a block, got {type(lattice_data).__name__}."
         )
-    allowed_keys = {"n", "scatter", "corners"}
-    unknown_keys = set(lattice_data) - allowed_keys
-    if unknown_keys:
-        raise ConfigError(
-            f"{config_path}: `lattice:` has unrecognised key(s) "
-            f"{sorted(unknown_keys)}. Only {sorted(allowed_keys)} are understood."
-        )
+    _reject_unknown_keys(lattice_data, {"n", "scatter", "corners"}, "lattice:", config_path)
 
     n = None
     if "n" in lattice_data and lattice_data["n"] is not None:
@@ -634,13 +632,7 @@ def _load_scatter(scatter_data, config_path: Path) -> ScatterDeclaration:
             f"{config_path}: `lattice.scatter:` must be a block, got "
             f"{type(scatter_data).__name__}."
         )
-    allowed_keys = {"seed", "count"}
-    unknown_keys = set(scatter_data) - allowed_keys
-    if unknown_keys:
-        raise ConfigError(
-            f"{config_path}: `lattice.scatter:` has unrecognised key(s) "
-            f"{sorted(unknown_keys)}. Only {sorted(allowed_keys)} are understood."
-        )
+    _reject_unknown_keys(scatter_data, {"seed", "count"}, "lattice.scatter:", config_path)
 
     seed_raw = scatter_data.get("seed")
     seed = None
