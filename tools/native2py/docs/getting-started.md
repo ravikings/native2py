@@ -183,7 +183,7 @@ g.hypotenuse(3.0, 4.0)  # 5.0
 The generated FastAPI service:
 
 ```bash
-uvicorn demo.service:app
+native2py serve demo
 ```
 
 ```bash

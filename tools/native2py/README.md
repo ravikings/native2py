@@ -1,7 +1,7 @@
-# native2py
+# native2py — automated modernization of legacy scientific computing
 
 Expose existing C++ and Fortran code to Python as deployable microservices —
-without hand-writing bindings.
+without hand-writing bindings, and without touching the numerics.
 
 Point it at a header or a Fortran source and it generates the pybind11/f2py
 bindings, the CMake build, an installable Python package, a FastAPI service,
@@ -21,7 +21,7 @@ Geometry().hypotenuse(3.0, 4.0)   # 5.0
 ...plus a FastAPI service over the same binding:
 
 ```bash
-uvicorn demo.service:app
+native2py serve demo
 curl -X POST "http://localhost:8000/hypotenuse?a=3&b=4"
 ```
 

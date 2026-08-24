@@ -214,6 +214,39 @@ Requires a working C++ toolchain + `cmake` + `pybind11` for C++ services, or
 `gfortran` + `numpy` for Fortran services. See
 [Troubleshooting](troubleshooting.md).
 
+## `native2py serve <name>`
+
+Run the service's FastAPI app (`<name>.service:app`) under a single uvicorn
+process, against the **installed** package — build and install the wheel
+first, or it fails with those instructions rather than an import traceback.
+
+```bash
+native2py serve demo
+native2py serve demo --host 0.0.0.0 --port 9000
+native2py serve demo --reload        # development only
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--host` | `127.0.0.1` | Interface to bind. Loopback by default: a generated service is not hardened for an untrusted network — see [Is this production-ready?](production-readiness.md) |
+| `--port` | `8000` | Port to bind |
+| `--reload` | off | Restart on source changes |
+
+This is a development convenience, not a deployment. The generated Dockerfile
+runs gunicorn with uvicorn workers; that is what should serve real traffic.
+There is deliberately no `--workers` here: a Fortran service keeps its state
+in COMMON blocks, which are per-process, so a "configure, then read" sequence
+split across two workers reads state the other one never wrote.
+
+## `native2py verify <name>`
+
+Alias for [`native2py golden verify <name>`](#native2py-golden-recordverifyshow-name):
+replay the recorded numbers and fail if any of them moved.
+
+```bash
+native2py verify demo
+```
+
 ## `native2py test <name>`
 
 Run `pytest tests/` inside `services/<name>/`.

@@ -1,10 +1,12 @@
-# native2py
+# native2py — automated modernization of legacy scientific computing
 
-A monorepo for getting decades-old engineering code — 1990s C++ over FORTRAN
-77 — reachable from Python as deployable services, without rewriting it and
-without hand-writing bindings.
+Decades-old engineering code — 1990s C++ over FORTRAN 77 — reachable from
+Python as deployable services, without rewriting it and without hand-writing
+bindings. Modernization here means the interface, the packaging and the
+deployment; the numerics stay exactly where they are, and stay provably
+unchanged.
 
-It holds three things:
+This monorepo holds three things:
 
 1. **[`tools/native2py/`](tools/native2py/)** — the generator. Point it at a
    header or a Fortran deck; it produces the pybind11/f2py bindings, the CMake
@@ -12,7 +14,8 @@ It holds three things:
    regression baseline, and a Dockerfile.
 2. **[`libraries/petro/`](libraries/petro/)** — a period-accurate legacy
    codebase (~4,800 lines, 1988–2004 vintage) that exists to stress the
-   generator against the real thing rather than a toy header.
+   generator against the real thing rather than a toy header. It is the
+   modernization target the whole repo is measured against.
 3. **`services/`** — what came out the other side. The repo currently carries
    one committed service, `petro_api`, generated from the Fortran decks in
    `libraries/petro/`: an independently buildable wheel and container.
@@ -63,6 +66,54 @@ the bindings under a service that was working. Details, including which extras
 matter and why, are in
 [Using it in another project](tools/native2py/README.md#using-it-in-another-project).
 
+## The CLI
+
+One binary covers the whole path from legacy source to running container.
+`native2py --help` is authoritative; this is the map.
+
+| Stage | Command | What it does |
+|---|---|---|
+| Survey | `detect <path>` | Identify the language and dialect of a source tree |
+| | `suggest <dir>` | Rank which files are worth exposing first |
+| | `inspect <path>` | List the symbols a file offers, and what would be skipped |
+| Scaffold | `init` | Create `services/` in the current directory |
+| | `create-service <name>` | Empty service skeleton (`--language cpp\|fortran`) |
+| | `expose <path>` | Print the `native2py.yaml` stanza for a source |
+| | `quickstart <source>` | detect → scaffold → generate in one step (`--build`) |
+| Generate | `generate <name>` | Regenerate bindings, CMake, package, service, tests |
+| | `build <name>` | Compile the extension |
+| | `lock <name>` | Pin the service's Python dependencies with hashes |
+| Verify | `golden record <name>` | Record the numbers the bindings currently return |
+| | `verify <name>` | Fail if any of them moved (= `golden verify`) |
+| | `golden show <name>` | Print the recorded baseline |
+| | `test <name>` | Generated smoke tests plus the golden check |
+| Ship | `serve <name>` | Run the service locally with uvicorn |
+| | `docker <name>` | Generate (and optionally `--build`) the Dockerfile |
+| | `k8s <name>` | Generate a Kubernetes manifest |
+| | `gateway <name> --service ...` | Mount several services behind one app |
+| | `clean <name>` | Remove generated build artifacts |
+
+### Running the app
+
+```bash
+tools/native2py/.venv/bin/native2py build petro_api
+tools/native2py/.venv/bin/pip install services/petro_api/dist/*.whl
+tools/native2py/.venv/bin/native2py serve petro_api   # 127.0.0.1:8000
+curl localhost:8000/healthz
+```
+
+`serve` is a development convenience: one uvicorn process, bound to loopback,
+against the installed wheel. It is not the deployment path. A generated
+service is an ordinary FastAPI app (`<name>.service:app`) in an ordinary
+wheel, so anything that already runs your Python services can run it — and
+the generated Dockerfile does exactly that, with gunicorn and uvicorn
+workers:
+
+```bash
+tools/native2py/.venv/bin/native2py docker petro_api --build
+docker run -p 8000:8000 petro_api:latest
+```
+
 ## The service
 
 | Service | Language | From | What it exercises |
@@ -100,7 +151,9 @@ parsing for what turned out to be a measurement error in the probe.
 
 ## Proving the answers did not change
 
-For a re-host, "it builds and imports" is not the acceptance criterion. Every
+This is the part that makes automated modernization defensible rather than
+merely fast. For a re-host, "it builds and imports" is not the acceptance
+criterion. Every
 service can pin what its bindings return:
 
 ```bash

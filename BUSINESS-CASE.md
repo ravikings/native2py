@@ -1,5 +1,7 @@
 # native2py — Business Case
 
+*Automated modernization of legacy scientific computing.*
+
 **Status:** V1 prototype, shared for technical review.
 **Audience:** engineering leadership evaluating a legacy-modernization
 approach.

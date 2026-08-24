@@ -199,7 +199,11 @@ def _service_dir(name: str) -> Path:
 @click.group()
 @click.version_option()
 def main() -> None:
-    """Expose native C++/C/Fortran code to Python as deployable microservices."""
+    """Automated modernization of legacy scientific computing.
+
+    Expose native C++/C/Fortran code to Python as deployable microservices,
+    without rewriting the numerics and without hand-writing bindings.
+    """
 
 
 @main.command()
@@ -565,6 +569,19 @@ def _import_service_package(name: str):
         ) from exc
 
 
+def _require_installed_package(name: str) -> None:
+    """Fail with the build instructions rather than uvicorn's import traceback."""
+    import importlib.util
+
+    if importlib.util.find_spec(name) is None:
+        raise click.ClickException(
+            f"The '{name}' package is not importable. `serve` runs the built "
+            f"extension, so build and install the service first:\n"
+            f"  native2py build {name}\n"
+            f"  pip install services/{name}/dist/*.whl"
+        )
+
+
 def _load_service_ir(service_dir: Path, name: str) -> ModuleIR:
     ir_path = service_dir / IR_PATH
     if not ir_path.exists():
@@ -626,6 +643,10 @@ def golden_record(name: str, rtol: float, atol: float, force: bool) -> None:
 @click.argument("name")
 def golden_verify(name: str) -> None:
     """Replay services/<name>'s golden file against the installed package."""
+    _golden_verify(name)
+
+
+def _golden_verify(name: str) -> None:
     service_dir = _service_dir(name)
     path = service_dir / golden_lib.GOLDEN_FILENAME
     if not path.exists():
@@ -671,6 +692,49 @@ def golden_show(name: str) -> None:
         click.echo(f"  {key}({', '.join(repr(a) for a in entry['arguments'])}) -> {entry['result']!r}")
     for key, reason in (document.get("skipped") or {}).items():
         click.echo(f"  [skipped] {key}: {reason}")
+
+
+@main.command()
+@click.argument("name")
+def verify(name: str) -> None:
+    """Check that services/<name> still returns its recorded numbers.
+
+    The same check as `native2py golden verify <name>`, under the name people
+    reach for. Re-hosting is only finished when the answers have not moved.
+    """
+    _golden_verify(name)
+
+
+@main.command()
+@click.argument("name")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Interface to bind.")
+@click.option("--port", default=8000, show_default=True, help="Port to bind.")
+@click.option("--reload", is_flag=True, help="Restart on source changes (development only).")
+def serve(name: str, host: str, port: int, reload: bool) -> None:
+    """Run services/<name>'s FastAPI app with uvicorn.
+
+    A convenience wrapper, not a deployment: it runs a single uvicorn process
+    against the *installed* package. The generated Dockerfile runs gunicorn
+    with uvicorn workers, and that is what should serve real traffic. The
+    default bind is loopback, because a generated service is not hardened for
+    an untrusted network (see docs/production-readiness.md).
+    """
+    _service_dir(name)
+    _require_installed_package(name)
+    import importlib.util
+
+    if importlib.util.find_spec("uvicorn") is None:
+        raise click.ClickException(
+            "uvicorn is not installed in this interpreter. Install the "
+            f"service's own dependencies:\n"
+            f"  pip install services/{name}/dist/*.whl"
+        )
+
+    cmd = [sys.executable, "-m", "uvicorn", f"{name}.service:app",
+           "--host", host, "--port", str(port)]
+    if reload:
+        cmd.append("--reload")
+    _run(cmd, cwd=Path.cwd())
 
 
 @main.command()

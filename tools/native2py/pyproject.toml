@@ -14,7 +14,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "native2py"
 version = "0.1.0"
-description = "Expose native C++/C/Fortran code to Python as deployable microservices"
+description = "Automated modernization of legacy scientific computing: expose native C++/C/Fortran code to Python as deployable microservices"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

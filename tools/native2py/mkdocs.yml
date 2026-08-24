@@ -1,5 +1,5 @@
 site_name: native2py
-site_description: Expose native C++/C/Fortran code to Python as deployable microservices
+site_description: Automated modernization of legacy scientific computing — expose native C++/C/Fortran code to Python as deployable microservices
 repo_url: ""
 
 theme:

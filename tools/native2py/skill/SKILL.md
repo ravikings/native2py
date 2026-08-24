@@ -3,7 +3,7 @@ name: native2py
 description: Expose existing C++ or Fortran code to Python without hand-writing bindings. Use whenever a task involves calling native code from Python — pybind11 or f2py wrappers, ctypes/cffi shims, a CMake/scikit-build extension module, wheel packaging for a native library, or standing up an HTTP service over one. Triggers on "bind this header", "call this C++ from Python", "wrap this Fortran routine", "make a Python package for this .hpp/.f90", "pybind11", "f2py", "extension module", and on any request to check that a re-hosted numerical library still returns the same answers.
 ---
 
-# native2py
+# native2py — automated modernization of legacy scientific computing
 
 `native2py` generates the whole native→Python path from one source file:
 pybind11/f2py bindings, the CMake build, an installable Python package, a

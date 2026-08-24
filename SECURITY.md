@@ -39,7 +39,7 @@ Be aware of the trust boundaries before reporting, and before using the tool:
   same way you would treat any code you are about to compile.
 - **Generated services execute native code in-process.** A wrapped library's
   memory-safety bugs become the service's bugs. Generated FastAPI services
-  carry no authentication, and the generated Dockerfile runs uvicorn on
+  carry no authentication, and the generated Dockerfile runs gunicorn on
   `0.0.0.0:8000` — do not publish that port to an untrusted network without
   putting your own authn/authz in front of it.
 - **Building requires a real toolchain.** The build path invokes cmake, ninja,
