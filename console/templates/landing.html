@@ -3,10 +3,12 @@
 {% block title %}nativegate — Paste a repo. Get an API.{% endblock %}
 
 {% block content %}
-<section style="padding: 3rem 0 2rem; max-width: 720px;">
-  <h1 style="font-size: 2.2rem; margin-bottom: 1rem;">Paste a repo. Get an API.<br>And an MCP endpoint.</h1>
+<section class="hero">
+  <span class="hero-eyebrow"><span class="live-dot"></span>every action below is a plain ngate command</span>
 
-  <p style="color: var(--text-dim); font-size: 1.05rem; max-width: 640px;">
+  <h1>Paste a repo.<br>Get an <span class="accent-text">API</span>.<br>And an MCP endpoint.</h1>
+
+  <p class="hero-sub">
     Drop in legacy C++ or Fortran — a tarball, a zip, or a public GitHub URL — and
     nativegate parses it, generates the bindings, builds it in an isolated container,
     and hands you back a live REST endpoint and a live MCP endpoint. No source
@@ -14,12 +16,15 @@
     non-root container, so a compiler we don't control never touches your process.
   </p>
 
-  <div style="margin-top: 2rem;">
-    <a class="btn primary" href="/new" style="font-size: 1rem; padding: 0.7rem 1.4rem;">Start a new project &rarr;</a>
+  <div class="hero-actions">
+    <a class="btn primary" href="/new">Start a new project &rarr;</a>
+    <span class="hero-note">no login required by default — self-hosted, single-user</span>
   </div>
 </section>
 
-<section class="panel" style="max-width: 720px;">
+<div class="section-label">What happens when you start a project</div>
+
+<section class="panel glow" style="max-width: 720px;">
   <div class="panel-header">Pipeline</div>
   <div class="panel-body">
     <div class="pipeline">

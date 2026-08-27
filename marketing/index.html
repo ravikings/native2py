@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nativegate — paste a repo, get an API</title>
+  <meta name="description" content="nativegate turns legacy C++ and Fortran into a live REST API and MCP endpoint, without hand-written bindings, built inside an isolated container.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="topnav">
+    <div class="container">
+      <a class="wordmark" href="#top">nativegate</a>
+      <nav>
+        <a href="#how-it-works">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#cli">CLI</a>
+        <a href="http://localhost:8000" class="cta">Open console &rarr;</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <section class="hero">
+      <div class="container">
+        <div class="hero-grid">
+          <div>
+            <span class="hero-eyebrow"><span class="live-dot"></span>generator + isolated build + live API</span>
+            <h1>Paste a repo.<br>Get an <span class="accent-text">API</span>.<br>And an MCP endpoint.</h1>
+            <p class="hero-sub">
+              nativegate points a generator at your legacy C++ or Fortran, produces the
+              pybind11 or f2py bindings, builds it inside a non-root, network-isolated
+              container, and hands back a running REST service and MCP endpoint — the
+              numerics untouched, the interface modernized.
+            </p>
+            <div class="hero-actions">
+              <a class="btn primary" href="#cli">See the CLI &rarr;</a>
+              <a class="btn" href="http://localhost:8000">Open the console</a>
+            </div>
+            <div class="hero-note">no source rewrites. no hand-written wrappers. every step is a plain <code>ngate</code> command.</div>
+          </div>
+
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span class="title">petro_api — zsh</span>
+            </div>
+            <div class="terminal-body"><span class="prompt">$ </span><span class="cmd">ngate quickstart libraries/petro/pvt.f90</span>
+<span class="out">  detect     fortran, fixed-form F77 decks under an F90 facade
+  generate   pybind-style f2py bindings, CMake, python package
+  build      compiling extension...</span> <span class="ok">done</span>
+<span class="out">  golden     recording baseline for 10 exposed routines...</span> <span class="ok">done</span>
+
+<span class="prompt">$ </span><span class="cmd">ngate serve petro_api</span>
+<span class="out">  uvicorn running on </span><span class="path">http://127.0.0.1:8000</span>
+<span class="out">  mcp endpoint at     </span><span class="path">http://127.0.0.1:8000/mcp</span>
+
+<span class="prompt">$ </span><span class="cmd">curl localhost:8000/healthz</span>
+<span class="out">  {"status":"ok"}</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="how-it-works">
+      <div class="container">
+        <div class="section-label">How it works</div>
+        <h2 class="section-heading">Four stages, each one a command you can run yourself.</h2>
+        <p class="section-sub">
+          Nothing in the console does anything the CLI can't do on its own — the web app
+          just runs <code>ngate</code> for you and shows you the output as it happens.
+        </p>
+
+        <div class="pipeline">
+          <div class="pipeline-step done">
+            <span class="step-index">01 / discover</span>
+            <span class="step-name">Discover</span>
+            <span class="step-desc">Detect the language and dialect, list the symbols a file offers, and flag what would be skipped before you commit to anything.</span>
+          </div>
+          <div class="pipeline-step done">
+            <span class="step-index">02 / generate</span>
+            <span class="step-name">Generate</span>
+            <span class="step-desc">Produce the pybind11 or f2py bindings, the CMake build, an installable Python package, tests, and a FastAPI service.</span>
+          </div>
+          <div class="pipeline-step active">
+            <span class="step-index">03 / build</span>
+            <span class="step-name">Build</span>
+            <span class="step-desc">Compile the extension inside a non-root, network-isolated container — a compiler nativegate doesn't control never touches your host.</span>
+          </div>
+          <div class="pipeline-step">
+            <span class="step-index">04 / verify</span>
+            <span class="step-name">Verify</span>
+            <span class="step-desc">Record the numbers the bindings currently return, then fail the build if a future regeneration moves them.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="features">
+      <div class="container">
+        <div class="section-label">What you get</div>
+        <h2 class="section-heading">The numerics stay exactly where they are.</h2>
+        <p class="section-sub">
+          Modernization here means the interface, the packaging, and the deployment —
+          not a rewrite. The Fortran or C++ underneath is unchanged and provably so.
+        </p>
+
+        <div class="feature-grid">
+          <div class="feature">
+            <span class="feature-tag">REST</span>
+            <h3>A live HTTP service</h3>
+            <p>Every exposed routine becomes an endpoint on an ordinary FastAPI app, shipped in an ordinary wheel — nothing exotic to deploy.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-tag">MCP</span>
+            <h3>An MCP endpoint, for free</h3>
+            <p>The same generated service exposes your native routines as tools an LLM agent can call directly, with descriptions carried over from your source comments.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-tag">Golden records</span>
+            <h3>Answers that can't drift</h3>
+            <p><code>ngate golden record</code> captures what the bindings return today; <code>ngate verify</code> fails the build the moment a regeneration changes an answer.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-tag">Isolation</span>
+            <h3>A compiler you don't have to trust</h3>
+            <p>Builds run non-root and network-isolated in a container. A malicious or broken build script can't reach your host or the network.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-tag">No hand-written glue</span>
+            <h3>Bindings, generated</h3>
+            <p>pybind11 for C++, f2py for Fortran, CMake wiring, the Python package layout — all produced from what your source actually declares.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-tag">One CLI</span>
+            <h3>From header to container</h3>
+            <p><code>detect</code>, <code>generate</code>, <code>build</code>, <code>verify</code>, <code>serve</code>, <code>docker</code> — the whole path is one binary, scriptable, no web app required.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="cli">
+      <div class="container">
+        <div class="section-label">The CLI</div>
+        <h2 class="section-heading">One binary, from legacy source to running container.</h2>
+        <p class="section-sub">
+          <code>ngate --help</code> is authoritative — this is the shape of it.
+        </p>
+
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="title">ngate --help (abridged)</span>
+          </div>
+          <div class="terminal-body"><span class="out">survey    </span><span class="cmd">detect, suggest, inspect</span><span class="out">     — what's in this tree, what's worth exposing
+scaffold  </span><span class="cmd">init, create-service, quickstart</span><span class="out">  — stand up services/
+generate  </span><span class="cmd">generate, build, lock</span><span class="out">             — bindings, compile, pin deps
+verify    </span><span class="cmd">golden record, verify, test</span><span class="out">      — catch numeric drift
+ship      </span><span class="cmd">serve, docker, k8s, gateway</span><span class="out">      — run it, containerize it, mount it behind a gateway</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-band block">
+      <div class="container">
+        <h2>Point it at a header or a deck. See what comes back.</h2>
+        <div class="hero-actions">
+          <a class="btn primary" href="http://localhost:8000">Open the console &rarr;</a>
+          <a class="btn" href="https://github.com/ravikings/nativegate">View on GitHub</a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>nativegate is open source. Every action is a plain <code>ngate</code> CLI command.</span>
+      <nav>
+        <a href="http://localhost:8000">Console</a>
+        <a href="https://github.com/ravikings/nativegate">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+
+</body>
+</html>
