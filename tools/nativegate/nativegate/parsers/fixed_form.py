@@ -181,6 +181,267 @@ def _split_declarator_list(text: str) -> list[str]:
     return items
 
 
+# --- documentation comments ---------------------------------------------
+#
+# The routine's comment header becomes `FunctionDef.doc`, which the generator
+# turns into the wrapper's Python docstring — and that docstring is what
+# FastAPI publishes as the route `description`, which FastMCP hands to a model
+# as the MCP tool description. So this is not cosmetic: it is the only text a
+# model gets about what a native routine actually computes.
+#
+# Both Fortran backends land here. The cleaning rules are the interesting part
+# and they are dialect-independent, so they live in this module — shared —
+# rather than being written twice and drifting. What each backend supplies is
+# only the line span of the routine's opening statement: the fparser2 reader
+# takes it from the parse tree, the regex reader recovers it with
+# `find_header_lines`. The differential harness compares whole `ModuleIR`s, so
+# any disagreement between the two is a test failure rather than a surprise in
+# someone's tool description.
+#
+# Comments are read off the source TEXT, by line number, and not out of any
+# parse structure. That is not laziness: measured on
+# libraries/petro/fortran/pvtcor.f, the header sitting inside SUBROUTINE
+# PVTINI is not a child of fparser2's `Specification_Part` at all — it is
+# buried inside an `Implicit_Part`, because where a comment node lands depends
+# on which grammar rule happened to be open when the reader reached it.
+# Walking for that is a promise to re-learn fparser2's node placement every
+# release, and it would give the regex reader nothing.
+
+# A fixed-form comment is any line with C, c, *, or ! in column 1. 'D'/'d' in
+# column 1 is a debug line, not a comment, and is deliberately not treated as
+# documentation.
+_FIXED_COMMENT_RE = re.compile(r"^[Cc*!]\s?(.*)$")
+_FREE_COMMENT_RE = re.compile(r"^\s*!+\s?(.*)$")
+
+# How far to look. A header longer than this is a change log or a table of
+# COMMON block layouts, not a description, and pasting 200 lines of it into a
+# tool description is actively harmful to the model reading it. Both limits
+# are truncation points, not rejections: the first N lines of a long header
+# are still the useful part.
+_MAX_DOC_LINES = 30
+_MAX_DOC_CHARS = 2000
+
+
+# `preprocess.expand_includes` splices the include file in as a comment-marked
+# block, and on the fixed-form path that text is what the reader (and so this
+# module) sees. An INCLUDE almost always sits directly under the routine's
+# header comment, so without this the include file's own banner — 8 lines
+# about COMMON block ordering in PETRO.INC — is appended to the description of
+# every routine in every deck that includes it. The marker line terminates the
+# comment run, exactly as a line of code would.
+_INCLUDE_MARKER_RE = re.compile(r"nativegate: (expanded|end) INCLUDE ")
+
+
+def comment_text(line: str, fixed: bool) -> str | None:
+    """The prose in `line`, or None if `line` is not a comment line."""
+    if _INCLUDE_MARKER_RE.search(line):
+        return None
+    match = (_FIXED_COMMENT_RE if fixed else _FREE_COMMENT_RE).match(line)
+    if match is None:
+        # In fixed form a `!` can also open a comment after column 1 — most
+        # F77 that has been touched since 1990 has picked up bang comments.
+        if fixed:
+            stripped = line.lstrip()
+            if stripped.startswith("!"):
+                return stripped.lstrip("!").strip()
+        return None
+    return match.group(1).strip()
+
+
+def is_banner(text: str) -> bool:
+    """True for a separator rule rather than prose.
+
+    Legacy decks are full of `C=======`, `C*******` and `C-------`. They carry
+    no information, and left in they dominate the tool description — the
+    PVTINI header in pvtcor.f is three lines of prose between two 71-character
+    rules. The test is "contains no letter or digit", which drops rules of any
+    punctuation character and any length while keeping anything with a word in
+    it (so `C--- 05-FEB-1996: FIXED DIVIDE BY ZERO` survives).
+    """
+    return not any(ch.isalnum() for ch in text)
+
+
+def clean_doc(raw_lines: list[str], fixed: bool) -> str | None:
+    """Comment lines -> docstring prose, or None if nothing survives."""
+    kept: list[str] = []
+    for line in raw_lines:
+        text = comment_text(line, fixed)
+        if text is None:
+            continue
+        # Tabs are legal in fixed form and wreck alignment once the text is
+        # re-indented inside a generated docstring; a tab counts as a space.
+        text = text.replace("\t", " ").rstrip()
+        # Blank comment lines (`C` alone) and rules are dropped outright
+        # rather than kept as paragraph breaks: keeping them means a
+        # description that opens with an empty line more often than not.
+        if not text or is_banner(text):
+            continue
+        kept.append(text)
+        if len(kept) >= _MAX_DOC_LINES:
+            break
+
+    if not kept:
+        # No header, or a header that was pure ASCII art. Never invent text:
+        # the generator has its own truthful skeleton for that case.
+        return None
+
+    doc = "\n".join(kept)[:_MAX_DOC_CHARS].rstrip()
+
+    # Carriage returns from CRLF decks are dropped: they are invisible and make
+    # generated files diff badly. That is the ONLY character this function
+    # rewrites.
+    #
+    # In particular it does NOT neutralise a `\"\"\"` or a trailing backslash,
+    # even though both would break the docstring this text is interpolated
+    # into. Doing so here was tried and reverted: it is lossy, and it rewrites
+    # a routine's documentation to suit ONE consumer's quoting rules. The IR
+    # promises the deck's own words, and every other consumer — JSON, an
+    # OpenAPI description, a future doc site — inherits the damage. Escaping
+    # belongs to the layer that owns the quoting context, so it lives in
+    # generators/python_pkg_gen._docstring_literal, which emits repr() for
+    # anything carrying a quote, a backslash or a control character and is
+    # tested against hostile text in tests/test_endpoint_docstrings.py. The
+    # C++ parser's _sanitise_doc made the same call, for the same reason.
+    doc = doc.replace("\r", "")
+    return doc or None
+
+
+
+def doc_comment_at(
+    source: str, first_line: int, last_line: int, fixed: bool
+) -> str | None:
+    """The comment header attached to a routine, cleaned, or None.
+
+    `first_line`/`last_line` are 1-based line numbers of the routine's opening
+    SUBROUTINE/FUNCTION statement in `source` (equal for a statement that is
+    not continued). Two positions are conventional and both are read:
+
+    * *inside* the routine, immediately after the opening statement —
+      overwhelmingly the F77 style, and what every deck in
+      libraries/petro/fortran does;
+    * *above* the routine — the free-form style.
+
+    The inside block wins when both are present. Above-the-routine comments
+    are the riskier source: the run above a routine also picks up the previous
+    routine's trailing notes and the file banner, because a blank line is not
+    required between program units and legacy decks rarely leave one. Both
+    runs stop at the first line that is not a comment, so neither can walk
+    past the nearest piece of code.
+
+    Both Fortran backends call this, on the same text, so the doc they put in
+    the IR is identical by construction — the differential harness in
+    tests/test_fortran_fparser.py compares whole `ModuleIR`s, so a doc the two
+    readers disagreed about would be a parity failure.
+    """
+    lines = source.splitlines()
+    if not (1 <= first_line <= len(lines)):
+        return None
+
+    # Inside: the contiguous comment run starting on the line after the
+    # opening statement. Anchored on `last_line`, so a continued statement
+    # (`SUBROUTINE FOO(A,` / `     * B)`) is skipped whole.
+    inside: list[str] = []
+    idx = last_line
+    while idx < len(lines) and comment_text(lines[idx], fixed) is not None:
+        inside.append(lines[idx])
+        idx += 1
+    doc = clean_doc(inside, fixed)
+    if doc is not None:
+        return doc
+
+    # Above: the contiguous comment run ending on the line before the opening
+    # statement, walked backwards and put back in source order.
+    above: list[str] = []
+    idx = first_line - 2
+    while idx >= 0 and comment_text(lines[idx], fixed) is not None:
+        above.append(lines[idx])
+        idx -= 1
+    return clean_doc(list(reversed(above)), fixed)
+
+
+def _logical_lines_with_spans(source: str, fixed: bool) -> list[tuple[str, int, int]]:
+    """(statement, first_line, last_line) for every logical line in RAW source.
+
+    A local, span-preserving re-run of what `normalize_fixed_form` /
+    `fortran_regex.normalize_free_form` already do. Those two throw the line
+    numbers away — reasonably, since nothing else needed them — and the
+    comment header is found by line number, so the join is repeated here with
+    the mapping kept. Comment and blank lines are dropped, exactly as they are
+    there, which is what stops a commented-out header from being matched.
+
+    Deliberately not a full normalisation: string literals are not tracked and
+    inline comments are not stripped, because the only consumer is a routine
+    header match and neither can appear in one.
+    """
+    out: list[tuple[str, int, int]] = []
+    lines = source.splitlines()
+    for i, raw in enumerate(lines):
+        if not raw.strip():
+            continue
+        if fixed:
+            if raw[0] in _COMMENT_CHARS:
+                continue
+            # Columns 1-6 are label and continuation, 73+ the sequence number.
+            body = raw[:72]
+            continues = len(body) > 5 and body[5] not in (" ", "0")
+            text = (body[6:] if len(body) > 6 else "").strip()
+            if continues and out:
+                stmt, first, _ = out[-1]
+                out[-1] = (stmt + " " + text, first, i + 1)
+                continue
+            out.append((text, i + 1, i + 1))
+        else:
+            if raw.lstrip().startswith("!"):
+                continue
+            text = raw.strip()
+            # A free-form statement continues when the PREVIOUS line ended
+            # with `&`; a leading `&` on this one only marks where it resumes.
+            if out and out[-1][0].endswith("&"):
+                stmt, first, _ = out[-1]
+                resumed = text[1:] if text.startswith("&") else text
+                out[-1] = (stmt[:-1] + " " + resumed, first, i + 1)
+                continue
+            out.append((text, i + 1, i + 1))
+    return out
+
+
+def find_header_lines(
+    source: str, name: str, fixed: bool = True
+) -> tuple[int, int] | None:
+    """1-based line span of `name`'s opening statement in RAW source.
+
+    The fparser2 backend gets this for free from the parse tree's line spans.
+    The regex backend does not: it works off normalised text — comments
+    stripped, continuations joined — whose line numbers no longer correspond
+    to the file, and the comment header is precisely what normalisation threw
+    away. So the raw text is scanned once more here.
+
+    The span covers the whole statement including its continuation lines, so
+    the "inside" comment run starts after the header however it was wrapped —
+    `SUBROUTINE NODAL (PRAVG, QMAX, ...` in wellib.f wraps over three lines
+    and its header comment is under the third.
+    """
+    if fixed:
+        start_re = re.compile(
+            _ROUTINE_START_RE_TEMPLATE.format(name=re.escape(name)), re.IGNORECASE
+        )
+    else:
+        # Free form: same shape, but a `result(...)` suffix may follow the
+        # argument list, so the statement is not required to end after it.
+        start_re = re.compile(
+            r"^[\w\s*(),=]*?\b(?:SUBROUTINE|FUNCTION)\s+"
+            + re.escape(name)
+            + r"\s*(?:\(|$)",
+            re.IGNORECASE,
+        )
+
+    for stmt, first, last in _logical_lines_with_spans(source, fixed):
+        if start_re.match(stmt.strip()):
+            return first, last
+    return None
+
+
+
 def find_routine(normalized: str, name: str) -> dict | None:
     """Locate one routine in normalized fixed-form source.
 

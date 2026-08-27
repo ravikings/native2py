@@ -6,6 +6,7 @@
   "functions": [
     {
       "cpp_name": null,
+      "doc": "LOAD COMPONENT DATA.  Z IS NORMALISED IN PLACE.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -90,6 +91,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "WILSON K VALUE INITIAL GUESS.  T IN DEG R, P IN PSIA.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -138,6 +140,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "RACHFORD-RICE OBJECTIVE.  MONOTONE DECREASING IN BETA.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -174,6 +177,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "SOLVE RACHFORD-RICE FOR THE VAPOUR MOLE FRACTION BETA.\nISTAT  0 = TWO PHASE, 1 = ALL LIQUID, 2 = ALL VAPOUR.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -222,6 +226,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "PENG-ROBINSON COMPRESSIBILITY FOR A MIXTURE OF COMPOSITION X.\nIPHASE  0 = SMALLEST ROOT (LIQUID), 1 = LARGEST ROOT (VAPOUR).\nTHE CUBIC IS SOLVED IN CLOSED FORM (CARDANO).",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -294,6 +299,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "ISOTHERMAL TWO PHASE FLASH BY SUCCESSIVE SUBSTITUTION.\nP PSIA, T DEG R.  ON RETURN BETA IS THE VAPOUR MOLE FRACTION.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -391,7 +397,7 @@
   ],
   "language": "fortran",
   "name": "flash",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [],
   "source_file": "libraries/petro/fortran/flash.f",
   "structs": []

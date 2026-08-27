@@ -46,6 +46,20 @@
 #   * This file does NOT cover system toolchain (cmake, gcc/gfortran, ninja) or
 #     the Docker base image — see the Dockerfile digest pin in
 #     nativegate/generators/docker_gen.py and docs/deployment-topologies.md.
+#   * It also does NOT cover every extra. `build`, `wheel`, `setuptools`,
+#     `meson`, `ninja` and `fastmcp` are declared in pyproject.toml but are
+#     deliberately absent here. `fastmcp` is the one worth explaining, because
+#     it is the largest: pinning it pulls 51 further packages (41 -> 92 in a
+#     clean resolve), including a crypto/auth stack (cryptography, authlib,
+#     pyjwt, joserfc, keyring), into the lockfile of a tool that NEVER IMPORTS
+#     IT. nativegate does not depend on fastmcp; only the services it generates
+#     do (see generators/pyproject_gen.py), and their dependencies are pinned
+#     per-service by `ngate lock <name>`, which is where that audit belongs.
+#     fastmcp is in the `test` extra only, so tests/test_mcp_gen.py can build a
+#     real MCP server rather than silently skipping. CI installs the extras by
+#     RANGE (`pip install -e ".[clang,fparser,build,test]"`), so those tests do
+#     run; what this omission costs is pip-audit coverage of that subtree, and
+#     that was accepted deliberately rather than overlooked.
 
 annotated-doc==0.0.5 \
     --hash=sha256:117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101 \

@@ -6,6 +6,7 @@
   "functions": [
     {
       "cpp_name": null,
+      "doc": "SIMCOR   -   IMPES BLACK OIL SIMULATOR CORE\nWRITTEN   08-JUL-1989   M. OKONKWO / R.T. HALSEY\nREVISED   07-MAY-1991   LSOR PRESSURE SOLVE (SEE MATSOL)\nREVISED   22-APR-1992   MXCELL RAISED TO 40000\nREVISED   17-OCT-1995   NON NEIGHBOUR CONNECTIONS\nREVISED   30-JAN-1997   TIME STORED AS DAYS SINCE START, NOT AS\nA TWO DIGIT YEAR PLUS DAY OF YEAR\nCALL SEQUENCE EXPECTED BY THE C++ DRIVER (Simulator.cpp):\nCALL SIMINI (NX, NY, NZ)\nCALL GRDSET (...)          ONCE PER PROPERTY ARRAY\nCALL TRNCAL\nCALL EQUILI (WOC, GOC, PDAT, DDAT)\nCALL STEP   (DTIN, DTOUT, ICONV)    REPEATEDLY\nSIMINI MUST BE CALLED AFTER PVTINI AND KRINI.  THERE IS NO CHECK.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -54,6 +55,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "BULK LOAD ONE PROPERTY ARRAY FROM THE DECK READER.\nIPROP  1 PORO  2 PERMX  3 PERMY  4 PERMZ  5 DZ  6 TOPS  7 NTG\n8 ACTNUM",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -102,6 +104,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "HARMONIC AVERAGE INTERBLOCK TRANSMISSIBILITIES.  DARCY CONSTANT\n0.001127 GIVES RB/D/PSI FROM MD, FT AND CP.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -113,6 +116,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "GRAVITY CAPILLARY EQUILIBRIUM INITIALISATION.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -173,6 +177,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "ADVANCE ONE IMPES TIME STEP.  ON FAILURE THE STEP IS HALVED AND\nRETRIED UP TO 8 TIMES BEFORE ICONV IS RETURNED NON ZERO.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -221,6 +226,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "ASSEMBLE THE IMPES PRESSURE EQUATION.  MOBILITIES ARE UPSTREAM\nWEIGHTED ON THE OLD TIME LEVEL POTENTIAL.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -329,6 +335,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "EXPLICIT SATURATION UPDATE.  ISAT NON ZERO IF ANY CELL LEAVES\nTHE PHYSICAL RANGE BY MORE THAN THE THROW TOLERANCE.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -353,6 +360,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "OIL IN PLACE, STB.  CALLED BY THE REPORT WRITER.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -365,7 +373,7 @@
   ],
   "language": "fortran",
   "name": "simcor",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [],
   "source_file": "libraries/petro/fortran/simcor.f",
   "structs": []

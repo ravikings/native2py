@@ -6,6 +6,7 @@
   "functions": [
     {
       "cpp_name": null,
+      "doc": "PRESSURE GRADIENT, PSI/FT, FOR ONE PIPE SEGMENT.\nP     PRESSURE AT SEGMENT, PSIA\nQO    OIL RATE,   STB/D\nQW    WATER RATE, STB/D\nQG    GAS RATE,   MSCF/D\nDIA   INTERNAL DIAMETER, FT\nTHETA INCLINATION FROM HORIZONTAL, DEGREES\nEPS   ABSOLUTE ROUGHNESS, FT",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -138,6 +139,7 @@
     },
     {
       "cpp_name": null,
+      "doc": null,
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -186,6 +188,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "THE C COEFFICIENT IN THE BEGGS-BRILL INCLINATION CORRECTION.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -258,6 +261,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "FANNING FRICTION FACTOR.  LAMINAR BELOW 2000, COLEBROOK ABOVE,\nSOLVED BY THREE FIXED POINT SWEEPS FROM THE JAIN EXPLICIT FORM.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -294,6 +298,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "MARCH A PRESSURE TRAVERSE DOWN THE TUBING FROM WELLHEAD PWH TO\nBOTTOMHOLE PBH IN NSEG SEGMENTS.  ITERATES ON SEGMENT MIDPOINT\nPRESSURE BECAUSE THE PVT IS PRESSURE DEPENDENT.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -427,7 +432,7 @@
   ],
   "language": "fortran",
   "name": "hydrau",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [],
   "source_file": "libraries/petro/fortran/hydrau.f",
   "structs": []

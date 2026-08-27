@@ -232,6 +232,20 @@ class FunctionDef:
     # fixed-form decks legitimately has both in one service.
     fortran_module: str | None = None
 
+    # Documentation attached to this declaration in its OWN source: a Doxygen
+    # or `//`/`/* */` block above a C++ declaration, the comment header above a
+    # Fortran routine. None means the parser found none; "" is not used.
+    #
+    # Carried because the generated FastAPI endpoint's docstring becomes the
+    # route's OpenAPI `description`, which is in turn the MCP tool description
+    # handed to a model before it calls native code (generators/mcp_gen.py).
+    # That made this the difference between a model calling a routine correctly
+    # and guessing, so it stopped being cosmetic. Verbatim from the source and
+    # never synthesised: a wrong description is worse than none, and legacy
+    # headers do contain stale comments — surfacing them unchanged at least
+    # keeps the staleness attributable to the source rather than to nativegate.
+    doc: str | None = None
+
 
 @dataclass
 class ModuleIR:
@@ -415,7 +429,7 @@ def validate(module: "ModuleIR") -> list[Problem]:
 # hand-edited, and quietly ignoring them is how a typo'd "is_cosnt: true"
 # becomes a wrong binding.
 SCHEMA_VERSION_MAJOR = 1
-SCHEMA_VERSION_MINOR = 5
+SCHEMA_VERSION_MINOR = 6
 SCHEMA_VERSION = f"{SCHEMA_VERSION_MAJOR}.{SCHEMA_VERSION_MINOR}"
 
 # What a document with no `schema_version` at all is treated as: everything
@@ -536,6 +550,7 @@ _FUNCTION_KEYS = frozenset(
         "returns_array",
         "cpp_name",
         "fortran_module",
+        "doc",
     }
 )
 _SKIPPED_KEYS = frozenset({"name", "reason"})
@@ -651,6 +666,7 @@ def module_from_dict(data: dict) -> ModuleIR:
                 is_overloaded=fn.get("is_overloaded", False),
                 returns_array=fn.get("returns_array", False),
                 cpp_name=fn.get("cpp_name"),
+                doc=fn.get("doc"),
             )
             for fn in data.get("functions", [])
         ],

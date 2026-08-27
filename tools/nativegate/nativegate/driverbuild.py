@@ -571,6 +571,24 @@ def build_cxx_extension_with_compile_commands(
         "-B",
         str(build_dir),
         f"-Dpybind11_DIR={pybind11.get_cmake_dir()}",
+        # pybind11 still defaults to its "classic" Python search (CMake's
+        # deprecated FindPythonInterp/FindPythonLibs) for projects whose
+        # `cmake_minimum_required` predates 3.27 — which cmake_gen's
+        # generated CMakeLists deliberately is (3.18, for older distros).
+        # Classic mode reads the ALL-CAPS `PYTHON_EXECUTABLE` and ignores
+        # `Python_EXECUTABLE` entirely, so without this flag the interpreter
+        # below is silently discarded ("Manually-specified variables were not
+        # used by the project") and pybind11 picks whatever `python3.9`-ish
+        # binary happens to sit first on PATH — a pyenv shim, say. The
+        # extension then gets built with THAT interpreter's ABI tag and
+        # `oracle._import_extension` fails with a bare ModuleNotFoundError,
+        # because a `.cpython-39-darwin.so` is invisible to a 3.11 run.
+        # Forcing FindPython mode makes `Python_EXECUTABLE` authoritative, so
+        # the oracle's extension is always built for the interpreter that is
+        # about to import it — the whole point of a same-process comparison.
+        # (A real `ngate build` never hits this: scikit-build-core sets this
+        # same variable itself before configuring.)
+        "-DPYBIND11_FINDPYTHON=ON",
         f"-DPython_EXECUTABLE={sys.executable}",
     ]
     completed = subprocess.run(configure_argv, capture_output=True, text=True, check=False)

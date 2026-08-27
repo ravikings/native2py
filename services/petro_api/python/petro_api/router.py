@@ -63,49 +63,75 @@ def _nativegate_unexposed() -> dict[str, str]:
 
 @router.post("/pvt_set_fluid", operation_id="petro_api_pvt_set_fluid")
 def pvt_set_fluid_endpoint(api_gravity: float, gas_gravity: float, temp_f: float, icorr: int):
-    """Call the native subroutine `pvt_set_fluid`."""
+    """Initialise the fluid description. Must be called before anything
+    else in this module. Wraps PVTINI.
+
+    Call the native subroutine `pvt_set_fluid`.
+    """
     with _NATIVE_LOCK:
         pvt_set_fluid(api_gravity, gas_gravity, temp_f, icorr)
     return {"ok": True}
 
 @router.post("/solution_gor", operation_id="petro_api_solution_gor")
 def solution_gor_endpoint(pressure: float):
-    """Call the native routine `solution_gor`."""
+    """Solution gas oil ratio, scf/stb.
+
+    Call the native routine `solution_gor`.
+    """
     with _NATIVE_LOCK:
         result = solution_gor(pressure)
     return {"result": result}
 
 @router.post("/oil_fvf", operation_id="petro_api_oil_fvf")
 def oil_fvf_endpoint(pressure: float):
-    """Call the native routine `oil_fvf`."""
+    """Oil formation volume factor, rb/stb.
+
+    Call the native routine `oil_fvf`.
+    """
     with _NATIVE_LOCK:
         result = oil_fvf(pressure)
     return {"result": result}
 
 @router.post("/oil_viscosity", operation_id="petro_api_oil_viscosity")
 def oil_viscosity_endpoint(pressure: float):
-    """Call the native routine `oil_viscosity`."""
+    """Live oil viscosity, cp.
+
+    Call the native routine `oil_viscosity`.
+    """
     with _NATIVE_LOCK:
         result = oil_viscosity(pressure)
     return {"result": result}
 
 @router.post("/gas_z_factor", operation_id="petro_api_gas_z_factor")
 def gas_z_factor_endpoint(pressure: float):
-    """Call the native routine `gas_z_factor`."""
+    """Gas deviation factor, dimensionless.
+
+    Call the native routine `gas_z_factor`.
+    """
     with _NATIVE_LOCK:
         result = gas_z_factor(pressure)
     return {"result": result}
 
 @router.post("/bubble_point", operation_id="petro_api_bubble_point")
 def bubble_point_endpoint(target_gor: float):
-    """Call the native routine `bubble_point`."""
+    """Bubble point pressure, psia, for a target solution GOR.
+
+    Call the native routine `bubble_point`.
+    """
     with _NATIVE_LOCK:
         result = bubble_point(target_gor)
     return {"result": result}
 
 @router.post("/pvt_state", operation_id="petro_api_pvt_state")
 def pvt_state_endpoint(pressure: float, n: int, props: Annotated[list[float], Field(max_length=MAX_ARRAY_ITEMS)]):
-    """Call the native subroutine `pvt_state`."""
+    """Complete PVT state at one pressure, returned as an array so the
+    caller never touches /PVTOUT/ directly.
+    props(1) = Bo    props(2) = Bg    props(3) = Bw
+    props(4) = Rs    props(5) = muo   props(6) = mug
+    props(7) = rhoo  props(8) = rhog  props(9) = Z
+
+    Call the native subroutine `pvt_state`.
+    """
     if n != len(props):
         raise HTTPException(
             status_code=422,
@@ -118,21 +144,31 @@ def pvt_state_endpoint(pressure: float, n: int, props: Annotated[list[float], Fi
 
 @router.post("/tubing_bhp", operation_id="petro_api_tubing_bhp")
 def tubing_bhp_endpoint(wellhead_p: float, q_oil: float, q_water: float, q_gas: float, diameter: float, roughness: float, tvd: float, md: float, nseg: int):
-    """Call the native routine `tubing_bhp`."""
+    """Bottomhole pressure from a Beggs and Brill traverse, psia.
+    Wraps TRAVER.
+
+    Call the native routine `tubing_bhp`.
+    """
     with _NATIVE_LOCK:
         result = tubing_bhp(wellhead_p, q_oil, q_water, q_gas, diameter, roughness, tvd, md, nseg)
     return {"result": result}
 
 @router.post("/vogel_rate", operation_id="petro_api_vogel_rate")
 def vogel_rate_endpoint(res_pressure: float, flowing_bhp: float, q_max: float):
-    """Call the native routine `vogel_rate`."""
+    """Vogel inflow performance, stb/d.
+
+    Call the native routine `vogel_rate`.
+    """
     with _NATIVE_LOCK:
         result = vogel_rate(res_pressure, flowing_bhp, q_max)
     return {"result": result}
 
 @router.post("/last_error", operation_id="petro_api_last_error")
 def last_error_endpoint():
-    """Call the native routine `last_error`."""
+    """Last error code raised by the legacy layer. Clears the state.
+
+    Call the native routine `last_error`.
+    """
     with _NATIVE_LOCK:
         result = last_error()
     return {"result": result}

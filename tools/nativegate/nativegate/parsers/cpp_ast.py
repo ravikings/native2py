@@ -916,6 +916,98 @@ def _namespace_of(cursor) -> str | None:
     return "::".join(reversed(parts)) or None
 
 
+_COMMENT_OPENERS = ("/**", "/*!", "/*")
+_COMMENT_LINE_MARKERS = ("///", "//!", "//<", "//")
+
+
+def _doc_of(cursor) -> str | None:
+    """The declaration's own documentation, cleaned into one line of prose.
+
+    Why `raw_comment` and not `brief_comment`: `brief_comment` is Clang's
+    *parsed* comment model, and it returns only the \\brief paragraph. For the
+    kind of header this tool is pointed at — legacy engineering headers whose
+    Doxygen blocks are one unlabelled paragraph followed by @param lines, or
+    just a bare `///` line — that paragraph is very often absent, so
+    `brief_comment` silently yields nothing where there is real documentation
+    sitting right above the declaration. It also depends on libclang having
+    built the comment AST, which is not uniform across builds. `raw_comment` is
+    the verbatim source text of the attached comment and is stable on every
+    libclang we support; the price is that the comment syntax has to be
+    stripped here, which is the rest of this function.
+
+    Doxygen *structure* is deliberately not parsed: @param/@return stay in the
+    prose. The consumer is an MCP tool description handed to a model, and a
+    model reads "@param api oil gravity" perfectly well; inventing IR fields to
+    hold it would be a schema change no generator asked for (ROADMAP 3.4).
+
+    The result is a single line by construction — see `_sanitise_doc` for why
+    that is a safety property and not a formatting preference.
+    """
+    raw = getattr(cursor, "raw_comment", None)
+    if not raw:
+        return None
+
+    body = raw.strip()
+    for opener in _COMMENT_OPENERS:
+        if body.startswith(opener):
+            body = body[len(opener):]
+            break
+    if body.endswith("*/"):
+        body = body[: -len("*/")]
+
+    lines = []
+    for line in body.splitlines():
+        line = line.strip()
+        # A block comment's continuation stars, and the marker on every line of
+        # a `///` run — libclang hands the whole run back as one raw comment,
+        # so the markers after the first are still in the text.
+        if line.startswith("*") and not line.startswith("*/"):
+            line = line[1:].strip()
+        else:
+            for marker in _COMMENT_LINE_MARKERS:
+                if line.startswith(marker):
+                    line = line[len(marker):].strip()
+                    break
+        lines.append(line)
+
+    return _sanitise_doc(" ".join(lines))
+
+
+def _sanitise_doc(text: str) -> str | None:
+    """Collapse to one line of prose, and make it safe to *paste* into source.
+
+    This text does not stay data. `python_pkg_gen._docstring` interpolates it
+    straight into generated Python between triple double-quotes, so three
+    characters of a comment nobody wrote for that purpose can close the
+    docstring and turn the generated module into a syntax error — or, with a
+    little effort, into code.
+
+    Exactly ONE transformation happens here: all whitespace — newlines and
+    control characters included — collapses to single spaces. A legacy header
+    wraps its prose to 72 columns and pads with continuation stars, none of
+    which is content, so this loses nothing and gives the field a contract that
+    is narrow and checkable: `doc` is one line.
+
+    Everything else is left ALONE, and that is a deliberate reversal of the
+    obvious design. It is tempting to also neutralise a `\"\"\"` here (it would
+    close the docstring this text is interpolated into) or to drop a trailing
+    backslash (it would escape the closing quote). Both work, and both are
+    LOSSY: they silently rewrite a routine's documentation to suit one
+    consumer's quoting rules. The IR promises the native source's own words,
+    and a parser that quietly edits them breaks that promise for every other
+    consumer too — JSON, an OpenAPI description, a future doc site.
+
+    So escaping lives entirely in the layer that owns the quoting context:
+    `python_pkg_gen._docstring_literal` emits `repr(doc)` for anything carrying
+    a quote, a backslash or a control character, which Python itself guarantees
+    is correctly encoded, and a readable triple-quoted block otherwise. That is
+    lossless, it is tested against hostile text in
+    tests/test_endpoint_docstrings.py, and it means this function does not need
+    to guess what its output will be pasted into.
+    """
+    return " ".join(text.split()) or None
+
+
 def _is_public(cursor) -> bool:
     return cursor.access_specifier == _cindex.AccessSpecifier.PUBLIC
 
@@ -1230,6 +1322,14 @@ def _parse_function(
             # `&bubble_point` — "use of undeclared identifier".
             namespace=_namespace_of(cursor),
             returns_array=returns_array,
+            # The routine's own documentation, when it has any, becomes the
+            # generated endpoint's docstring and from there the MCP tool
+            # description a model reads before deciding how to call it
+            # (ROADMAP 3.4). None when the declaration carries no comment: a
+            # skeleton sentence is the generator's business, and synthesising
+            # prose here would put text in the IR that appears nowhere in the
+            # native source.
+            doc=_doc_of(cursor),
         )
     )
 
