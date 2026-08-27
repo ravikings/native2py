@@ -16,9 +16,15 @@ _BUILD_REQUIRES = {
 # worker class is deprecated and slated for removal, and shipping a deprecated
 # import path inside generated code nobody is allowed to hand-edit is how a
 # service breaks on a routine dependency bump.
+#
+# fastmcp is a RUNTIME dependency, not an optional extra: `service.py` imports
+# mcp_server unconditionally, so a wheel without it does not start at all. The
+# MCP endpoint is part of every generated service's surface by design — an
+# LLM-callable interface that has to be switched on is one that is not there
+# when someone goes looking for it. See generators/mcp_gen.py.
 _DEPENDENCIES = {
-    "cpp": '["fastapi", "uvicorn", "gunicorn", "uvicorn-worker"]',
-    "fortran": '["fastapi", "uvicorn", "gunicorn", "uvicorn-worker", "numpy"]',
+    "cpp": '["fastapi", "uvicorn", "gunicorn", "uvicorn-worker", "fastmcp"]',
+    "fortran": '["fastapi", "uvicorn", "gunicorn", "uvicorn-worker", "fastmcp", "numpy"]',
 }
 
 

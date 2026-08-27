@@ -10,6 +10,7 @@ generation at all, just routing config. See docs/deployment-topologies.md.
 from __future__ import annotations
 
 from ..ir import is_valid_python_name
+from . import mcp_gen
 from .error_gen import ERROR_HANDLER_IMPORTS, generate_error_handler
 
 
@@ -25,6 +26,16 @@ def generate_gateway_app(
                 f"Service name '{name}' cannot be imported from a gateway: it is "
                 "not a valid Python module name (a keyword, or not an identifier). "
                 "Rename the service."
+            )
+        # A service mounted at /mcp would be shadowed by the gateway's MCP
+        # endpoint, which is mounted at the same path. Starlette resolves the
+        # mount before the router, so the service's routes would simply stop
+        # answering — silently, with no error at startup.
+        if f"/{name}" == mcp_gen.MCP_MOUNT_PATH:
+            raise ValueError(
+                f"Service name '{name}' collides with the gateway's MCP endpoint "
+                f"at {mcp_gen.MCP_MOUNT_PATH}: mounting it would make the service "
+                "unreachable. Rename the service."
             )
 
     imports = "\n".join(
@@ -54,9 +65,13 @@ routers are unchanged either way.
 from fastapi import FastAPI, Request
 
 from .middleware import install_middleware, readiness
+{mcp_gen.MCP_APP_IMPORT}
 {imports}
 
-app = FastAPI(title="{gateway_name}")
+# One MCP endpoint for the whole platform, covering every mounted service —
+# the composed topology's "one URL" promise applies to the LLM interface too.
+# `lifespan=` is required: see generators/mcp_gen.py.
+app = FastAPI(title="{gateway_name}", lifespan=mcp_app.lifespan)
 
 {includes}
 
@@ -66,6 +81,7 @@ app = FastAPI(title="{gateway_name}")
 # would publish it unprotected.
 install_middleware(app, "{package_name}")
 readiness(app, "{package_name}")
+{mcp_gen.mcp_mount_lines()}
 
 
 @app.get("/healthz", tags=["health"])
@@ -87,7 +103,7 @@ version = "1.0.0"
 requires-python = ">=3.10"
 # Each service is a normal wheel dependency — build them independently,
 # publish them, and pin versions here like any other package.
-dependencies = ["fastapi", "uvicorn", {deps}]
+dependencies = ["fastapi", "uvicorn", "fastmcp", {deps}]
 
 [tool.setuptools]
 packages = ["{package_name}"]

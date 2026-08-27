@@ -565,8 +565,21 @@ def _service_app(monkeypatch, tmp_path, namespace: dict, service="petro") -> Fas
         f"from {mw_name} import install_middleware, readiness",
     ).replace("from .router import router", "").replace(
         "app.include_router(router)", ""
-    )
+    # The MCP mount is dropped for the same reason the router import is: it
+    # cannot resolve without an installed package. These tests are about the
+    # health probes and the error handler; tests/test_mcp_gen.py owns the MCP
+    # wiring. The lifespan= keyword has to go too, or FastAPI() never builds.
+    ).replace("from .mcp_server import mcp_app", "").replace(
+        ", lifespan=mcp_app.lifespan", ""
+    ).replace('app.mount("/mcp", mcp_app)', "")
     assert mw_name in rewritten, "service.py's middleware import shape changed"
+    # Comments legitimately mention mcp_app (they explain why the lifespan is
+    # not optional), so only executable lines count here.
+    assert not [
+        line
+        for line in rewritten.splitlines()
+        if "mcp_app" in line and not line.lstrip().startswith("#")
+    ], "service.py's MCP wiring shape changed"
 
     module_globals: dict = {}
     exec(compile(rewritten, "service.py", "exec"), module_globals)  # noqa: S102

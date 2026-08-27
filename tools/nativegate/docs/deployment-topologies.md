@@ -8,6 +8,7 @@ pain.
 | You want to share... | Mechanism | Status |
 |---|---|---|
 | **One API URL** across services | Composed gateway, or an ingress in front of separate images | ✅ both supported |
+| **One MCP endpoint** for an LLM client | Composed gateway (each standalone service also serves its own) | ✅ `/mcp`, see [mcp.md](mcp.md) |
 | **One deployable** (one image, one scale unit) | Composed gateway | ✅ `ngate gateway` |
 | **Native code** across services (common C++/Fortran) | Shared CMake library target (C++) or compiled-in sources (Fortran) | ✅ both, by different mechanisms |
 | **One process** across tenants | — | ❌ not supported — see [Tenancy](#tenancy-what-is-and-is-not-supported) |
@@ -72,16 +73,17 @@ Generates `gateways/platform-api/`:
 from demo.router import router as demo_router
 from calculator.router import router as calculator_router
 
-app = FastAPI(title="platform-api")
+app = FastAPI(title="platform-api", lifespan=mcp_app.lifespan)
 app.include_router(demo_router, prefix="/demo")
 app.include_router(calculator_router, prefix="/calculator")
+app.mount("/mcp", mcp_app)   # one MCP endpoint for every mounted service
 ```
 
 and a `pyproject.toml` whose dependencies are **the service wheels
 themselves**:
 
 ```toml
-dependencies = ["fastapi", "uvicorn", "demo", "calculator"]
+dependencies = ["fastapi", "uvicorn", "fastmcp", "demo", "calculator"]
 ```
 
 That last part is the important bit for enterprise: **each service is still

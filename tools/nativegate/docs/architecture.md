@@ -101,6 +101,7 @@ See [Exposing C++](cpp-guide.md#what-the-parser-supports) and
 | `pyproject_gen.py` | `pyproject.toml` (written only when missing) |
 | `docker_gen.py` | multi-stage Dockerfile, per-language build/runtime deps |
 | `gateway_gen.py` | a composed app mounting several services' routers |
+| `mcp_gen.py` | `mcp_server.py`, the MCP view of the same router ([mcp.md](mcp.md)) |
 | `k8s_gen.py` | Kubernetes Deployment/Service manifests |
 
 `python_pkg_gen.generate_init_py` has one piece of language-specific logic
@@ -207,7 +208,7 @@ moment something gets deleted, or a merge conflict lands in a generated file.
 | `native/` | **yours** — the C++/Fortran being exposed | gone for good; nothing regenerates source |
 | `nativegate.yaml` | **yours** — what to expose, parser and clang settings | gone for good; `create-service` writes a fresh default |
 | `golden.json` | **yours after the first record** — the inputs are hand-tunable and are the numerical baseline | re-record, but the recorded *answers* are lost, so it no longer proves anything about the past |
-| `bindings/generated/` (C++ only), `CMakeLists.txt`, `python/<name>/` (`__init__.py`, `router.py`, `service.py`, `middleware.py`), `tests/`, `native/_expanded/` (Fortran only), `.nativegate/ir.json` | generated | `ngate generate <name>` restores all of it byte-for-byte |
+| `bindings/generated/` (C++ only), `CMakeLists.txt`, `python/<name>/` (`__init__.py`, `router.py`, `service.py`, `middleware.py`, `mcp_server.py`), `tests/`, `native/_expanded/` (Fortran only), `.nativegate/ir.json` | generated | `ngate generate <name>` restores all of it byte-for-byte |
 | `requirements.lock` | generated | `ngate lock <name>` |
 | `infrastructure/kubernetes/<name>.yaml` | generated | `ngate k8s <name>` |
 | `pyproject.toml` | generated, but hand-editable (pinned deps, version) | `ngate generate` restores it **only if missing** — it never overwrites your edits |

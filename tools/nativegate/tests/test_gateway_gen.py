@@ -83,13 +83,22 @@ def _app_from(source: str):
     # are about the error handler, and auth/limits/request-ids in front of it
     # would change what reaches it. tests/test_middleware_gen.py covers those
     # against a real generated middleware module.
-    dropped = (".router import", ".middleware import")
-    called = ("app.include_router(", "install_middleware(", "readiness(")
+    # The MCP app goes the same way, and for the same reason: it is a mount
+    # under this app, not part of the error-handler contract these tests pin.
+    # Its lifespan= keyword has to come off the FastAPI() call too, or the app
+    # never constructs. tests/test_mcp_gen.py covers the MCP wiring itself.
+    dropped = (".router import", ".middleware import", ".mcp_server import")
+    called = ("app.include_router(", "install_middleware(", "readiness(", "app.mount(")
     kept = [
-        line
+        line.replace(", lifespan=mcp_app.lifespan", "")
         for line in source.splitlines()
         if not any(d in line for d in dropped) and not line.startswith(called)
     ]
+    # Comments legitimately mention mcp_app (they explain why the lifespan is
+    # not optional), so only executable lines count here.
+    assert not [
+        line for line in kept if "mcp_app" in line and not line.lstrip().startswith("#")
+    ], "app source's MCP wiring shape changed"
     namespace: dict = {}
     exec(compile("\n".join(kept), "app.py", "exec"), namespace)  # noqa: S102
 
@@ -178,9 +187,10 @@ def test_debug_true_defeats_the_handler_and_is_not_used():
     # Asserted on the constructor, not on the whole file: the handler's own
     # docstring names `debug=True` to warn about it, and a substring check
     # over the source would fail on that warning.
-    assert 'app = FastAPI(title="demo")\n' in source
+    constructor = 'app = FastAPI(title="demo", lifespan=mcp_app.lifespan)\n'
+    assert constructor in source
 
-    leaky = source.replace('FastAPI(title="demo")', 'FastAPI(title="demo", debug=True)')
+    leaky = source.replace(constructor, 'app = FastAPI(title="demo", debug=True)\n')
     response = _app_from(leaky).post("/boom")
 
     assert _SECRET in response.text  # the handler did NOT get a say
