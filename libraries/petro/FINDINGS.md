@@ -1,6 +1,6 @@
-# native2py vs. a real legacy codebase — findings and fixes
+# nativegate vs. a real legacy codebase — findings and fixes
 
-Ran `native2py` against `libraries/petro` (~4,800 lines: 7 fixed-form F77
+Ran `ngate` against `libraries/petro` (~4,800 lines: 7 fixed-form F77
 decks with COMMON blocks and INCLUDE decks, a 2003 F90 facade, and a
 pre-standard C++ layer), found what broke, and fixed it.
 
@@ -234,7 +234,7 @@ Regression coverage: `tests/test_legacy_cpp.py` (26) and
 | Item | Why |
 |---|---|
 | `FortranBridge.hpp` macro-mangled declarations | needs a real preprocessor; now reported as skipped rather than returning an empty module |
-| `double*` array parameters | needs a length convention in `native2py.yaml` (e.g. `arrays: {values: n}`) |
+| `double*` array parameters | needs a length convention in `nativegate.yaml` (e.g. `arrays: {values: n}`) |
 | Fortran `libraries:` linking | `libraries:` is wired for C++ but not for f2py; Fortran services must copy sources into `native/` |
 | Cross-file CALL resolution | Intent inference resolves callees within one file. A `CALL` into another deck widens the argument to `inout` — correct, just verbose |
 | `CHARACTER` output arguments | f2py cannot return a CHARACTER argument; those stay inputs and are reported |

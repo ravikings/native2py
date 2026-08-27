@@ -1,14 +1,14 @@
-# native2py — Business Case
+# nativegate — Business Case
 
 *Automated modernization of legacy scientific computing.*
 
 **Status:** V1 prototype, shared for technical review.
 **Audience:** engineering leadership evaluating a legacy-modernization
 approach.
-**Source:** <https://github.com/ravikings/native2py>
+**Source:** <https://github.com/ravikings/nativegate>
 **Companion documents:** [`design.md`](design.md) (the specification),
 [`README.md`](README.md) (what exists today),
-[`tools/native2py/docs/production-readiness.md`](tools/native2py/docs/production-readiness.md)
+[`tools/nativegate/docs/production-readiness.md`](tools/nativegate/docs/production-readiness.md)
 (the honest gap list).
 
 ---
@@ -26,7 +26,7 @@ ways to get them.
 | Hand-write bindings | A specialist skill, one-off per API, rots on the next signature change |
 | Shell out to a batch executable and parse text files | Brittle, slow, and invisible to monitoring |
 
-native2py is the fourth option: **leave the native code exactly as it is and
+nativegate is the fourth option: **leave the native code exactly as it is and
 generate the bridge.**
 
 ---
@@ -147,8 +147,8 @@ in-house work; roughly double both if the work is contracted out.
 
 | Step | Who | Days (typical) |
 |---|---|---|
-| Add the symbol to `native2py.yaml` | Any engineer | ~0 |
-| `native2py generate` / `build` | Any engineer | ~0 |
+| Add the symbol to `nativegate.yaml` | Any engineer | ~0 |
+| `ngate generate` / `build` | Any engineer | ~0 |
 | Review refusals and unsupported types | Any engineer | 0 – 1 |
 | Record and eyeball `golden.json` | Domain expert | 0.25 – 1 |
 | **Subtotal** | | **~0.25 – 2 days** |
@@ -178,11 +178,11 @@ Bindings, CMake, the Python package, the FastAPI service, tests and the
 Dockerfile are all regenerated on demand:
 
 ```bash
-native2py generate petro
+ngate generate petro
 ```
 
 What is *not* regenerated is the code a human wrote: `native/`,
-`native2py.yaml`, and the recorded answers in `golden.json`.
+`nativegate.yaml`, and the recorded answers in `golden.json`.
 
 A native signature change becomes a re-run rather than a maintenance ticket
 assigned to a specialist, so binding maintenance stops being a line item in
@@ -198,8 +198,8 @@ the codebase stays alive.
 values a reservoir engineer can check by hand.
 
 ```bash
-native2py golden record pvt    # -> services/pvt/golden.json
-native2py golden verify pvt    # 4 entry point(s) unchanged
+ngate golden record pvt  # -> services/pvt/golden.json
+ngate golden verify pvt  # 4 entry point(s) unchanged
 ```
 
 Commit the file, and any rebuild that moves a number fails.
@@ -247,8 +247,8 @@ Three effects matter more than the ratio:
 > is structural rather than a matter of prompting the agent better, but the
 > absolute numbers are not data.
 
-**This axis is addressable today.** `tools/native2py/skill/` is a Claude Code
-skill, symlinked to `.claude/skills/native2py`, that makes a coding agent
+**This axis is addressable today.** `tools/nativegate/skill/` is a Claude Code
+skill, symlinked to `.claude/skills/nativegate`, that makes a coding agent
 invoke the CLI instead of hand-writing bindings. It encodes what an agent has
 no way to infer from `--help`: that `suggest` exists, so it should not read
 headers itself to choose a starting file; that a `regex reader` line means the
@@ -266,11 +266,11 @@ Installing it in another project:
 
 ```bash
 mkdir -p .claude/skills
-cp -r /path/to/native2py/tools/native2py/skill .claude/skills/native2py
+cp -r /path/to/nativegate/tools/nativegate/skill .claude/skills/nativegate
 ```
 
 Full argument in "Use it as an agent skill" in
-[`tools/native2py/README.md`](tools/native2py/README.md).
+[`tools/nativegate/README.md`](tools/nativegate/README.md).
 
 ### 3.6 Where cost does *not* go away
 
@@ -359,7 +359,7 @@ is the specific bottleneck this removes.
 
 Five things the partner initiative needs, and where each comes from:
 
-| Partner-API requirement | What native2py already produces |
+| Partner-API requirement | What nativegate already produces |
 |---|---|
 | A machine-readable contract partners can generate clients from | FastAPI generates OpenAPI schema automatically for every exposed service — no separate spec to write, and none to drift |
 | A stable surface that does not break when the native code changes | Python is the stable interface, the implementation is not. Native internals can evolve behind `from petro import …`; a breaking native change fails binding generation rather than reaching a partner |
@@ -462,7 +462,7 @@ The accurate positioning is therefore:
 The gaps are ordinary platform engineering: auth, a segfault-isolation
 strategy, CI/CD and deployment templates. They are well understood and they
 are scoped in
-[`production-readiness.md`](tools/native2py/docs/production-readiness.md),
+[`production-readiness.md`](tools/nativegate/docs/production-readiness.md),
 which grades the tool against `design.md`'s own requirements rather than
 against a sales pitch. They are simply not done yet, and they should be costed
 as part of any decision to go beyond phase 1.

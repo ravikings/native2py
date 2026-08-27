@@ -1,6 +1,6 @@
 # Specification: verification layers 2 and 3
 
-**Status:** implemented. All tasks in `tools/native2py/verification-layers-tasks.md` (T1-T12) are complete; see that file for the module-by-module breakdown.
+**Status:** implemented. All tasks in `docs/verification-layers-tasks.md` (T1-T12) are complete; see that file for the module-by-module breakdown.
 **Revision note:** this version folds in a pressure-test of the first draft.
 The load-bearing changes: the oracle driver is generated from `golden.json`'s
 recorded entries rather than from `plan()` (§2.2); the driver links against
@@ -10,9 +10,9 @@ build, with no committed bit file (§2.6); and the structural invariants take a
 declared list of state-mutating routines so they do not condemn the API's own
 contract (§3.5).
 **Companion documents:** [`design.md`](design.md) (the base specification),
-[`tools/native2py/native2py/golden.py`](tools/native2py/native2py/golden.py)
+[`tools/nativegate/nativegate/golden.py`](tools/nativegate/nativegate/golden.py)
 (layer 1, implemented),
-[`tools/native2py/docs/golden-values.md`](tools/native2py/docs/golden-values.md).
+[`tools/nativegate/docs/golden-values.md`](tools/nativegate/docs/golden-values.md).
 
 This specifies two gate-keeping artifacts to sit beside `golden.json`:
 the **oracle** (fidelity to the legacy binary) and `invariants.json`
@@ -258,14 +258,14 @@ what they were"* — that is golden's question — but *"the binding and the
 native code agree, here, now."* That invariant needs no committed file:
 
 ```
-native2py oracle check <name>      # generate driver, compile, link, run both
+ngate oracle check <name>      # generate driver, compile, link, run both
                                    # paths, compare bitwise, in this build
-native2py oracle show <name>       # coverage + what each slot is
-native2py oracle record <name>     # optional: write oracle.json from a check
+ngate oracle show <name>    # coverage + what each slot is
+ngate oracle record <name>  # optional: write oracle.json from a check
 ```
 
 `oracle check` is the gate. It runs wherever the build runs — every CI build,
-every local `native2py build` if desired — and passes or fails with no file
+every local `ngate build` if desired — and passes or fails with no file
 involved. Because both sides execute in the same build, there is nothing to
 go stale, nothing to re-record, and no mode where a tolerance is needed.
 
@@ -282,12 +282,12 @@ The driver is regenerated and recompiled on **every** check rather than
 cached. A stale driver that passes is worse than no driver. Where an
 `oracle.json` exists, its `driver_sha256` is checked against the freshly
 generated driver so a change in the generator is visible rather than silently
-absorbed — which means, stated plainly: **every native2py generator change
+absorbed — which means, stated plainly: **every nativegate generator change
 invalidates every recorded oracle file**, and re-recording them is part of
 upgrading the tool. That friction is accepted; a generator change that moved
 the driver is exactly the event the hash exists to surface.
 
-`native2py verify <name>` (the aggregate) runs `oracle check` if a toolchain
+`ngate verify <name>` (the aggregate) runs `oracle check` if a toolchain
 is present, then golden, then invariants if `invariants.json` exists — and
 reports each separately. Which layer failed *is* the diagnostic.
 
@@ -410,10 +410,10 @@ see exactly what was and was not covered.
 library's actual error convention: petro routines report through `last_error`
 and return in-band values rather than raising, so an unguarded domain edge
 passes `total` trivially and can pass `finite` with garbage. Declaring the
-accessor (`error_flag: last_error` in `native2py.yaml`) makes the sweep check
+accessor (`error_flag: last_error` in `nativegate.yaml`) makes the sweep check
 what the library actually signals.
 
-**Declared** — authored by a human in `native2py.yaml`, because no parser can
+**Declared** — authored by a human in `nativegate.yaml`, because no parser can
 know them:
 
 ```yaml
@@ -556,7 +556,7 @@ in tests.
 ### 3.7 File schema
 
 `invariants.json` is a **result** artifact, not the source of truth — the
-properties live in `native2py.yaml` where a human edits them. The JSON records
+properties live in `nativegate.yaml` where a human edits them. The JSON records
 what was checked, so the diff shows coverage changing:
 
 ```jsonc
@@ -706,7 +706,7 @@ is wrong, all three layers agree with it, in unison, forever.
   which cuts against "what is generated, what is yours".
 - **`intent(out)` arrays need a size at the driver's call site.** The IR
   carries `length_param`; where it is absent the entry is skipped, but it may
-  be worth a declaration in `native2py.yaml` instead.
+  be worth a declaration in `nativegate.yaml` instead.
 - **Does `invariants` need its own JSON at all**, or should results live only
   in the test report? The argument for the file is that coverage changes show
   up in review; the argument against is a generated file nobody edits.

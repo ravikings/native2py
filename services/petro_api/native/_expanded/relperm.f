@@ -19,7 +19,7 @@ C=======================================================================
 C-----------------------------------------------------------------------
 C     SET COREY END POINTS AND EXPONENTS.  SWITCHES TO ANALYTIC MODE.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -72,7 +72,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /KREND/ SWCON, SORW, SORG, SGCON, EXPW, EXPO, EXPG,
      &               KRWMAX, KROMAX, KRGMAX, PCWMAX, PCGMAX
       COMMON /KRSEL/ ITABLE, NSWOF, NSGOF, ISTONE
@@ -108,7 +108,7 @@ C-----------------------------------------------------------------------
 C     LOAD AN SWOF TABLE.  N ROWS, ASCENDING IN SW.  SWITCHES TO
 C     TABLE MODE.  CALLED FROM THE C++ DECK READER VIA KRLOAD_.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -161,7 +161,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION SWTAB(N), KRWTAB(N), KROTAB(N), PCWTAB(N)
       DOUBLE PRECISION KRWTAB, KROTAB
       DOUBLE PRECISION TLOOK
@@ -195,7 +195,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     WATER RELATIVE PERMEABILITY.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -248,7 +248,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /KREND/ SWCON, SORW, SORG, SGCON, EXPW, EXPO, EXPG,
      &               KRWMAX, KROMAX, KRGMAX, PCWMAX, PCGMAX
       COMMON /KRTAB/ TSW(NTABMX), TKRW(NTABMX), TKRO(NTABMX),
@@ -284,7 +284,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     OIL RELATIVE PERMEABILITY IN THE OIL-WATER SYSTEM.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -337,7 +337,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /KREND/ SWCON, SORW, SORG, SGCON, EXPW, EXPO, EXPG,
      &               KRWMAX, KROMAX, KRGMAX, PCWMAX, PCGMAX
       COMMON /KRTAB/ TSW(NTABMX), TKRW(NTABMX), TKRO(NTABMX),
@@ -373,7 +373,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     GAS RELATIVE PERMEABILITY.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -426,7 +426,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /KREND/ SWCON, SORW, SORG, SGCON, EXPW, EXPO, EXPG,
      &               KRWMAX, KROMAX, KRGMAX, PCWMAX, PCGMAX
       DOUBLE PRECISION KRWMAX, KROMAX, KRGMAX
@@ -455,7 +455,7 @@ C     ISTONE = 1  STONE I (NORMALISED)
 C     ISTONE = 2  STONE II
 C     ISTONE = 3  SATURATION WEIGHTED (BAKER)
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -508,7 +508,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /KREND/ SWCON, SORW, SORG, SGCON, EXPW, EXPO, EXPG,
      &               KRWMAX, KROMAX, KRGMAX, PCWMAX, PCGMAX
       COMMON /KRSEL/ ITABLE, NSWOF, NSGOF, ISTONE
@@ -576,7 +576,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     OIL RELATIVE PERMEABILITY IN THE GAS-OIL SYSTEM.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -629,7 +629,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /KREND/ SWCON, SORW, SORG, SGCON, EXPW, EXPO, EXPG,
      &               KRWMAX, KROMAX, KRGMAX, PCWMAX, PCGMAX
       DOUBLE PRECISION KRWMAX, KROMAX, KRGMAX
@@ -655,7 +655,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     OIL-WATER CAPILLARY PRESSURE, PSI, BROOKS-COREY J FUNCTION FORM.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -708,7 +708,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /KREND/ SWCON, SORW, SORG, SGCON, EXPW, EXPO, EXPG,
      &               KRWMAX, KROMAX, KRGMAX, PCWMAX, PCGMAX
       COMMON /KRTAB/ TSW(NTABMX), TKRW(NTABMX), TKRO(NTABMX),
@@ -741,7 +741,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     PIECEWISE LINEAR LOOKUP WITH FLAT EXTRAPOLATION.  BINARY SEARCH.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -794,7 +794,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION X(N), Y(N)
 C
       IF (N .LE. 0) THEN

@@ -1,4 +1,4 @@
-native2py
+nativegate
 Copyright 2026 Abdul Rabiu
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@ limitations under the License.
 ---
 
 This product bundles no third-party source. It depends on, but does not
-redistribute, the packages declared in tools/native2py/pyproject.toml.
+redistribute, the packages declared in tools/nativegate/pyproject.toml.
 
 The example and test corpora under libraries/ are illustrative reservoir
 engineering routines written for this project. They are covered by the

@@ -1,6 +1,6 @@
-# Contributing to native2py
+# Contributing to nativegate
 
-The generator lives in `tools/native2py/`. Everything below runs from there
+The generator lives in `tools/nativegate/`. Everything below runs from there
 unless stated otherwise.
 
 ## Prerequisites
@@ -19,7 +19,7 @@ On macOS: `brew install gcc cmake ninja` (gcc supplies gfortran).
 Install the package **editable, with all the extras**. This is not optional:
 
 ```bash
-cd tools/native2py
+cd tools/nativegate
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[clang,build,test]"
 ```
@@ -33,7 +33,7 @@ Why the extras matter:
   build and service generation paths.
 - `test` pulls in pytest and httpx.
 
-The editable install also creates the `native2py` console script. The tests in
+The editable install also creates the `ngate` console script. The tests in
 `tests/test_quickstart.py` and `tests/test_multifile_cpp.py` shell out to it,
 looking for it *next to `sys.executable`* — so it must be installed into the
 very interpreter you run pytest with, and they **fail without it**. Those
@@ -43,18 +43,18 @@ the CLI. Do not dismiss them; fix the install.
 Sanity-check both before you start:
 
 ```bash
-command -v native2py
-python -c "from native2py.parsers import cpp_ast; print(cpp_ast.is_available())"   # must print True
+command -v nativegate
+python -c "from nativegate.parsers import cpp_ast; print(cpp_ast.is_available())"   # must print True
 ```
 
 If that prints `False`, print `cpp_ast.unavailable_reason()` to see why, and
-set `NATIVE2PY_LIBCLANG` to your libclang shared library if it cannot be found
+set `NATIVEGATE_LIBCLANG` to your libclang shared library if it cannot be found
 automatically.
 
 ## Running the tests
 
 ```bash
-cd tools/native2py
+cd tools/nativegate
 python -m pytest -q
 ```
 
@@ -105,7 +105,7 @@ it defeats the point of having it.
 ## Pull requests
 
 - Branch off `main`; keep the change focused.
-- Add or update tests in `tools/native2py/tests/` for any behaviour change.
+- Add or update tests in `tools/nativegate/tests/` for any behaviour change.
 - Make sure the full suite passes locally before you open the PR — CI will run
   it on six configurations and any failure blocks the merge.
 - `@ravikings` owns the repo (see `.github/CODEOWNERS`) and reviews every PR.

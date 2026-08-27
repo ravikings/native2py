@@ -9,10 +9,10 @@ pass.
 
 Conventions for every task:
 
-- Code lives in `tools/native2py/native2py/` beside `golden.py`; follow its
+- Code lives in `tools/nativegate/nativegate/` beside `golden.py`; follow its
   style (argued docstrings, stdlib-first, no new runtime dependencies without
   a stated reason).
-- Tests live in the existing test layout under `tools/native2py/`; every task
+- Tests live in the existing test layout under `tools/nativegate/`; every task
   ships tests that run without a Fortran toolchain unless the task says
   otherwise, and marks compiler-requiring tests so CI can select them.
 - `services/petro_api` is the reference service; its `golden.json` is the
@@ -46,7 +46,7 @@ Build a module (suggested name `buildinfo.py`) that:
 
 1. Extracts the extension's *actual* compile flags for each native source from
    the build system's record — `compile_commands.json` where CMake produces
-   it; investigate what the current `native2py build` pipeline
+   it; investigate what the current `ngate build` pipeline
    (`cli.py`, `generators/`, `services/petro_api/CMakeLists.txt`) actually
    emits and use that, never a restated config value.
 2. Exposes `refuse_unsafe(flags)` — raises a hard error if `-ffast-math`,
@@ -156,7 +156,7 @@ run it, parse with T2, and assert the full slot set appears in file order.
 Build the step that turns a generated driver source into a runnable binary:
 
 1. Locate the built library objects/archive the extension linked (from the
-   service's build tree; investigate what `native2py build` leaves behind and
+   service's build tree; investigate what `ngate build` leaves behind and
    prefer the archive/target CMake already produces). **Never recompile the
    library sources.** If only `-fPIC` objects exist, link those into the
    executable.
@@ -183,7 +183,7 @@ property (e.g. assert the compile command list contains only the driver TU).
 
 Build the comparator and the CLI command:
 
-1. `native2py oracle check <name>`: load `golden.json` + IR, generate driver
+1. `ngate oracle check <name>`: load `golden.json` + IR, generate driver
    (T3), build and run it (T4), then execute the same entries through the
    imported Python extension under the same pinned environment, collecting
    per-slot values via T2's `slots_for_entry` + `pack_float`.
@@ -198,7 +198,7 @@ Build the comparator and the CLI command:
 4. Report coverage golden-style: `N covered, M skipped (reasons)`. Exit
    non-zero on any failure; a check that covered zero entries is a failure,
    not a pass.
-5. `native2py oracle show <name>`: print, without running anything, the
+5. `ngate oracle show <name>`: print, without running anything, the
    entries, their slot lists, and the skips — "coverage + what each slot is".
 
 **Read first:** `cli.py` for command style and the step-runner, spec §2.10's
@@ -218,7 +218,7 @@ classification.
 **Spec:** §2.6 (file is provenance, not the gate), §2.7 (schema), §4 rules
 7–9. **Depends on T5.** Deliberately last in the oracle line (spec §7 step 5).
 
-1. `native2py oracle record <name>`: run a full `check`; on pass, write
+1. `ngate oracle record <name>`: run a full `check`; on pass, write
    `oracle.json` per §2.7 — golden's provenance plus `compile_flags`
    (extracted), `driver_sha256`, `link_target_sha256`; entries in golden
    order; `indent=2`, `sort_keys=False`, LF, trailing newline. Nothing
@@ -261,7 +261,7 @@ rather than the services tree).
 
 ---
 
-## T8 — `native2py.yaml` declarations: `state:`, `invariants:`, ranges
+## T8 — `nativegate.yaml` declarations: `state:`, `invariants:`, ranges
 
 **Spec:** §3.2 (declared vocabulary, `no_error_flag`), §3.3 (closed
 vocabulary — no eval, ever), §3.4 (ranges, no default range), §3.5
@@ -300,7 +300,7 @@ ranges:
    live in one place.
 
 **Acceptance:** validation unit tests — every accept/reject rule above, plus
-round-tripping the example block. Update `services/petro_api/native2py.yaml`
+round-tripping the example block. Update `services/petro_api/nativegate.yaml`
 with the real `state:` block and at least `solution_gor`/`oil_fvf` invariants
 and a `pressure` range (values from the spec's examples).
 
@@ -390,7 +390,7 @@ step function (bracket collapses to adjacent floats).
 **Spec:** §3.7 (schema, `uncovered`), §2.6 (aggregate ordering), §5.
 **Depends on T10, T11 (and T5 for the aggregate).**
 
-1. `native2py invariants verify <name>`: run structural + declared properties,
+1. `ngate invariants verify <name>`: run structural + declared properties,
    write/compare `invariants.json` per §3.7 — `lattice` block (including
    `scatter.seed`), `state` block, `checked` with property lists and point
    counts, `uncovered` with reasons (no declared range, unimplemented form).
@@ -398,13 +398,13 @@ step function (bracket collapses to adjacent floats).
    nothing environmental.
 2. An invariants run where `checked` is empty is a failure — "an invariants
    file that silently checks nothing must not look like a pass."
-3. Extend `native2py verify <name>`: run `oracle check` if a toolchain is
+3. Extend `ngate verify <name>`: run `oracle check` if a toolchain is
    present (report "oracle: skipped, no toolchain" otherwise — visibly, not
    silently), then golden, then invariants if declarations exist; report each
    layer separately and name the failing layer. CI ordering documented:
    oracle → golden → invariants.
 4. Update the README's verification section and
-   `tools/native2py/docs/golden-values.md` cross-references to describe the
+   `tools/nativegate/docs/golden-values.md` cross-references to describe the
    three layers, reusing the spec's table from §1.
 
 **Acceptance:** schema golden-file test; empty-checked failure; aggregate

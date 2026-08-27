@@ -13,7 +13,7 @@ C=======================================================================
 C-----------------------------------------------------------------------
 C     ADD A VERTICAL WELL PERFORATED FROM LAYER K1 TO K2.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -66,8 +66,8 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
-C     --- native2py: expanded INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'GRID.INC' ---
 C=======================================================================
 C     GRID.INC   -   RESERVOIR GRID AND SOLUTION ARRAYS
 C
@@ -118,7 +118,7 @@ C
 C-----TIME STEPPING ----------------------------------------------------
       COMMON /TSTEP/ TIME, DT, DTMIN, DTMAX, DTFAC, TEND, NSTEP, NCUT
 C
-C     --- native2py: end INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'GRID.INC' ---
       CHARACTER*8 NAME
 C
       IF (NWELL .GE. MXWELL) THEN
@@ -164,7 +164,7 @@ C-----------------------------------------------------------------------
 C     PEACEMAN WELL INDEX FOR A VERTICAL WELL IN AN ANISOTROPIC BLOCK.
 C     UNITS: RB-CP/D/PSI (MOBILITY APPLIED SEPARATELY BY WELSRC).
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -217,8 +217,8 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
-C     --- native2py: expanded INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'GRID.INC' ---
 C=======================================================================
 C     GRID.INC   -   RESERVOIR GRID AND SOLUTION ARRAYS
 C
@@ -269,7 +269,7 @@ C
 C-----TIME STEPPING ----------------------------------------------------
       COMMON /TSTEP/ TIME, DT, DTMIN, DTMAX, DTFAC, TEND, NSTEP, NCUT
 C
-C     --- native2py: end INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'GRID.INC' ---
       DATA CDARCY /0.001127D0/
       DATA TWOPI /6.28318530717959D0/
 C
@@ -293,7 +293,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     ADD WELL SOURCE TERMS INTO THE IMPES PRESSURE MATRIX.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -346,8 +346,8 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
-C     --- native2py: expanded INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'GRID.INC' ---
 C=======================================================================
 C     GRID.INC   -   RESERVOIR GRID AND SOLUTION ARRAYS
 C
@@ -398,7 +398,7 @@ C
 C-----TIME STEPPING ----------------------------------------------------
       COMMON /TSTEP/ TIME, DT, DTMIN, DTMAX, DTFAC, TEND, NSTEP, NCUT
 C
-C     --- native2py: end INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'GRID.INC' ---
       DIMENSION AD(MXCELL), RHS(MXCELL)
       DOUBLE PRECISION KROIL, KRWAT, KRGAS
 C
@@ -437,7 +437,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     VOGEL INFLOW PERFORMANCE, STB/D.  COMPOSITE ABOVE / BELOW PB.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -490,7 +490,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
 C
       IF (PRAVG .LE. SMALL) THEN
          IPRVOG = ZERO
@@ -541,7 +541,7 @@ C     SOLVED BY BRACKETING ON Q THEN SECANT.  THE 1989 VERSION USED
 C     A FIXED 50 POINT SCAN AND PICKED THE CLOSEST POINT, WHICH IS
 C     WHY OLD .PRT FILES SHOW RATES QUANTISED TO QMAX/50.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -594,7 +594,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DOUBLE PRECISION MD, IPRVOG
       DATA TOLQ /1.0D-3/, ITMAX /50/
 C
@@ -653,7 +653,7 @@ C-----------------------------------------------------------------------
 C     INVERT THE VOGEL IPR FOR PWF GIVEN Q.  BISECTION - THE QUADRATIC
 C     INVERSE IS ONLY VALID FOR THE FULLY SATURATED BRANCH.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -706,7 +706,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DOUBLE PRECISION IPRVOG
 C
       PLO = ZERO
@@ -730,7 +730,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     INFLOW PWF MINUS OUTFLOW PWF AT LIQUID RATE Q.  ROOT = SOLUTION.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -783,7 +783,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DOUBLE PRECISION MD
 C
       QO = Q * (ONE - WCUT)

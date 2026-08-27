@@ -1,0 +1,422 @@
+{
+  "schema_version": "1.5",
+  "nativegate_version": "0.1.0",
+  "name": "petro_api",
+  "language": "fortran",
+  "source_file": "services/petro_api/native/petro_api.f90",
+  "classes": [],
+  "functions": [
+    {
+      "name": "pvt_set_fluid",
+      "parameters": [
+        {
+          "name": "api_gravity",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "gas_gravity",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "temp_f",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "icorr",
+          "type": "int",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "void",
+      "is_subroutine": true,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "solution_gor",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "oil_fvf",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "oil_viscosity",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "gas_z_factor",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "bubble_point",
+      "parameters": [
+        {
+          "name": "target_gor",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "pvt_state",
+      "parameters": [
+        {
+          "name": "pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "props",
+          "type": "float",
+          "is_array": true,
+          "intent": "inout",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "n",
+          "type": "int",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "void",
+      "is_subroutine": true,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "tubing_bhp",
+      "parameters": [
+        {
+          "name": "wellhead_p",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "q_oil",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "q_water",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "q_gas",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "diameter",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "roughness",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "tvd",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "md",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "nseg",
+          "type": "int",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "vogel_rate",
+      "parameters": [
+        {
+          "name": "res_pressure",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "flowing_bhp",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        },
+        {
+          "name": "q_max",
+          "type": "float",
+          "is_array": false,
+          "intent": "in",
+          "native_type": null,
+          "is_const": false,
+          "is_optional": false,
+          "length_param": null,
+          "is_mutable_buffer": false,
+          "is_scalar_ref": false
+        }
+      ],
+      "returns": "float",
+      "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    },
+    {
+      "name": "last_error",
+      "parameters": [],
+      "returns": "int",
+      "is_subroutine": false,
+      "namespace": null,
+      "is_overloaded": false,
+      "returns_array": false,
+      "cpp_name": null,
+      "fortran_module": "petro_api"
+    }
+  ],
+  "structs": [],
+  "fortran_module": "petro_api",
+  "skipped": [],
+  "fortran_shims": [],
+  "diagnostics": []
+}

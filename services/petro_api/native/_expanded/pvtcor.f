@@ -21,7 +21,7 @@ C     ARGUMENT ANY OF THEM TAKES IS PRESSURE.  THIS IS INTENTIONAL AND
 C     MATCHES THE 1988 CALLING CONVENTION USED BY SIMCOR AND WELLIB.
 C=======================================================================
       BLOCK DATA PVTBLK
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -74,7 +74,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /PVTSEL/ ICORRS, ICORBO, ICORVI, ICORZF
       DATA ICORRS /1/, ICORBO /1/, ICORVI /1/, ICORZF /1/
       DATA API /35.0D0/, SGG /0.65D0/, SGW /1.02D0/
@@ -92,7 +92,7 @@ C     ICORR  1 = STANDING (1947)
 C            2 = VAZQUEZ-BEGGS (1980)
 C            3 = GLASO (1980)
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -145,7 +145,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /PVTSEL/ ICORRS, ICORBO, ICORVI, ICORZF
 C
       API  = GRAV
@@ -191,7 +191,7 @@ C     BUBBLE POINT PRESSURE, PSIA, FOR A TARGET SOLUTION GOR RSTGT.
 C     SOLVED BY NEWTON ON PVTRS SINCE THE STANDING FORM INVERTS
 C     ANALYTICALLY BUT VAZQUEZ-BEGGS AND GLASO DO NOT.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -244,7 +244,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /PVTSEL/ ICORRS, ICORBO, ICORVI, ICORZF
       DATA TOL /1.0D-6/, ITMAX /60/
 C
@@ -282,7 +282,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     SOLUTION GAS OIL RATIO, SCF/STB, AT PRESSURE P (PSIA).
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -335,7 +335,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /PVTSEL/ ICORRS, ICORBO, ICORVI, ICORZF
 C
       IF (P .LE. PATM) THEN
@@ -381,7 +381,7 @@ C     OIL FORMATION VOLUME FACTOR, RB/STB.
 C     BELOW PB   -   STANDING / VAZQUEZ-BEGGS SATURATED FORM
 C     ABOVE PB   -   UNDERSATURATED, COMPRESSED WITH CO
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -434,7 +434,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       COMMON /PVTSEL/ ICORRS, ICORBO, ICORVI, ICORZF
 C
       SGO = 141.5D0 / (131.5D0 + API)
@@ -464,7 +464,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     UNDERSATURATED OIL COMPRESSIBILITY, 1/PSI (VAZQUEZ-BEGGS).
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -517,7 +517,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       RSB = PVTRS(PB)
       PVTCOU = (-1433.0D0 + 5.0D0*RSB + 17.2D0*TRES
      &          - 1180.0D0*SGG + 12.61D0*API) / (1.0D5 * MAX(P,PATM))
@@ -530,7 +530,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     LIVE OIL VISCOSITY, CP.  BEGGS-ROBINSON DEAD OIL + CHEW-CONNALLY.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -583,7 +583,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
 C
       ZZ   = 3.0324D0 - 0.02023D0*API
       YY   = 10.0D0**ZZ
@@ -612,7 +612,7 @@ C-----------------------------------------------------------------------
 C     GAS DEVIATION FACTOR BY HALL-YARBOROUGH.  NEWTON ON THE REDUCED
 C     DENSITY Y.  SUTTON CORRELATION FOR THE PSEUDO CRITICALS.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -665,7 +665,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DATA TOLY /1.0D-10/, ITY /40/
 C
       TPC = 169.2D0 + 349.5D0*SGG - 74.0D0*SGG*SGG
@@ -716,7 +716,7 @@ C-----------------------------------------------------------------------
 C     EVALUATE THE COMPLETE PVT STATE AT PRESSURE P AND LEAVE IT IN
 C     /PVTOUT/.  THIS IS THE ROUTINE SIMCOR AND WELLIB ACTUALLY CALL.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -769,7 +769,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
 C
       PP   = MAX(P, PATM)
       SGO  = 141.5D0 / (131.5D0 + API)
@@ -799,7 +799,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     LEE-GONZALEZ-EAKIN GAS VISCOSITY, CP.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -852,7 +852,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
 C
       WM  = 28.9625D0 * SGG
       TR  = TRES + TABS
@@ -869,7 +869,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     RETURN AND CLEAR THE ACCUMULATED ERROR STATE.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -922,7 +922,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       CHARACTER*(*) MSG
 C
       ICODE = IERR

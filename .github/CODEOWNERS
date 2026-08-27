@@ -3,7 +3,7 @@
 *                       @ravikings
 
 # The generator and its tests are the core of the project.
-/tools/native2py/       @ravikings
+/tools/nativegate/       @ravikings
 
 # CI, governance, and the commit-gating hooks.
 /.github/               @ravikings

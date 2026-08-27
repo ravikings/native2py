@@ -14,7 +14,7 @@ C=======================================================================
 C-----------------------------------------------------------------------
 C     LOAD COMPONENT DATA.  Z IS NORMALISED IN PLACE.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -67,7 +67,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION Z(N), PC(N), TC(N), W(N), MW(N)
       DOUBLE PRECISION MW
 C
@@ -107,7 +107,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     WILSON K VALUE INITIAL GUESS.  T IN DEG R, P IN PSIA.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -160,7 +160,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION XK(NCMAX)
 C
       DO 100 I = 1, NCOMP
@@ -180,7 +180,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     RACHFORD-RICE OBJECTIVE.  MONOTONE DECREASING IN BETA.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -233,7 +233,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION XK(NCMAX)
 C
       S = ZERO
@@ -252,7 +252,7 @@ C-----------------------------------------------------------------------
 C     SOLVE RACHFORD-RICE FOR THE VAPOUR MOLE FRACTION BETA.
 C     ISTAT  0 = TWO PHASE, 1 = ALL LIQUID, 2 = ALL VAPOUR.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -305,7 +305,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION XK(NCMAX)
       DATA TOL /1.0D-10/, ITMAX /100/
 C
@@ -362,7 +362,7 @@ C     PENG-ROBINSON COMPRESSIBILITY FOR A MIXTURE OF COMPOSITION X.
 C     IPHASE  0 = SMALLEST ROOT (LIQUID), 1 = LARGEST ROOT (VAPOUR).
 C     THE CUBIC IS SOLVED IN CLOSED FORM (CARDANO).
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -415,7 +415,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION X(NCMAX), AI(NCMAX), BI(NCMAX)
       DATA RGAS /10.7316D0/
       DATA PI /3.14159265358979D0/
@@ -492,7 +492,7 @@ C-----------------------------------------------------------------------
 C     ISOTHERMAL TWO PHASE FLASH BY SUCCESSIVE SUBSTITUTION.
 C     P PSIA, T DEG R.  ON RETURN BETA IS THE VAPOUR MOLE FRACTION.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -545,7 +545,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION XLIQ(NCMAX), YVAP(NCMAX), XK(NCMAX), XKOLD(NCMAX)
       DATA TOL /1.0D-8/, ITMAX /200/
 C

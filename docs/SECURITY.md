@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-native2py is pre-1.0 and ships from `main`. Only the latest commit on `main`
+nativegate is pre-1.0 and ships from `main`. Only the latest commit on `main`
 receives security fixes; there are no maintained release branches yet.
 
 ## Reporting a vulnerability
@@ -20,20 +20,20 @@ Please do **not** open a public issue for a suspected vulnerability. Include:
 
 - what the issue is and why you believe it is a security problem,
 - the affected file, command, or generated artifact,
-- a minimal reproduction (input header/source plus the `native2py` command),
+- a minimal reproduction (input header/source plus the `ngate` command),
 - the version or commit SHA you tested.
 
 Expect an acknowledgement within a few days. This is a small project with no
 paid on-call; there is no bug bounty.
 
 [pvr]: https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability
-[advisories]: https://github.com/ravikings/native2py/security/advisories/new
+[advisories]: https://github.com/ravikings/nativegate/security/advisories/new
 
-## Threat model — what native2py actually does
+## Threat model — what nativegate actually does
 
 Be aware of the trust boundaries before reporting, and before using the tool:
 
-- **native2py parses and generates code, it does not sandbox it.** Pointing it
+- **nativegate parses and generates code, it does not sandbox it.** Pointing it
   at a C++ or Fortran source tree means parsing that tree (with libclang) and
   emitting binding code derived from it. Treat input sources as trusted, the
   same way you would treat any code you are about to compile.
@@ -46,7 +46,7 @@ Be aware of the trust boundaries before reporting, and before using the tool:
   a C++ compiler, and (for Fortran) gfortran, all with the privileges of the
   invoking user.
 
-Issues genuinely in scope include: native2py emitting bindings that misuse a
+Issues genuinely in scope include: nativegate emitting bindings that misuse a
 buffer or lifetime in a way the source did not imply, config or path handling
 that escapes the project directory, and template injection through project
 metadata into generated code.

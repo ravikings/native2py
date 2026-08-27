@@ -1,8 +1,8 @@
 """The shared-native-state contract of THIS service's checked-in source.
 
-Hand-written, not generated: `native2py generate` will not overwrite it.
+Hand-written, not generated: `ngate generate` will not overwrite it.
 
-tools/native2py/tests/test_native_state_contract.py pins what the generator
+tools/nativegate/tests/test_native_state_contract.py pins what the generator
 EMITS. This pins what is actually committed under python/petro_api/, which is
 the thing that gets built into the wheel and deployed. The two can drift: the
 generated files are checked in, so a hand edit here — the "just this once, for
@@ -174,7 +174,7 @@ def test_array_marshalling_stays_outside_the_critical_section():
 def test_the_array_cap_is_declared_configurable_and_defaults_to_65536():
     source = _source("router.py")
 
-    assert 'MAX_ARRAY_ITEMS = int(os.environ.get("NATIVE2PY_MAX_ARRAY_ITEMS", "65536"))' in source
+    assert 'MAX_ARRAY_ITEMS = int(os.environ.get("NATIVEGATE_MAX_ARRAY_ITEMS", "65536"))' in source
     assert "Field(max_length=MAX_ARRAY_ITEMS)" in source
     # Every array parameter, not just the first one found.
     tree = ast.parse(source)
@@ -211,7 +211,7 @@ def test_the_service_answers_a_failed_request_with_a_correlatable_json_body():
     assert '"error_id": error_id' in source
     # Off by default: native exception text can carry deck values and build
     # machine paths.
-    assert 'os.environ.get("NATIVE2PY_DEBUG_ERRORS", "")' in source
+    assert 'os.environ.get("NATIVEGATE_DEBUG_ERRORS", "")' in source
     assert "if _DEBUG_ERRORS:" in source
     # debug=True would defeat the handler entirely (Starlette consults it
     # first), so the generated app must not enable it.
@@ -291,14 +291,14 @@ def test_health_and_readiness_never_require_an_api_key():
 #   ONE worker. Two gunicorn workers, two pods or two replicas hold two locks
 #   and two copies of COMMON. Within a worker that is sufficient; a caller
 #   whose PVTSET and PVTRS requests are load-balanced to different workers is
-#   NOT protected by anything in this repository, and no lock native2py can
+#   NOT protected by anything in this repository, and no lock nativegate can
 #   emit would protect them. It needs session affinity or a combined endpoint.
 #   Untestable from a single-process test suite, so it is stated, not asserted.
 #
 # GAP 2 — the lock covers one native call. `POST /pvt_set_fluid` followed by
 #   `POST /solution_gor` releases it in between, so a second caller can
 #   reconfigure COMMON in the gap. Pinned as a generator-level test in
-#   tools/native2py/tests/test_service_gen.py.
+#   tools/nativegate/tests/test_service_gen.py.
 #
 # GAP 3 — MAX_ARRAY_ITEMS bounds request size, not the extent the Fortran
 #   routine declares; the IR does not record extents (ROADMAP 1.4). For

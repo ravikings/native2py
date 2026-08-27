@@ -1,0 +1,43 @@
+site_name: nativegate
+site_description: Automated modernization of legacy scientific computing — expose native C++/C/Fortran code to Python as deployable microservices
+repo_url: ""
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.integrate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - tables
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Exposing C++: cpp-guide.md
+  - Exposing Fortran: fortran-guide.md
+  - Numerical regression: golden-values.md
+  - CLI reference: cli-reference.md
+  - nativegate.yaml reference: configuration.md
+  - Architecture: architecture.md
+  - Deployment topologies: deployment-topologies.md
+  - Is this production-ready?: production-readiness.md
+  - Troubleshooting: troubleshooting.md

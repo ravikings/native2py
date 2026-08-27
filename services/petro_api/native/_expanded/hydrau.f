@@ -24,7 +24,7 @@ C         DIA   INTERNAL DIAMETER, FT
 C         THETA INCLINATION FROM HORIZONTAL, DEGREES
 C         EPS   ABSOLUTE ROUGHNESS, FT
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -77,7 +77,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DOUBLE PRECISION NFR, NLV, NRE
       DATA GC /32.174D0/, PI /3.14159265358979D0/
 C
@@ -209,7 +209,7 @@ C
 C-----------------------------------------------------------------------
       DOUBLE PRECISION FUNCTION HLHOR (CL, NFR, IREG)
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -262,7 +262,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DOUBLE PRECISION NFR
       DIMENSION AA(4), BB(4), CC(4)
       DATA AA /0.98D0, 0.845D0, 0.845D0, 1.065D0/
@@ -285,7 +285,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     THE C COEFFICIENT IN THE BEGGS-BRILL INCLINATION CORRECTION.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -338,7 +338,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DOUBLE PRECISION NLV, NFR
 C
       IF (THETA .GE. ZERO) THEN
@@ -379,7 +379,7 @@ C-----------------------------------------------------------------------
 C     FANNING FRICTION FACTOR.  LAMINAR BELOW 2000, COLEBROOK ABOVE,
 C     SOLVED BY THREE FIXED POINT SWEEPS FROM THE JAIN EXPLICIT FORM.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -432,7 +432,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DOUBLE PRECISION RE
 C
       IF (RE .LT. SMALL) THEN
@@ -464,7 +464,7 @@ C     MARCH A PRESSURE TRAVERSE DOWN THE TUBING FROM WELLHEAD PWH TO
 C     BOTTOMHOLE PBH IN NSEG SEGMENTS.  ITERATES ON SEGMENT MIDPOINT
 C     PRESSURE BECAUSE THE PVT IS PRESSURE DEPENDENT.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -517,7 +517,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DOUBLE PRECISION MD
 C
       IF (NSEG .LT. 1) NSEG = 20

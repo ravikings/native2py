@@ -1,8 +1,8 @@
-# Technical Specification: Native2Py — Automated Native Code to Python Service Generator
+# Technical Specification: NativeGate — Automated Native Code to Python Service Generator
 
 ## 1. Overview
 
-**Native2Py** is an internal developer platform/CLI that automatically exposes native-language code—initially **C++, C, and Fortran**—to Python and packages it as an independently deployable Docker microservice.
+**NativeGate** is an internal developer platform/CLI that automatically exposes native-language code—initially **C++, C, and Fortran**—to Python and packages it as an independently deployable Docker microservice.
 
 The primary objective is to make native-code modernization nearly frictionless:
 
@@ -10,7 +10,7 @@ The primary objective is to make native-code modernization nearly frictionless:
 Existing C++ / C / Fortran
           │
           ▼
-     Native2Py CLI
+     NativeGate CLI
           │
           ├── Parse native API
           ├── Generate bindings
@@ -57,7 +57,7 @@ The developer should be able to expose a native function/class with one command 
 
 ### Non-goals
 
-Native2Py will not initially:
+NativeGate will not initially:
 
 * Automatically rewrite native code into Python.
 * Expose every native symbol without explicit configuration.
@@ -72,25 +72,25 @@ Native2Py will not initially:
 The ideal experience is:
 
 ```bash
-native2py create-service inference
+ngate create-service inference
 ```
 
 Then:
 
 ```bash
-native2py expose cpp/inference.hpp
+ngate expose cpp/inference.hpp
 ```
 
 or:
 
 ```bash
-native2py expose fortran/solver.f90
+ngate expose fortran/solver.f90
 ```
 
 Then:
 
 ```bash
-native2py build inference
+ngate build inference
 ```
 
 The developer can immediately write:
@@ -144,7 +144,7 @@ repo/
 │   │   ├── tests/
 │   │   ├── Dockerfile
 │   │   ├── pyproject.toml
-│   │   └── native2py.yaml
+│   │   └── nativegate.yaml
 │   │
 │   └── reservoir/
 │       ├── native/
@@ -155,14 +155,14 @@ repo/
 │       ├── tests/
 │       ├── Dockerfile
 │       ├── pyproject.toml
-│       └── native2py.yaml
+│       └── nativegate.yaml
 │
 ├── libraries/
 │   ├── common-cpp/
 │   └── common-fortran/
 │
 ├── tools/
-│   └── native2py/
+│   └── nativegate/
 │
 └── infrastructure/
     ├── docker/
@@ -177,7 +177,7 @@ Each `services/<name>` directory is independently buildable and deployable.
 
 ```text
                          ┌────────────────────┐
-                         │    native2py CLI   │
+                         │   nativegate CLI   │
                          └─────────┬──────────┘
                                    │
                                    ▼
@@ -228,7 +228,7 @@ Each `services/<name>` directory is independently buildable and deployable.
 
 A critical design decision is to **not generate bindings directly from language-specific parsers**.
 
-Instead, Native2Py should normalize APIs into an intermediate representation.
+Instead, NativeGate should normalize APIs into an intermediate representation.
 
 Example:
 
@@ -287,7 +287,7 @@ public:
 };
 ```
 
-Native2Py generates:
+NativeGate generates:
 
 ```cpp
 #include <pybind11/pybind11.h>
@@ -337,7 +337,7 @@ contains
 end module physics
 ```
 
-Native2Py generates the build configuration necessary for f2py.
+NativeGate generates the build configuration necessary for f2py.
 
 Python:
 
@@ -347,7 +347,7 @@ from physics import calculate_pressure
 pressure = calculate_pressure(10.0, 300.0)
 ```
 
-For complex or long-lived APIs, Native2Py should support an alternative:
+For complex or long-lived APIs, NativeGate should support an alternative:
 
 ```text
 Fortran
@@ -359,7 +359,7 @@ ISO_C_BINDING
 Stable C ABI
    │
    ▼
-Native2Py
+NativeGate
    │
    ▼
 Python
@@ -371,18 +371,18 @@ This is particularly useful for legacy scientific Fortran.
 
 # 9. Explicit Exposure
 
-Native2Py should **not automatically expose the entire native codebase**.
+NativeGate should **not automatically expose the entire native codebase**.
 
 Support an annotation/configuration mechanism.
 
 Example:
 
 ```cpp
-[[native2py::expose]]
+[[nativegate::expose]]
 class InferenceEngine {
 public:
 
-    [[native2py::expose]]
+    [[nativegate::expose]]
     double predict(double value);
 };
 ```
@@ -390,14 +390,14 @@ public:
 For Fortran:
 
 ```fortran
-! native2py: expose
+! nativegate: expose
 function calculate_pressure(density, temperature)
 ```
 
 Alternatively:
 
 ```yaml
-# native2py.yaml
+# nativegate.yaml
 
 expose:
   classes:
@@ -439,7 +439,7 @@ The compiled extension remains an implementation detail.
 
 # 11. Docker Generation
 
-Native2Py automatically creates a multi-stage Dockerfile.
+NativeGate automatically creates a multi-stage Dockerfile.
 
 Conceptually:
 
@@ -552,40 +552,40 @@ This preserves a clean separation between:
 Initial commands:
 
 ```bash
-native2py init
-native2py create-service <name>
-native2py detect <path>
-native2py inspect <path>
-native2py expose <path>
-native2py generate <service>
-native2py build <service>
-native2py test <service>
-native2py docker <service>
-native2py clean <service>
+ngate init
+ngate create-service <name>
+ngate detect <path>
+ngate inspect <path>
+ngate expose <path>
+ngate generate <service>
+ngate build <service>
+ngate test <service>
+ngate docker <service>
+ngate clean <service>
 ```
 
 Example:
 
 ```bash
-native2py create-service reservoir --language fortran
+ngate create-service reservoir --language fortran
 ```
 
 Then:
 
 ```bash
-native2py expose services/reservoir/native
+ngate expose services/reservoir/native
 ```
 
 Then:
 
 ```bash
-native2py build reservoir
+ngate build reservoir
 ```
 
 Then:
 
 ```bash
-native2py docker reservoir
+ngate docker reservoir
 ```
 
 ---
@@ -624,7 +624,7 @@ CMake
 
 # 15. Type Mapping
 
-Native2Py needs a deterministic type mapping layer.
+NativeGate needs a deterministic type mapping layer.
 
 Example:
 
@@ -673,7 +673,7 @@ values = np.array(
 normalize(values)
 ```
 
-Native2Py should minimize unnecessary copies.
+NativeGate should minimize unnecessary copies.
 
 This is particularly important for:
 
@@ -718,7 +718,7 @@ native
 Python
 ```
 
-Native2Py should encourage coarse-grained native APIs.
+NativeGate should encourage coarse-grained native APIs.
 
 ---
 
@@ -753,7 +753,7 @@ def test_pressure():
     assert calculate_pressure(10.0, 300.0) == 3000.0
 ```
 
-Native2Py should also provide an ABI/build smoke test.
+NativeGate should also provide an ABI/build smoke test.
 
 ---
 
@@ -790,7 +790,7 @@ A service should be independently deployable without rebuilding unrelated servic
 
 # 20. Versioning
 
-Native2Py should generate a versioned Python API.
+NativeGate should generate a versioned Python API.
 
 Example:
 
@@ -903,10 +903,10 @@ The native implementation doesn't need to change during Phase 1 → Phase 3.
 
 # 24. Future RPC Mode
 
-Eventually Native2Py could support:
+Eventually NativeGate could support:
 
 ```bash
-native2py expose --mode grpc
+ngate expose --mode grpc
 ```
 
 Instead of:
@@ -972,9 +972,9 @@ Support:
 Target experience:
 
 ```bash
-native2py create-service calculator
-native2py expose calculator.hpp
-native2py build calculator
+ngate create-service calculator
+ngate expose calculator.hpp
+ngate build calculator
 ```
 
 Then:
@@ -1044,10 +1044,10 @@ The ultimate developer workflow should be:
 
 ```text
 1. Put native code in service/native/
-2. Run native2py expose
-3. Run native2py build
+2. Run ngate expose
+3. Run ngate build
 4. Import from Python
-5. Run native2py docker
+5. Run ngate docker
 6. Deploy
 ```
 
@@ -1064,7 +1064,7 @@ The most important design decision is to make **Python the stable developer-faci
              │             │              │
              └─────────────┼──────────────┘
                            ▼
-                    Native2Py Runtime
+                    NativeGate Runtime
                            │
                            ▼
                      Docker/K8s

@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Dependency policy (see constraints.txt):
+#   This file declares RANGES. nativegate is installed as a library into other
+#   people's environments, and a library that pins exact versions forces
+#   resolution conflicts on every consumer. Reproducibility is provided by
+#   constraints.txt instead — an exact, hash-verified pin of the full
+#   transitive set, used by developers and CI:
+#       pip install --require-hashes -r constraints.txt && pip install --no-deps -e .
+#   Change a range here; regenerate constraints.txt afterwards.
+
+[project]
+name = "nativegate"
+version = "0.1.0"
+description = "Automated modernization of legacy scientific computing: expose native C++/C/Fortran code to Python as deployable microservices"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+    "pyyaml>=6.0",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+# The C++ AST parser. Without it nativegate falls back to the regex reader,
+# which has no preprocessor and no template support (see docs/cpp-guide.md).
+clang = [
+    "libclang>=16",
+]
+# The Fortran parse-tree backend (ROADMAP 1.4), selected with
+# `NATIVEGATE_FORTRAN_PARSER=fparser2`. Optional for the same reason `clang` is:
+# without it the regex reader still works, and it is pure Python so it adds no
+# toolchain. Declared so `pip install -e '.[fparser]'` is a documented step —
+# tests/test_fortran_fparser.py skips wholesale when it is absent, and a
+# backend whose entire suite silently skips is a backend nobody is testing.
+fparser = [
+    "fparser>=0.2,<0.3",
+]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+]
+build = [
+    "scikit-build-core>=0.10",
+    "pybind11>=3.0",
+    "numpy>=1.26",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    # `python -m numpy.f2py -c` needs these on Python >= 3.12: distutils is
+    # gone, so f2py uses its meson backend and shells out to a `meson`
+    # executable. Without them every Fortran build dies with
+    # `FileNotFoundError: 'meson'`. Not Fortran-only extras because the build
+    # extra is what CI and the docs both install.
+    "meson>=1.1",
+    "ninja>=1.11",
+]
+test = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    # Python 3.12 venvs no longer ship setuptools. tests/test_golden.py imports
+    # `find_packages` to check the template ships in the wheel; declaring it
+    # keeps that test RUNNING rather than turning it into a skip.
+    "setuptools>=68",
+    # The wheel-contents check in tests/test_golden.py importorskips these.
+    # Declaring them is the difference between verifying the golden template
+    # actually ships and merely intending to — the fparser hole was this same
+    # shape, and CI's first run proved the cost of it.
+    "build>=1.0",
+    "wheel>=0.42",
+]
+
+[project.scripts]
+# `ngate` is the everyday command; `nativegate` is the long-form alias so a
+# script that spells the project name out keeps working.
+ngate = "nativegate.cli:main"
+nativegate = "nativegate.cli:main"
+
+[tool.setuptools.packages.find]
+# `nativegate*` also picks up `nativegate.templates`, which holds the generated
+# service's files as real `.py` modules rather than string literals. Because
+# they are modules in a discovered package they ship in the wheel on their
+# own; no [tool.setuptools.package-data] entry is needed, and adding one
+# would be the thing that silently stops working if a template is renamed.
+# tests/test_golden.py asserts the template is actually in a built wheel.
+include = ["nativegate*"]

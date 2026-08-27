@@ -17,7 +17,7 @@ C-----------------------------------------------------------------------
 C     TRIDIAGONAL SOLVE, NO PIVOTING.  A = SUB, B = DIAG, C = SUPER.
 C     D IS DESTROYED.  USED BY THE LINE SOR SWEEPS AND BY WELLBORE.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -70,7 +70,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       PARAMETER (MXBAND = 512)
       DIMENSION A(N), B(N), C(N), D(N), X(N)
       DIMENSION CP(MXBAND), DP(MXBAND)
@@ -110,7 +110,7 @@ C-----------------------------------------------------------------------
 C     LINE SUCCESSIVE OVER RELAXATION IN THE X DIRECTION.
 C     ONE TRIDIAGONAL SOLVE PER (J,K) LINE, THEN RELAX.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -163,8 +163,8 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
-C     --- native2py: expanded INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'GRID.INC' ---
 C=======================================================================
 C     GRID.INC   -   RESERVOIR GRID AND SOLUTION ARRAYS
 C
@@ -215,7 +215,7 @@ C
 C-----TIME STEPPING ----------------------------------------------------
       COMMON /TSTEP/ TIME, DT, DTMIN, DTMAX, DTFAC, TEND, NSTEP, NCUT
 C
-C     --- native2py: end INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'GRID.INC' ---
       DIMENSION AE(MXCELL), AW(MXCELL), AN(MXCELL), AS(MXCELL)
       DIMENSION AT(MXCELL), AB(MXCELL), AD(MXCELL)
       DIMENSION RHS(MXCELL), X(MXCELL)
@@ -273,7 +273,7 @@ C-----------------------------------------------------------------------
 C-----------------------------------------------------------------------
 C     L2 NORM OF RHS - A*X OVER ACTIVE CELLS ONLY.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -326,8 +326,8 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
-C     --- native2py: expanded INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'GRID.INC' ---
 C=======================================================================
 C     GRID.INC   -   RESERVOIR GRID AND SOLUTION ARRAYS
 C
@@ -378,7 +378,7 @@ C
 C-----TIME STEPPING ----------------------------------------------------
       COMMON /TSTEP/ TIME, DT, DTMIN, DTMAX, DTFAC, TEND, NSTEP, NCUT
 C
-C     --- native2py: end INCLUDE 'GRID.INC' ---
+C     --- nativegate: end INCLUDE 'GRID.INC' ---
       DIMENSION AE(MXCELL), AW(MXCELL), AN(MXCELL), AS(MXCELL)
       DIMENSION AT(MXCELL), AB(MXCELL), AD(MXCELL)
       DIMENSION RHS(MXCELL), X(MXCELL)
@@ -411,7 +411,7 @@ C     DENSE GAUSSIAN ELIMINATION WITH PARTIAL PIVOTING.  USED ONLY FOR
 C     THE SMALL WELL COUPLING SYSTEM (N .LE. MXWELL) AND FOR THE EOS
 C     FLASH JACOBIAN.  A IS OVERWRITTEN, B RETURNS THE SOLUTION.
 C-----------------------------------------------------------------------
-C     --- native2py: expanded INCLUDE 'PETRO.INC' ---
+C     --- nativegate: expanded INCLUDE 'PETRO.INC' ---
 C=======================================================================
 C     PETRO.INC   -   GLOBAL FLUID PROPERTY COMMON BLOCKS
 C
@@ -464,7 +464,7 @@ C     LUNPRT - PRINT UNIT (6 = STDOUT, 7 = .PRT FILE)
 C
       COMMON /DIAG/ IERR, IWARN, NITPVT, LUNPRT, LUNDBG, IDBGLV
 C
-C     --- native2py: end INCLUDE 'PETRO.INC' ---
+C     --- nativegate: end INCLUDE 'PETRO.INC' ---
       DIMENSION A(LDA,N), B(N)
 C
       INFO = 0

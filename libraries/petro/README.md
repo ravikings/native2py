@@ -1,7 +1,7 @@
 # libraries/petro — legacy reservoir engineering library
 
 A deliberately period-accurate stand-in for a 30+ year old oilfield codebase
-(1988–2004 vintage), written to stress-test `native2py` against the kind of
+(1988–2004 vintage), written to stress-test `ngate` against the kind of
 code it is actually meant to modernize. ~4,800 lines, C++ and Fortran,
 heavily interlinked.
 
@@ -95,4 +95,4 @@ nodal     =    2432.48 stb/d @  2984.50 psia (iconv=0)
 OIP+1d    =    1323196.7 stb
 ```
 
-See `FINDINGS.md` for what happened when `native2py` was pointed at this.
+See `FINDINGS.md` for what happened when `ngate` was pointed at this.

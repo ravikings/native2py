@@ -6,7 +6,7 @@ reading two terminals. This document is about the part that replaced that:
 an automated oracle you can run without taking anyone's word for it.
 
 ```
-tools/native2py/tests/test_native_oracle.py
+tools/nativegate/tests/test_native_oracle.py
 ```
 
 ## What it actually does
@@ -14,7 +14,7 @@ tools/native2py/tests/test_native_oracle.py
 It builds the same calculation three ways from the same unmodified sources
 and asserts all three agree.
 
-| Path | Built by | Touches native2py? |
+| Path | Built by | Touches nativegate? |
 |---|---|---|
 | Fortran, natively | `gfortran` on `services/petro_api/native/petro_api.f90` + the seven F77 decks | no |
 | C++, natively | `clang++` on `libraries/petro/cpp` (`FluidModel` → `FortranBridge.hpp` → the same F77 routines) | no |
@@ -42,7 +42,7 @@ Then it checks:
 ## Running it
 
 ```bash
-cd tools/native2py
+cd tools/nativegate
 python -m pytest tests/test_native_oracle.py -v
 ```
 
@@ -121,7 +121,7 @@ below is for.
 
 The comparisons use `golden.DEFAULT_RTOL` = **1e-9** relative with a **1e-12**
 absolute floor. The reasoning is in the module docstring of
-`tools/native2py/native2py/golden.py`; the short version:
+`tools/nativegate/nativegate/golden.py`; the short version:
 
 * `pow`, `exp`, `log10` and `asin` are not correctly rounded in any
   mainstream libm, and Apple's, glibc's and musl's disagree by a few ULP.
@@ -163,10 +163,10 @@ The full compiler output is in the assertion message.
 
 * *Python disagrees with both native binaries.* The re-hosting changed
   something — a type, an intent, an argument order, a flag. This is
-  native2py's bug.
+  nativegate's bug.
 * *The two native binaries disagree with each other.* Something in
   `libraries/petro` changed, or the two compilers are doing genuinely
-  different arithmetic. Not a native2py bug.
+  different arithmetic. Not a nativegate bug.
 * *`golden.json` disagrees with a native binary that Python agrees with.* The
   committed baseline is stale — the native code legitimately changed and
   nobody re-recorded. Check `provenance.sources` in `golden.json` against the
@@ -185,15 +185,15 @@ answers "has it changed since", which is a cheaper question that can be asked
 on every build without a compiler in the loop. Record it with:
 
 ```bash
-native2py golden record petro_api      # needs the built extension installed
-native2py golden verify petro_api
-native2py golden show petro_api
+ngate golden record petro_api      # needs the built extension installed
+ngate golden verify petro_api
+ngate golden show petro_api
 ```
 
 It records, per entry, the arguments, the result, any argument the call wrote
 in place, and the tolerance that entry is held to — plus one `provenance`
 block for the file: platform, machine, Python, numpy, the `gfortran` and
-`clang++` identification strings, native2py's version, and the SHA-256 of
+`clang++` identification strings, nativegate's version, and the SHA-256 of
 every native source the values came from. No timestamps, no paths, no
 hostnames: the file is diffed in review, and the only thing that should ever
 show up in that diff is a changed answer.

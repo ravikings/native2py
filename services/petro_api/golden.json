@@ -14,7 +14,7 @@
     "numpy": "2.4.6",
     "fortran_compiler": "GNU Fortran (Homebrew GCC 16.2.0) 16.2.0",
     "cxx_compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)",
-    "native2py": "0.1.0",
+    "nativegate": "0.1.0",
     "sources": {
       "libraries/petro/fortran/flash.f": "7f82aa7da4db1f65baedb0820a16ae65de8cd1d2fe74f9da9d51a6d0a69fd6b1",
       "libraries/petro/fortran/hydrau.f": "53fff83b165efa47c32441fc09487b6afbaf86f9bd9f6b8be18f3acbb2880fbc",

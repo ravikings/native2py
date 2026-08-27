@@ -20,3 +20,29 @@ dist/
 *.mod
 *.smod
 *.o
+
+# Compiled extension modules. `ngate build` installs the pybind11/f2py module
+# into services/<name>/python/<pkg>/, i.e. next to tracked sources rather than
+# under dist/ — so the dist/ and build/ rules above do not catch them. No .so
+# is ever a source file in this repo; if one ever needs committing, force it
+# with `git add -f`.
+*.so
+*.dylib
+*.pyd
+*.whl
+
+# scikit-build-core / f2py scratch. _skbuild/ is scikit-build's staging tree
+# and .f2py_f2cmap is written into the working directory by f2py itself.
+_skbuild/
+wheelhouse/
+.f2py_f2cmap
+
+# mkdocs output (`mkdocs build`). Already ignored under tools/nativegate/;
+# repeated here so a build run from the repo root is also covered.
+site/
+
+# Test/coverage output.
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
