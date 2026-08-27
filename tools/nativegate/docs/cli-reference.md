@@ -234,6 +234,10 @@ ngate serve demo --reload        # development only
 
 This is a development convenience, not a deployment. The generated Dockerfile
 runs gunicorn with uvicorn workers; that is what should serve real traffic.
+
+The app it runs serves the MCP endpoint at `/mcp` alongside the REST routes,
+so `ngate serve demo` is also how you point an MCP client at a service during
+development. See [the MCP endpoint](mcp.md).
 There is deliberately no `--workers` here: a Fortran service keeps its state
 in COMMON blocks, which are per-process, so a "configure, then read" sequence
 split across two workers reads state the other one never wrote.
@@ -383,7 +387,9 @@ ngate gateway platform-api --service demo --service pvt
 uvicorn platform_api.app:app
 ```
 
-Writes `gateways/<name>/` containing the app plus a `pyproject.toml` that
+Writes `gateways/<name>/` containing the app, an `mcp_server.py` exposing
+every mounted service's routes as MCP tools at `/mcp` (see
+[mcp.md](mcp.md)), plus a `pyproject.toml` that
 depends on each service's **wheel** — so services stay independently built
 and versioned. Use this when you want one image and one URL; keep separate
 images behind an ingress instead when you need independent scaling. Full

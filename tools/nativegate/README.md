@@ -247,6 +247,12 @@ ngate k8s pvt                         # -> infrastructure/kubernetes/pvt.yaml
 ngate gateway platform-api --service pvt
 ```
 
+Every generated service and gateway also serves an [MCP endpoint](docs/mcp.md)
+at `/mcp`, so the same native routines are callable as tools by Claude or any
+other MCP client. It is the same routes — FastMCP derives one tool per route
+from the router's OpenAPI schema — so the tool surface cannot drift from the
+HTTP surface, and the COMMON-block lock still applies.
+
 ## What it parses
 
 **C++** — via Clang (libclang), the same front end that compiles the code.
@@ -418,7 +424,7 @@ nativegate/
     fixed_form.py       F77 fixed-form helpers (IMPLICIT, CHARACTER lengths)
   generators/       pybind11, f2py, CMake, Python package, FastAPI router,
                     middleware, error handling, tests, golden test,
-                    Dockerfile, gateway, Kubernetes, pyproject
+                    Dockerfile, gateway, MCP server, Kubernetes, pyproject
 ```
 
 Parsers normalise source into `ir.ModuleIR`; generators consume it without
@@ -457,6 +463,8 @@ failure) were found that way and not by inspection.
   generated versus what is yours
 - [Deployment topologies](docs/deployment-topologies.md) — one image per
   service, or one composed gateway
+- [MCP endpoint](docs/mcp.md) — calling the native routines as tools from an
+  LLM client
 
 ## Before you ship
 

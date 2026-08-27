@@ -8,8 +8,13 @@ from fastapi import FastAPI, Request
 
 from .middleware import install_middleware, readiness
 from .router import router
+from .mcp_server import mcp_app
 
-app = FastAPI(title="petro_api")
+# `lifespan=` is not optional: FastMCP's streamable-HTTP session manager starts
+# in mcp_app's lifespan, and mounting the app without adopting it fails every
+# tool call at runtime with "task group was not initialized" — at request time,
+# not at startup. See generators/mcp_gen.py.
+app = FastAPI(title="petro_api", lifespan=mcp_app.lifespan)
 app.include_router(router)
 
 # Auth, rate limiting, body-size limits, request ids and access logging. Called
@@ -17,6 +22,12 @@ app.include_router(router)
 # mounted into a gateway runs under the gateway's app.
 install_middleware(app, "petro_api")
 readiness(app, "petro_api")
+
+# The MCP view of these same endpoints, for an LLM client. Served at
+# "/mcp/"; "/mcp" answers 307 to it. Auth, rate limiting and request
+# ids come from the middleware installed above, because that attaches to THIS
+# app and the mount sits underneath it.
+app.mount("/mcp", mcp_app)
 
 
 @app.get("/healthz", tags=["health"])

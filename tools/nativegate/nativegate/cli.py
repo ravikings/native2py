@@ -50,6 +50,7 @@ from .generators import (
     gateway_gen,
     golden_gen,
     k8s_gen,
+    mcp_gen,
     pybind_gen,
     pyproject_gen,
     python_pkg_gen,
@@ -1183,8 +1184,12 @@ def gateway(name: str, services: tuple[str, ...]) -> None:
     )
     try:
         app_source = gateway_gen.generate_gateway_app(name, list(services), package_name)
+        mcp_source = mcp_gen.generate_mcp_py(name, list(services))
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+    # One MCP endpoint covering every mounted service, built from the same
+    # prefixed routers the gateway app mounts.
+    _write_python(package_dir / mcp_gen.MCP_FILENAME, mcp_source)
     _write_python(package_dir / "app.py", app_source)
     (gateway_dir / "pyproject.toml").write_text(
         gateway_gen.generate_gateway_pyproject(name, package_name, list(services))
@@ -1333,12 +1338,24 @@ def _write_package(service_dir: Path, config: ServiceConfig, module) -> None:
         middleware_gen.generate_middleware_py(config.name, auth=config.api.auth),
         module,
     )
+    # The MCP view of the same router, mounted by service.py at /mcp. Written
+    # before service.py only for readability; neither imports at generate time.
+    _write_python(
+        package_dir / mcp_gen.MCP_FILENAME,
+        mcp_gen.generate_mcp_py(config.name),
+        module,
+    )
     _write_python(
         package_dir / "service.py", python_pkg_gen.generate_service_py(config.name), module
     )
 
     tests_dir = service_dir / "tests"
     tests_dir.mkdir(parents=True, exist_ok=True)
+    _write_python(
+        tests_dir / "test_mcp.py",
+        mcp_gen.generate_mcp_smoke_test(config.name),
+        module,
+    )
     _write_python(
         tests_dir / "test_python_api.py",
         test_gen.generate_python_api_test(module, config.name),

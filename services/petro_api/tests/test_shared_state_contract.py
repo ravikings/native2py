@@ -224,7 +224,13 @@ def test_the_service_answers_a_failed_request_with_a_correlatable_json_body():
         and any(isinstance(t, ast.Name) and t.id == "app" for t in node.targets)
     )
     assert isinstance(app_call, ast.Call)
-    assert [kw.arg for kw in app_call.keywords] == ["title"]
+    keywords = [kw.arg for kw in app_call.keywords]
+    # `debug` specifically, rather than an exact keyword list: the app also
+    # takes `lifespan=mcp_app.lifespan` (the MCP mount needs it, and without it
+    # every tool call fails at request time), and more keywords may follow.
+    # What must never appear is debug.
+    assert "debug" not in keywords, keywords
+    assert "title" in keywords
 
 
 def test_liveness_and_readiness_are_separate_and_liveness_is_the_cheap_one():

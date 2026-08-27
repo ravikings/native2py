@@ -11,6 +11,7 @@ from ..ir import (
     python_identifier,
     size_pairings as _size_pairings,
 )
+from . import mcp_gen
 from .error_gen import ERROR_HANDLER_IMPORTS, generate_error_handler
 
 
@@ -53,10 +54,17 @@ class _EndpointNames:
     individually addressable this way instead.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, service_name: str = "") -> None:
         # `_unexposed` is taken by the generated introspection route, so a
         # native symbol of that name gets the suffix instead of shadowing it.
         self._used: set[str] = {"_unexposed"}
+        self._service = service_name
+        # Issued operationIds, and the route each was issued for: the id is a
+        # lossy function of the route (see operation_id), so uniqueness has to
+        # be tracked rather than derived, and a repeat call for the same route
+        # must return the same id rather than allocating a new suffix.
+        self._used_operation_ids: set[str] = set()
+        self._operation_ids: dict[str, str] = {}
 
     def take(self, native_name: str) -> tuple[str, str]:
         """Return (route path segment, Python function base name)."""
@@ -68,6 +76,79 @@ class _EndpointNames:
             route, name = f"{native_name}_{counter}", f"{base}_{counter}"
         self._used.add(name)
         return route, name
+
+    def operation_id(self, route: str) -> str:
+        """The OpenAPI operationId for a route, qualified by service name.
+
+        Two separate constraints shape this, both measured rather than assumed.
+
+        **Uniqueness.** OperationIds must be unique across an OpenAPI
+        *document*, and the same router is served by two documents: the
+        service's own app, and a gateway that mounts several services at once.
+        Unqualified ids collide in the gateway — certainly on `_unexposed`,
+        which every service has, and on any symbol name two services happen to
+        share. FastAPI answers a duplicate with a warning and an OpenAPI
+        document that client generators and FastMCP both mis-handle, so the id
+        carries the service name. It is also the MCP tool name, where the
+        prefix earns its keep a second time: `pvt_solution_gor` tells the model
+        which service it is calling, which a bare `solution_gor` does not.
+
+        **No double underscores.** FastMCP TRUNCATES a tool name at `__` and
+        strips leading underscores: measured against fastmcp 3.4.7,
+        `svc__unexposed` becomes the tool `svc`, and `svc_a__b` becomes
+        `svc_a`. So `<service>_` + `_unexposed` would name the introspection
+        tool after the service itself, and any two native symbols differing
+        only after a `__` would collapse onto one tool name — silently making
+        one of them uncallable. Underscore runs are therefore collapsed before
+        the id is issued, and the result is de-duplicated with a numeric
+        suffix so collapsing can never merge two distinct routes.
+        """
+        if route in self._operation_ids:
+            return self._operation_ids[route]
+        base = f"{self._service}_{route}" if self._service else route
+        # Collapse runs of underscores and trim the ends: what survives here is
+        # exactly what FastMCP will use, so the id and the tool name agree.
+        candidate = "_".join(part for part in base.split("_") if part) or "endpoint"
+        unique, counter = candidate, 1
+        while unique in self._used_operation_ids:
+            counter += 1
+            unique = f"{candidate}_{counter}"
+        self._used_operation_ids.add(unique)
+        self._operation_ids[route] = unique
+        return unique
+
+
+def _route(route: str, names: "_EndpointNames") -> str:
+    """A POST decorator carrying an explicit `operation_id` (generators/mcp_gen.py).
+
+    The operation_id is the service name plus the NATIVE symbol name — the
+    route's own spelling, not the escaped Python one, so it matches the rest of
+    the wire contract. See _EndpointNames.operation_id for why it is qualified.
+
+    It is not cosmetic. FastMCP names each generated MCP tool after the route's
+    operationId, and FastAPI's default is `<function>_<path>_<method>`: without
+    this, `solution_gor` reaches the model as
+    `solution_gor_endpoint_solution_gor_post`. It also gives the OpenAPI schema
+    stable operation ids, which is what client generators key off.
+    """
+    return f'@router.post("/{route}", operation_id="{names.operation_id(route)}")'
+
+
+def _docstring(summary: str) -> list[str]:
+    """A one-line endpoint docstring.
+
+    FastAPI publishes it as the route's OpenAPI `description`, which is what
+    FastMCP hands the model as the tool description. With no docstring FastMCP
+    falls back to a title-cased function name ("Solution Gor Endpoint"), which
+    tells the model nothing about what the routine does.
+
+    The text is derived from the IR, not from the native source: nativegate
+    does not yet carry doc comments through the parsers, so there is nothing
+    better to say here yet (ROADMAP 3.4). Until then this is a truthful
+    skeleton rather than a real description — which still beats FastMCP's
+    fallback of a title-cased function name.
+    """
+    return [f'    """{summary}"""']
 
 
 def _native_module_symbol(module: ModuleIR) -> str:
@@ -293,12 +374,15 @@ def _endpoint_for_function(
     # The endpoint function shares fn.name with the imported native symbol
     # (see call_expr's alias in generate_service_py) — using fn.name here as
     # well would shadow the import and turn every call into infinite self-recursion.
-    lines = [f'@router.post("/{route}")', f"def {py_name}_endpoint({', '.join(sig_parts)}):"]
+    lines = [_route(route, names), f"def {py_name}_endpoint({', '.join(sig_parts)}):"]
     call_args = [p.name for p in inputs]
+
+    kind = "subroutine" if fn.is_subroutine else "routine"
+    body_lines = _docstring(f"Call the native {kind} `{fn.name}`.")
 
     # Checked against the *list* the request supplied, before it is turned into
     # a numpy buffer and before the native call.
-    body_lines = _size_guard_lines(_size_pairings(inputs))
+    body_lines += _size_guard_lines(_size_pairings(inputs))
     for p in array_inputs:
         body_lines.append(f"    {p.name} = np.array({p.name}, dtype=np.float64)")
 
@@ -404,7 +488,7 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
     endpoint_lines: list[str] = []
     # One registry for the whole file: a class method and a free function can
     # collide just as two overloads of one method can (A5).
-    names = _EndpointNames()
+    names = _EndpointNames(service_name)
 
     for cls in module.classes:
         endpoint_lines.extend(
@@ -502,7 +586,7 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
     lines.append(f'router = APIRouter(tags=["{service_name}"])')
     lines.append("")
 
-    lines.extend(_unexposed_route(module))
+    lines.extend(_unexposed_route(module, names))
 
     lines.extend(endpoint_lines)
 
@@ -512,7 +596,7 @@ def generate_router_py(module: ModuleIR, service_name: str) -> str:
 # --- what the parser refused to bind (ROADMAP 2.4) ----------------------
 
 
-def _unexposed_route(module: ModuleIR) -> list[str]:
+def _unexposed_route(module: ModuleIR, names: "_EndpointNames") -> list[str]:
     """`GET /_unexposed` — every symbol the parser recognised and refused.
 
     `ModuleIR.skipped` is how nativegate promises never to mis-bind silently,
@@ -548,7 +632,10 @@ def _unexposed_route(module: ModuleIR) -> list[str]:
         lines.append(f"    {name!r}: {reason!r},")
     lines.append("}")
     lines.append("")
-    lines.append('@router.get("/_unexposed", tags=["introspection"])')
+    lines.append(
+        '@router.get("/_unexposed", tags=["introspection"], '
+        f'operation_id="{names.operation_id("_unexposed")}")'
+    )
     # Deliberately NOT `def _unexposed`: the router imports every bound symbol
     # into this module namespace, so a native routine called `_unexposed` and
     # the route handler would be the same name and one would silently shadow
@@ -770,8 +857,18 @@ def _endpoints_for_class(
         call_args = _call_arguments(method_params, structs)
 
         route, py_name = names.take(method.name)
-        lines.append(f'@router.post("/{route}")')
+        lines.append(_route(route, names))
         lines.append(f"def {py_name}({', '.join(signature)}):")
+        if method.is_static:
+            summary = f"Call the static method `{cls.name}::{method.name}`."
+        else:
+            # Worth stating: the instance is per-request, so an LLM cannot
+            # treat two calls as operating on the same object.
+            summary = (
+                f"Construct a `{cls.name}` and call its `{method.name}` method. "
+                "The instance does not outlive this request."
+            )
+        lines.extend(_docstring(summary))
         guard = _size_guard_lines(
             _size_pairings(
                 [_renamed(p, name) for name, p in zip(ctor_names, needed_ctor)]
@@ -876,7 +973,8 @@ def _endpoint_for_cpp_function(
     ]
 
     route, py_name = names.take(fn.name)
-    lines = [f'@router.post("/{route}")', f"def {py_name}_endpoint({signature}):"]
+    lines = [_route(route, names), f"def {py_name}_endpoint({signature}):"]
+    lines.extend(_docstring(f"Call the native function `{fn.name}`."))
     if not buffers:
         lines.extend(_size_guard_lines(_size_pairings(parameters)))
 
@@ -956,8 +1054,13 @@ from fastapi import FastAPI, Request
 
 from .middleware import install_middleware, readiness
 from .router import router
+{mcp_gen.MCP_APP_IMPORT}
 
-app = FastAPI(title="{service_name}")
+# `lifespan=` is not optional: FastMCP's streamable-HTTP session manager starts
+# in mcp_app's lifespan, and mounting the app without adopting it fails every
+# tool call at runtime with "task group was not initialized" — at request time,
+# not at startup. See generators/mcp_gen.py.
+app = FastAPI(title="{service_name}", lifespan=mcp_app.lifespan)
 app.include_router(router)
 
 # Auth, rate limiting, body-size limits, request ids and access logging. Called
@@ -965,6 +1068,7 @@ app.include_router(router)
 # mounted into a gateway runs under the gateway's app.
 install_middleware(app, "{service_name}")
 readiness(app, "{service_name}")
+{mcp_gen.mcp_mount_lines()}
 
 
 @app.get("/healthz", tags=["health"])

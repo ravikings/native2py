@@ -22,9 +22,18 @@ set(F2PY_SOURCES
 
 set(F2PY_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/petro_api${PY_EXT_SUFFIX}")
 
+# f2py's meson backend picks tempfile.mkdtemp() for its build directory
+# whenever it isn't told otherwise, and nothing removes that directory or
+# records where it went — orphaning the compile_commands.json and .o files
+# meson always writes there. Pin an explicit, discoverable build directory
+# under the service's own `.nativegate/` tree (the same convention used for
+# `.nativegate/ir.json`) so `ngate build` leaves a real, locatable build
+# tree behind: services/<name>/.nativegate/build/bbdir/compile_commands.json.
+set(F2PY_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.nativegate/build")
+
 add_custom_command(
     OUTPUT "${F2PY_OUTPUT}"
-    COMMAND "${Python_EXECUTABLE}" -m numpy.f2py -c --backend meson -m petro_api ${F2PY_SOURCES} only: pvt_set_fluid solution_gor oil_fvf oil_viscosity gas_z_factor bubble_point pvt_state tubing_bhp vogel_rate last_error :
+    COMMAND "${Python_EXECUTABLE}" -m numpy.f2py -c --backend meson --build-dir "${F2PY_BUILD_DIR}" -m petro_api ${F2PY_SOURCES} only: pvt_set_fluid solution_gor oil_fvf oil_viscosity gas_z_factor bubble_point pvt_state tubing_bhp vogel_rate last_error :
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     DEPENDS ${F2PY_SOURCES}
 )

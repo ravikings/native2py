@@ -39,5 +39,6 @@ nav:
   - nativegate.yaml reference: configuration.md
   - Architecture: architecture.md
   - Deployment topologies: deployment-topologies.md
+  - MCP endpoint: mcp.md
   - Is this production-ready?: production-readiness.md
   - Troubleshooting: troubleshooting.md

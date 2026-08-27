@@ -407,6 +407,25 @@ or TOML. Note the `compile()` gate and identifier validation already graduated
 out of this workstream, which is most of the safety benefit; what remains is
 maintainability. ~3 wks, whenever there is room.
 
+**3.4 — carry doc comments into the IR.** `FunctionDef` has no field for the
+documentation attached to a routine in its own source — a Doxygen block over a
+C++ declaration, the comment header on a Fortran subroutine — so nothing
+downstream can use it. That was cosmetic while the only consumer was
+`/docs`; it stopped being cosmetic when the generated services grew an
+[MCP endpoint](docs/mcp.md), because the route's description *is* the tool
+description handed to a model, and how well a model calls a native routine
+depends on it directly. Today `python_pkg_gen._docstring` emits a truthful
+skeleton (`Call the native routine `solution_gor`.`), which is enough to beat
+FastMCP's title-cased fallback and no more.
+
+Both front ends already have the text in hand: libclang exposes
+`Cursor.raw_comment`, and the fparser2 tree carries preceding comments when
+parsed with `ignore_comments=False`. The work is a field on `FunctionDef`,
+`Method` and `Parameter`, plumbing in the two parsers, and using it in
+`_docstring` — plus a decision about what to do with the many legacy headers
+whose comments are stale, which is the part worth thinking about rather than
+the plumbing. ~1 wk.
+
 Done from this workstream: `golden_gen.TEMPLATE` is now a real shipped module
 (`nativegate/templates/golden_test_template.py`, asserted present in a built
 wheel by `tests/test_golden.py`), and the unused `jinja2` runtime dependency

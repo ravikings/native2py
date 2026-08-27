@@ -69,6 +69,18 @@ test = [
     # shape, and CI's first run proved the cost of it.
     "build>=1.0",
     "wheel>=0.42",
+    # tests/test_mcp_gen.py importorskips fastmcp and builds a REAL MCP server
+    # from a generated router — the only way to see what FastMCP actually names
+    # and describes the tools, which no substring check over the source can
+    # tell you. Same reasoning as build/wheel above: undeclared means skipped,
+    # and a skipped suite verifies nothing. NOT a dependency of nativegate
+    # itself — the tool never imports fastmcp; only the services it generates
+    # do, which is why it appears in generators/pyproject_gen.py instead.
+    "fastmcp>=3.0",
+    # Supplies the `anyio` pytest plugin those async tests are marked with. It
+    # arrives transitively via httpx/starlette today; declaring it means the
+    # tests keep running if that ever stops being true.
+    "anyio>=4.0",
 ]
 
 [project.scripts]

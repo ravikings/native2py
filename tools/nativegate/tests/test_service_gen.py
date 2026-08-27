@@ -89,7 +89,7 @@ def test_class_with_no_callable_constructor_is_skipped_with_a_reason():
     code = router(mod)
 
     assert "Correlation()" not in code
-    assert '@router.post("/apply")' not in code
+    assert '@router.post("/apply"' not in code
     assert "no public constructor" in code
 
 
@@ -258,10 +258,10 @@ def test_bound_class_parameter_gets_no_endpoint_and_says_why():
 
     code = router(mod)
 
-    assert '@router.post("/adopt")' not in code
+    assert '@router.post("/adopt"' not in code
     assert "Registry.adopt: no endpoint" in code
     assert "bound class (PvtModel)" in code
-    assert '@router.post("/count")' in code  # the rest of the class survives
+    assert '@router.post("/count"' in code  # the rest of the class survives
 
 
 def test_bound_class_return_gets_no_endpoint():
@@ -276,7 +276,7 @@ def test_bound_class_return_gets_no_endpoint():
 
     code = router(mod)
 
-    assert '@router.post("/make")' not in code
+    assert '@router.post("/make"' not in code
     assert "returns a bound class (PvtModel)" in code
 
 
@@ -449,7 +449,7 @@ def test_keyword_parameter_names_are_escaped_and_the_router_compiles():
     compile(code, "router.py", "exec")
     assert "def attenuate_endpoint(lambda_: float, from_: float):" in code
     # Only the Python name moved: the route keeps the native spelling.
-    assert '@router.post("/attenuate")' in code
+    assert '@router.post("/attenuate"' in code
     assert "attenuate(lambda_, from_)" in code
 
 
@@ -469,7 +469,7 @@ def test_keyword_symbol_name_is_escaped_everywhere_it_is_spelled():
     assert 'lambda_ = getattr(_native, "lambda")' in init_py
     assert '__all__ = ["lambda_"]' in init_py
     assert "from . import lambda_" in code
-    assert '@router.post("/lambda")' in code  # the wire contract is untouched
+    assert '@router.post("/lambda"' in code  # the wire contract is untouched
     assert "def lambda__endpoint(x: float):" in code
 
 
@@ -481,7 +481,7 @@ def test_keyword_method_name_is_reached_by_getattr():
     code = router(mod)
 
     compile(code, "router.py", "exec")
-    assert '@router.post("/pass")' in code
+    assert '@router.post("/pass"' in code
     assert 'getattr(instance, "pass")()' in code
 
 
@@ -549,8 +549,8 @@ def test_overloaded_methods_each_get_a_reachable_endpoint():
     compile(code, "router.py", "exec")
     assert code.count("def viscosity(") == 1
     assert "def viscosity_2(p: float, t: float):" in code
-    assert code.count('@router.post("/viscosity")') == 1
-    assert '@router.post("/viscosity_2")' in code
+    assert code.count('@router.post("/viscosity"') == 1
+    assert '@router.post("/viscosity_2"' in code
 
 
 def test_overloaded_free_functions_each_get_a_reachable_endpoint():
@@ -570,7 +570,7 @@ def test_overloaded_free_functions_each_get_a_reachable_endpoint():
     compile(code, "router.py", "exec")
     assert "def mix_endpoint(a: float):" in code
     assert "def mix_2_endpoint(a: float, b: float):" in code
-    assert '@router.post("/mix_2")' in code
+    assert '@router.post("/mix_2"' in code
 
 
 # --- code-review findings [6][7]: identifier escaping --------------------
@@ -650,7 +650,10 @@ def _load_router(code: str, native: dict):
         def __init__(self, **kwargs):
             self.routes = {}
 
-        def post(self, path):
+        # **kwargs because the generated decorator carries operation_id= (it
+        # names the MCP tool — see generators/mcp_gen.py), and this stub stands
+        # in for the real APIRouter, which accepts it.
+        def post(self, path, **kwargs):
             def decorate(fn):
                 self.routes[path] = fn
                 return fn
