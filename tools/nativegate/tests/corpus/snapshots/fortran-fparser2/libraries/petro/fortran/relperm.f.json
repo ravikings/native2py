@@ -6,6 +6,7 @@
   "functions": [
     {
       "cpp_name": null,
+      "doc": "SET COREY END POINTS AND EXPONENTS.  SWITCHES TO ANALYTIC MODE.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -126,6 +127,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "LOAD AN SWOF TABLE.  N ROWS, ASCENDING IN SW.  SWITCHES TO\nTABLE MODE.  CALLED FROM THE C++ DECK READER VIA KRLOAD_.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -198,6 +200,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "WATER RELATIVE PERMEABILITY.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -222,6 +225,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "OIL RELATIVE PERMEABILITY IN THE OIL-WATER SYSTEM.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -246,6 +250,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "GAS RELATIVE PERMEABILITY.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -270,6 +275,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "THREE PHASE OIL RELATIVE PERMEABILITY.\nISTONE = 1  STONE I (NORMALISED)\nISTONE = 2  STONE II\nISTONE = 3  SATURATION WEIGHTED (BAKER)",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -306,6 +312,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "OIL RELATIVE PERMEABILITY IN THE GAS-OIL SYSTEM.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -330,6 +337,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "OIL-WATER CAPILLARY PRESSURE, PSI, BROOKS-COREY J FUNCTION FORM.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -354,6 +362,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "PIECEWISE LINEAR LOOKUP WITH FLAT EXTRAPOLATION.  BINARY SEARCH.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -415,7 +424,7 @@
   ],
   "language": "fortran",
   "name": "relperm",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [],
   "source_file": "libraries/petro/fortran/relperm.f",
   "structs": []

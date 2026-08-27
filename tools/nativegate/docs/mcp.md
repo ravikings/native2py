@@ -78,13 +78,62 @@ route's OpenAPI `description` and FastMCP hands the model as the tool
 description. Without one, FastMCP falls back to a title-cased function name
 ("Solution Gor Endpoint"), which says nothing about the routine.
 
-Today those descriptions are truthful skeletons — `Call the native routine
-solution_gor.` — because **nativegate does not yet carry doc comments through
-the parsers**; the IR has no field to put them in. Recovering the real
-documentation from the header or the Fortran deck is tracked in the roadmap.
-Until then, a service that wants better tool descriptions should improve the
-native source's own documentation and wait for that work, rather than editing
-the generated file, which `generate` will overwrite.
+The text is **the native source's own documentation**, recovered by the
+parsers: a Doxygen or `///` block over a C++ declaration, the `C`/`*`/`!`
+comment header on a Fortran routine. nativegate's own one-line statement of
+what the endpoint does is appended, because a native comment rarely names the
+symbol it belongs to:
+
+```
+TOOL petro_api_last_error
+     Last error code raised by the legacy layer. Clears the state.
+
+     Call the native routine `last_error`.
+```
+
+That "Clears the state" is the point of the whole feature — it is a side
+effect a model must know about before calling, and it exists only in the deck.
+
+Details worth knowing:
+
+- **It is verbatim.** nativegate does not paraphrase, summarise or tidy a
+  routine's contract; a plausible-sounding paraphrase of a numerical routine is
+  worse than no description. Legacy headers do carry stale comments, and
+  passing them through unchanged keeps the staleness attributable to the
+  source.
+- **Doxygen structure is kept as prose.** `@param`/`@return` lines survive
+  rather than being parsed into fields — a model reads them fine.
+- **Separator banners are dropped** (`C=====`, `C*****`), but a dated rule with
+  words in it is kept. A header longer than 30 lines is truncated: past that it
+  is a change log, and pasting one into a tool description hurts the model
+  reading it.
+- **A file banner can become the first routine's description.** Only the first
+  routine in a deck can pick one up, which is slightly arbitrary, and it is
+  deliberate: `simcor.f`'s banner carries "SIMINI MUST BE CALLED AFTER PVTINI
+  AND KRINI. THERE IS NO CHECK.", which is exactly what a caller needs.
+- **The C++ regex fallback yields no documentation.** It has no reliable way to
+  tell which declaration a comment belongs to; Clang's attachment rules do that
+  properly, so only the AST backend populates it.
+
+### Comment text cannot break the generated service
+
+A comment is unreviewed text from a header or a deck, and it lands inside a
+Python docstring. A `"""` in it would close that docstring early and turn the
+rest of the comment into executable code; a trailing backslash would escape the
+closing quotes. Both occur in real sources — `\` continues a macro line, 1988
+programmers drew boxes — so this is a live injection channel.
+
+The defence is entirely in the generator, which is the layer that knows what
+quoting context it is emitting into. Plain prose becomes a readable
+`"""..."""` block; anything carrying a quote, a backslash or a control
+character is emitted as `repr(text)`, which Python itself guarantees is
+correctly encoded. The parsers deliberately do **not** pre-sanitise, because
+neutralising a `"""` there would silently rewrite documentation for every other
+consumer of the IR too.
+
+`tests/test_endpoint_docstrings.py` pins this by *executing* the generated
+module, not merely compiling it — source with an escaped-out docstring still
+parses; the question is whether the text can run.
 
 ## Auth
 

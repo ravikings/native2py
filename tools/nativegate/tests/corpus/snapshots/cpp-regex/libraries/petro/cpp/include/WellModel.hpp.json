@@ -493,7 +493,7 @@
   "functions": [],
   "language": "cpp",
   "name": "WellModel",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [
     {
       "name": "WellModel::operator=",

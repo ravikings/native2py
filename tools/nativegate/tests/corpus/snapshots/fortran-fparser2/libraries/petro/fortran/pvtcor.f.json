@@ -6,6 +6,7 @@
   "functions": [
     {
       "cpp_name": null,
+      "doc": "SET THE FLUID DESCRIPTION AND SELECT A CORRELATION FAMILY.\nICORR  1 = STANDING (1947)\n2 = VAZQUEZ-BEGGS (1980)\n3 = GLASO (1980)",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -66,6 +67,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "BUBBLE POINT PRESSURE, PSIA, FOR A TARGET SOLUTION GOR RSTGT.\nSOLVED BY NEWTON ON PVTRS SINCE THE STANDING FORM INVERTS\nANALYTICALLY BUT VAZQUEZ-BEGGS AND GLASO DO NOT.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -90,6 +92,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "SOLUTION GAS OIL RATIO, SCF/STB, AT PRESSURE P (PSIA).",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -114,6 +117,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "OIL FORMATION VOLUME FACTOR, RB/STB.\nBELOW PB   -   STANDING / VAZQUEZ-BEGGS SATURATED FORM\nABOVE PB   -   UNDERSATURATED, COMPRESSED WITH CO",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -138,6 +142,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "UNDERSATURATED OIL COMPRESSIBILITY, 1/PSI (VAZQUEZ-BEGGS).",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -162,6 +167,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "LIVE OIL VISCOSITY, CP.  BEGGS-ROBINSON DEAD OIL + CHEW-CONNALLY.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -186,6 +192,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "GAS DEVIATION FACTOR BY HALL-YARBOROUGH.  NEWTON ON THE REDUCED\nDENSITY Y.  SUTTON CORRELATION FOR THE PSEUDO CRITICALS.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -210,6 +217,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "EVALUATE THE COMPLETE PVT STATE AT PRESSURE P AND LEAVE IT IN\n/PVTOUT/.  THIS IS THE ROUTINE SIMCOR AND WELLIB ACTUALLY CALL.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -234,6 +242,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "LEE-GONZALEZ-EAKIN GAS VISCOSITY, CP.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -282,6 +291,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "RETURN AND CLEAR THE ACCUMULATED ERROR STATE.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -319,7 +329,7 @@
   ],
   "language": "fortran",
   "name": "pvtcor",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [
     {
       "name": "PVTERR(MSG)",

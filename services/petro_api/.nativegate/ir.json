@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "nativegate_version": "0.1.0",
   "name": "petro_api",
   "language": "fortran",
@@ -64,7 +64,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Initialise the fluid description. Must be called before anything\nelse in this module. Wraps PVTINI."
     },
     {
       "name": "solution_gor",
@@ -88,7 +89,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Solution gas oil ratio, scf/stb."
     },
     {
       "name": "oil_fvf",
@@ -112,7 +114,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Oil formation volume factor, rb/stb."
     },
     {
       "name": "oil_viscosity",
@@ -136,7 +139,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Live oil viscosity, cp."
     },
     {
       "name": "gas_z_factor",
@@ -160,7 +164,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Gas deviation factor, dimensionless."
     },
     {
       "name": "bubble_point",
@@ -184,7 +189,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Bubble point pressure, psia, for a target solution GOR."
     },
     {
       "name": "pvt_state",
@@ -232,7 +238,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Complete PVT state at one pressure, returned as an array so the\ncaller never touches /PVTOUT/ directly.\nprops(1) = Bo    props(2) = Bg    props(3) = Bw\nprops(4) = Rs    props(5) = muo   props(6) = mug\nprops(7) = rhoo  props(8) = rhog  props(9) = Z"
     },
     {
       "name": "tubing_bhp",
@@ -352,7 +359,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Bottomhole pressure from a Beggs and Brill traverse, psia.\nWraps TRAVER."
     },
     {
       "name": "vogel_rate",
@@ -400,7 +408,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Vogel inflow performance, stb/d."
     },
     {
       "name": "last_error",
@@ -411,7 +420,8 @@
       "is_overloaded": false,
       "returns_array": false,
       "cpp_name": null,
-      "fortran_module": "petro_api"
+      "fortran_module": "petro_api",
+      "doc": "Last error code raised by the legacy layer. Clears the state."
     }
   ],
   "structs": [],

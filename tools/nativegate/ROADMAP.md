@@ -407,24 +407,42 @@ or TOML. Note the `compile()` gate and identifier validation already graduated
 out of this workstream, which is most of the safety benefit; what remains is
 maintainability. ~3 wks, whenever there is room.
 
-**3.4 — carry doc comments into the IR.** `FunctionDef` has no field for the
-documentation attached to a routine in its own source — a Doxygen block over a
-C++ declaration, the comment header on a Fortran subroutine — so nothing
-downstream can use it. That was cosmetic while the only consumer was
-`/docs`; it stopped being cosmetic when the generated services grew an
-[MCP endpoint](docs/mcp.md), because the route's description *is* the tool
-description handed to a model, and how well a model calls a native routine
-depends on it directly. Today `python_pkg_gen._docstring` emits a truthful
-skeleton (`Call the native routine `solution_gor`.`), which is enough to beat
-FastMCP's title-cased fallback and no more.
+**3.4 — carry doc comments into the IR. DONE.** `FunctionDef.doc` carries the
+documentation attached to a routine in its own source, and the generated
+endpoint's docstring uses it — which means it becomes the route's OpenAPI
+`description` and then the MCP tool description a model reads before calling
+native code (docs/mcp.md). Schema went 1.5 -> 1.6.
 
-Both front ends already have the text in hand: libclang exposes
-`Cursor.raw_comment`, and the fparser2 tree carries preceding comments when
-parsed with `ignore_comments=False`. The work is a field on `FunctionDef`,
-`Method` and `Parameter`, plumbing in the two parsers, and using it in
-`_docstring` — plus a decision about what to do with the many legacy headers
-whose comments are stale, which is the part worth thinking about rather than
-the plumbing. ~1 wk.
+* **C++** (`parsers/cpp_ast.py`): `raw_comment`, not `brief_comment` — the
+  latter returns only the `\brief` paragraph, and the legacy headers this tool
+  targets usually have an unlabelled first paragraph followed by `@param`
+  lines, so it yields nothing where real documentation exists. Doxygen
+  structure is kept as prose. The regex fallback still yields None: it has no
+  reliable comment-to-declaration attachment, and guessing is what that reader
+  is already criticised for.
+* **Fortran** (`parsers/fixed_form.py`, shared by both backends): the comment
+  run inside the routine (F77 style) wins over the run above it (free-form
+  style). Cleaning drops separator banners — "contains no letter or digit", so
+  `C=====` goes and `C---- 05-FEB-1996: FIXED DIVIDE BY ZERO ----` stays — and
+  truncates past 30 lines, where a header stops being documentation and becomes
+  a change log. Comment runs terminate at the INCLUDE-expansion markers;
+  without that, PETRO.INC's own banner was appended to the description of every
+  routine in every deck that includes it. Implemented in BOTH backends because
+  `test_both_backends_produce_the_same_ir` compares whole ModuleIRs — parity
+  was a constraint, not an afterthought.
+* **Escaping lives in the generator, not the parsers.** The text lands inside a
+  `"""` literal, where a `"""` closes it early and a trailing backslash escapes
+  the closing quotes. Both parsers originally neutralised those in place; that
+  was reverted, because it is lossy and rewrites a routine's documentation to
+  suit one consumer's quoting rules while every other consumer of the IR
+  inherits the damage. `python_pkg_gen._docstring_literal` emits `repr()` for
+  anything carrying a quote, backslash or control character and a readable
+  triple-quoted block otherwise. tests/test_endpoint_docstrings.py executes the
+  hostile cases rather than only compiling them.
+
+Not done, and deliberately: nothing decides what to do about headers whose
+comments are stale, and nothing should. The text is passed through verbatim so
+the staleness stays attributable to the source.
 
 Done from this workstream: `golden_gen.TEMPLATE` is now a real shipped module
 (`nativegate/templates/golden_test_template.py`, asserted present in a built

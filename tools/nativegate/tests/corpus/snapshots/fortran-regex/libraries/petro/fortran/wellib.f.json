@@ -6,6 +6,7 @@
   "functions": [
     {
       "cpp_name": null,
+      "doc": "ADD A VERTICAL WELL PERFORATED FROM LAYER K1 TO K2.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -126,6 +127,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "PEACEMAN WELL INDEX FOR A VERTICAL WELL IN AN ANISOTROPIC BLOCK.\nUNITS: RB-CP/D/PSI (MOBILITY APPLIED SEPARATELY BY WELSRC).",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -174,6 +176,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "ADD WELL SOURCE TERMS INTO THE IMPES PRESSURE MATRIX.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -210,6 +213,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "VOGEL INFLOW PERFORMANCE, STB/D.  COMPOSITE ABOVE / BELOW PB.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -258,6 +262,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "NODAL ANALYSIS AT THE BOTTOMHOLE NODE.  FIND THE RATE AT WHICH\nTHE IPR AND THE TUBING PERFORMANCE CURVE INTERSECT.\nINFLOW   PWF = IPR INVERSE OF Q\nOUTFLOW  PWF = TRAVER(PWH) WITH Q SPLIT BY WCUT AND GOR\nSOLVED BY BRACKETING ON Q THEN SECANT.  THE 1989 VERSION USED\nA FIXED 50 POINT SCAN AND PICKED THE CLOSEST POINT, WHICH IS\nWHY OLD .PRT FILES SHOW RATES QUANTISED TO QMAX/50.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -414,6 +419,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "INVERT THE VOGEL IPR FOR PWF GIVEN Q.  BISECTION - THE QUADRATIC\nINVERSE IS ONLY VALID FOR THE FULLY SATURATED BRANCH.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -462,6 +468,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "INFLOW PWF MINUS OUTFLOW PWF AT LIQUID RATE Q.  ROOT = SOLUTION.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -595,7 +602,7 @@
   ],
   "language": "fortran",
   "name": "wellib",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [],
   "source_file": "libraries/petro/fortran/wellib.f",
   "structs": []

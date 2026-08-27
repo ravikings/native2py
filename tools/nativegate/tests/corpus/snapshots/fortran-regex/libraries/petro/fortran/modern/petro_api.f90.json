@@ -6,6 +6,7 @@
   "functions": [
     {
       "cpp_name": null,
+      "doc": "Initialise the fluid description. Must be called before anything\nelse in this module. Wraps PVTINI.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": true,
@@ -66,6 +67,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Solution gas oil ratio, scf/stb.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": false,
@@ -90,6 +92,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Oil formation volume factor, rb/stb.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": false,
@@ -114,6 +117,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Live oil viscosity, cp.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": false,
@@ -138,6 +142,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Gas deviation factor, dimensionless.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": false,
@@ -162,6 +167,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Bubble point pressure, psia, for a target solution GOR.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": false,
@@ -186,6 +192,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Complete PVT state at one pressure, returned as an array so the\ncaller never touches /PVTOUT/ directly.\nprops(1) = Bo    props(2) = Bg    props(3) = Bw\nprops(4) = Rs    props(5) = muo   props(6) = mug\nprops(7) = rhoo  props(8) = rhog  props(9) = Z",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": true,
@@ -234,6 +241,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Bottomhole pressure from a Beggs and Brill traverse, psia.\nWraps TRAVER.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": false,
@@ -354,6 +362,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Vogel inflow performance, stb/d.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": false,
@@ -402,6 +411,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "Last error code raised by the legacy layer. Clears the state.",
       "fortran_module": "petro_api",
       "is_overloaded": false,
       "is_subroutine": false,
@@ -414,7 +424,7 @@
   ],
   "language": "fortran",
   "name": "petro_api",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [],
   "source_file": "libraries/petro/fortran/modern/petro_api.f90",
   "structs": []

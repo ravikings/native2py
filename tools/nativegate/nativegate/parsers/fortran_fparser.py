@@ -729,6 +729,46 @@ def _resolve_parameters(
     return parameters
 
 
+# --- documentation comments ---------------------------------------------
+
+
+def _routine_doc(subprogram, source: str | None, fixed: bool) -> str | None:
+    """The routine's comment header, cleaned, or None if it has none.
+
+    The cleaning rules live in `fixed_form` because the regex backend needs
+    exactly the same ones — see `fixed_form.doc_comment_at`. What this
+    function contributes is the part only a parse tree can give: the exact
+    line span of the opening statement.
+
+    fparser2 discards comments entirely unless the reader is built with
+    `ignore_comments=False`, and `_parse` already does that — it has to,
+    because `_subprogram_stmt` was written to skip the `Comment` nodes that
+    retention introduces. So enabling comments cost nothing here and perturbed
+    no existing walk; that bill was already paid.
+
+    What is deliberately NOT used is the `Comment` nodes themselves. Measured
+    on libraries/petro/fortran/pvtcor.f: the header sitting inside SUBROUTINE
+    PVTINI is not a child of `Specification_Part` at all — fparser2 buries it
+    inside an `Implicit_Part`, and where a comment lands depends on which
+    grammar rule happened to be open when the reader reached it. Walking for
+    that is a promise to re-learn fparser2's node placement every release.
+    `item.span` is 1-based line numbers into exactly the text the reader
+    consumed, which is stable, dialect-independent, and identical to what the
+    regex backend can compute — so parity is free.
+
+    `source` must therefore be the text that was parsed: on the fixed-form
+    path that is the INCLUDE-expanded text, not the file.
+    """
+    if not source:
+        return None
+    try:
+        span = _subprogram_stmt(subprogram).item.span
+    except (AttributeError, ValueError):
+        # A node with no positional information: no doc, not a crash.
+        return None
+    return fixed_form.doc_comment_at(source, span[0], span[1], fixed)
+
+
 def _prefix_return_type(subprogram) -> str | None:
     """Fortran base type from a `real(8) function ...` prefix, if any."""
     spec = _prefix_spec(subprogram)
@@ -750,6 +790,7 @@ def _free_form_routine(
     is_subroutine: bool,
     implicit_map: dict[str, str],
     derived_types: dict | None = None,
+    source: str | None = None,
 ) -> tuple[FunctionDef, str | None, str | None]:
     name = _routine_name(subprogram)
     decls = _parse_declarations(_specification_part(subprogram))
@@ -821,6 +862,9 @@ def _free_form_routine(
             returns=returns,
             is_subroutine=is_subroutine,
             fortran_module=enclosing,
+            # The routine's own comment header, if it has one. Stays None
+            # when it does not — see `_routine_doc`; nothing is invented.
+            doc=_routine_doc(subprogram, source, fixed=False),
             # Published as `name`, imported from the shim when one exists.
             cpp_name=f"{name}_n2p" if shim_source else None,
         ),
@@ -831,6 +875,11 @@ def _free_form_routine(
 
 def _parse_free_form(path: Path, expose: ExposeConfig) -> ModuleIR:
     tree = _parse(path)
+    # Read once for the doc-comment lookup, which works off the statement
+    # line spans rather than the tree. Tolerant of an undecodable byte for
+    # the same reason the reader is: a stray 8-bit character in a comment
+    # must not fail a parse that otherwise succeeds.
+    source = path.read_text(errors="replace")
     implicit_map = _implicit_map(tree)
 
     module = ModuleIR(name=path.stem, language="fortran", source_file=str(path))
@@ -851,7 +900,7 @@ def _parse_free_form(path: Path, expose: ExposeConfig) -> ModuleIR:
 
         try:
             fn, enclosing_module, shim_source = _free_form_routine(
-                subprogram, is_subroutine, implicit_map, derived_types
+                subprogram, is_subroutine, implicit_map, derived_types, source
             )
         except (_RoutineSkipped, NativeTypeError) as skipped:
             # Recognised but not bindable: reported through the channel that
@@ -1027,6 +1076,10 @@ def _parse_fixed_form(path: Path, expose: ExposeConfig, include_paths: list[Path
                 is_subroutine=is_subroutine,
                 # Fixed-form F77 predates modules: always top level.
                 fortran_module=None,
+                # Read off `expanded`, not the file: the line spans in the
+                # tree are line numbers into the text the reader saw, and
+                # INCLUDE expansion has already shifted them.
+                doc=_routine_doc(subprogram, expanded, fixed=True),
             )
         )
 

@@ -134,21 +134,103 @@ def _route(route: str, names: "_EndpointNames") -> str:
     return f'@router.post("/{route}", operation_id="{names.operation_id(route)}")'
 
 
-def _docstring(summary: str) -> list[str]:
-    """A one-line endpoint docstring.
+# A docstring body we are willing to paste into a `"""..."""` literal as-is.
+#
+# Deliberately strict, because the text on the other side comes from a native
+# source file nobody vetted: a `"""` closes the literal early and turns the
+# rest of a C++ comment into executable Python, and a trailing backslash
+# escapes the closing quotes so the literal swallows the code after it. Both
+# are ordinary things to find in a real header (`\` ends a line in a macro, and
+# Doxygen examples quote Python), so this is a real injection channel and not a
+# hypothetical one. Anything failing this test is emitted via repr() instead.
+_DOCSTRING_CONTROL = ("\r", "\x00")
 
-    FastAPI publishes it as the route's OpenAPI `description`, which is what
-    FastMCP hands the model as the tool description. With no docstring FastMCP
-    falls back to a title-cased function name ("Solution Gor Endpoint"), which
-    tells the model nothing about what the routine does.
 
-    The text is derived from the IR, not from the native source: nativegate
-    does not yet carry doc comments through the parsers, so there is nothing
-    better to say here yet (ROADMAP 3.4). Until then this is a truthful
-    skeleton rather than a real description — which still beats FastMCP's
-    fallback of a title-cased function name.
+def _breaks_a_docstring(text: str) -> bool:
+    """True when `text` cannot be pasted between triple double-quotes as-is.
+
+    Precise rather than merely conservative, because the fallback is a
+    single-line repr() and a 20-line Fortran header rendered that way is
+    genuinely hard to read in a file people debug even though they may not
+    edit it.
+
+    What actually breaks the literal, and nothing else:
+
+      * `\"\"\"` anywhere — closes it early, and what follows becomes code;
+      * a TRAILING `\"` — it abuts the closing quotes to make four, ending the
+        literal one character early and opening another string. A quote
+        anywhere else is harmless: `\"pressure\"` mid-prose is ordinary text to
+        Python, and rejecting it cost readability for nothing;
+      * any backslash — `\\N{`, a truncated `\\x`, or a trailing one escaping
+        the closing quotes. Real sources are full of `\\param` and `C:\\logs\\`;
+      * NUL and carriage return, less breakage than a way to make generated
+        files render and diff badly.
     """
-    return [f'    """{summary}"""']
+    return (
+        '"""' in text
+        or text.endswith('"')
+        or "\\" in text
+        or any(c in text for c in _DOCSTRING_CONTROL)
+    )
+
+
+def _docstring_literal(text: str) -> str:
+    """`text` as a Python string literal that is safe to use as a docstring.
+
+    Two shapes, chosen per text rather than one compromise:
+
+    * the common case — plain prose — becomes a readable `\"\"\"...\"\"\"` block,
+      because generated code nobody may hand-edit should still be legible to
+      whoever has to debug it;
+    * anything `_breaks_a_docstring` rejects becomes `repr(text)`, a
+      single-line literal Python itself guarantees is correctly escaped. It is
+      uglier, and that is the right trade: the alternative is hand-rolled
+      escaping of adversarial input, which is how a generator starts emitting
+      code that does not parse — or worse, parses.
+    """
+    if _breaks_a_docstring(text):
+        return repr(text)
+    return f'"""{text}"""'
+
+
+def _docstring(summary: str, doc: str | None = None) -> list[str]:
+    """The endpoint's docstring: the native source's own words, then ours.
+
+    FastAPI publishes this as the route's OpenAPI `description`, which is what
+    FastMCP hands the model as the MCP tool description (generators/mcp_gen.py).
+    With no docstring FastMCP falls back to a title-cased function name
+    ("Solution Gor Endpoint"), which tells the model nothing about the routine —
+    so how well a model calls native code depends directly on this text.
+
+    `doc` is the documentation the parser recovered from the declaration itself
+    (ROADMAP 3.4): a Doxygen block over a C++ prototype, the comment header on a
+    Fortran subroutine. It is used VERBATIM. nativegate does not paraphrase it,
+    because a plausible-sounding paraphrase of a numerical routine's contract is
+    worse than no description at all, and legacy headers do carry stale
+    comments — passing them through unchanged at least keeps the staleness
+    attributable to the source.
+
+    `summary` is nativegate's own one-line statement of what the endpoint does,
+    and is always emitted. It survives even when `doc` is present because the
+    native comment rarely says which symbol it belongs to, and the model needs
+    that to reason about a call it is about to make.
+    """
+    if not doc or not doc.strip():
+        return [f"    {_docstring_literal(summary)}"]
+
+    # Indented to sit inside the endpoint function. The native text is
+    # re-indented line by line rather than pasted as one blob, so a multi-line
+    # comment does not emit a docstring whose continuation lines sit at column
+    # zero — that parses, but it reads as though the function body ended.
+    body = "\n".join(
+        f"    {line}".rstrip() for line in f"{doc.strip()}\n\n{summary}".splitlines()
+    ).strip()
+    literal = _docstring_literal(body)
+    if literal.startswith('"""'):
+        # Closing quotes on their own line, PEP 257's shape for a multi-line
+        # docstring, and the reason the body was re-indented above.
+        return [f'    """{body}', '    """'] if "\n" in body else [f"    {literal}"]
+    return [f"    {literal}"]
 
 
 def _native_module_symbol(module: ModuleIR) -> str:
@@ -378,7 +460,7 @@ def _endpoint_for_function(
     call_args = [p.name for p in inputs]
 
     kind = "subroutine" if fn.is_subroutine else "routine"
-    body_lines = _docstring(f"Call the native {kind} `{fn.name}`.")
+    body_lines = _docstring(f"Call the native {kind} `{fn.name}`.", fn.doc)
 
     # Checked against the *list* the request supplied, before it is turned into
     # a numpy buffer and before the native call.
@@ -974,7 +1056,7 @@ def _endpoint_for_cpp_function(
 
     route, py_name = names.take(fn.name)
     lines = [_route(route, names), f"def {py_name}_endpoint({signature}):"]
-    lines.extend(_docstring(f"Call the native function `{fn.name}`."))
+    lines.extend(_docstring(f"Call the native function `{fn.name}`.", fn.doc))
     if not buffers:
         lines.extend(_size_guard_lines(_size_pairings(parameters)))
 

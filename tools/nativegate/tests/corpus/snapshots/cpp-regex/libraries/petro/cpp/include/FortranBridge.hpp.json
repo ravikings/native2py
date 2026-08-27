@@ -6,7 +6,7 @@
   "functions": [],
   "language": "cpp",
   "name": "FortranBridge",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [
     {
       "name": "F77_NAME",

@@ -403,6 +403,23 @@ def _own_declarations(body: str) -> str:
     return body[: match.start()] if match else body
 
 
+def _free_form_doc(raw_source: str, name: str) -> str | None:
+    """The comment header on a free-form routine, or None.
+
+    Located in the RAW file text, not the `normalize_free_form` output the
+    rest of this reader uses: normalisation blanks comments and joins
+    continuations, so by the time a routine is found the header is both gone
+    and at a different line number. The cleaning rules are shared with the
+    fparser2 backend (`fixed_form.doc_comment_at`) so both readers put
+    identical text in the IR — the differential harness compares whole
+    ModuleIRs and would fail on any disagreement.
+    """
+    span = fixed_form.find_header_lines(raw_source, name, fixed=False)
+    if span is None:
+        return None
+    return fixed_form.doc_comment_at(raw_source, span[0], span[1], fixed=False)
+
+
 def _extract_function(
     source: str, name: str, implicit_map: dict[str, str]
 ) -> tuple[FunctionDef, str | None] | None:
@@ -470,6 +487,19 @@ def _extract_subroutine(
         fortran_module=enclosing,
     )
     return fn, enclosing
+
+
+def _fixed_form_doc(expanded: str, name: str) -> str | None:
+    """The comment header on a fixed-form routine, or None.
+
+    Located by scanning the raw text rather than the normalised statements —
+    see `fixed_form.find_header_lines` for why the normalised line numbers
+    cannot be used.
+    """
+    span = fixed_form.find_header_lines(expanded, name)
+    if span is None:
+        return None
+    return fixed_form.doc_comment_at(expanded, span[0], span[1], fixed=True)
 
 
 def _parse_fixed_form_source(
@@ -580,6 +610,10 @@ def _parse_fixed_form_source(
                 is_subroutine=is_subroutine,
                 # Fixed-form F77 predates modules: always top level.
                 fortran_module=None,
+                # Read off `expanded` — the raw INCLUDE-expanded text, not
+                # `normalized`, whose line numbers no longer point at the
+                # comments because normalisation strips them.
+                doc=_fixed_form_doc(expanded, name),
             )
         )
 
@@ -603,7 +637,8 @@ def parse_source(
     # pattern below treats one line as one statement, and `_find_block`'s
     # `[^)]*` argument capture spans newlines, so a wrapped argument list
     # otherwise produces a parameter named "&".
-    source = normalize_free_form(path.read_text())
+    raw_source = path.read_text()
+    source = normalize_free_form(raw_source)
     module = ModuleIR(name=path.stem, language="fortran", source_file=str(path))
 
     # IMPLICIT typing is dialect-independent, so the fixed-form implementation
@@ -632,6 +667,9 @@ def parse_source(
                 "Check the name in nativegate.yaml matches the Fortran source exactly."
             )
         fn, enclosing_module = found
+        # Set here rather than inside the extractors: the doc is read off the
+        # raw file, which those work without.
+        fn.doc = _free_form_doc(raw_source, name)
         module.functions.append(fn)
 
         if fortran_module_name == "__unset__":

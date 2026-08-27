@@ -1221,3 +1221,105 @@ def test_the_regex_reader_reports_operators_rather_than_mangling_them(tmp_path):
     names = {s.name for s in module.skipped}
     assert names == {"Vec2::operator+", "Vec2::operator[]"}
     assert all("nativegate[clang]" in s.reason for s in module.skipped)
+
+
+# --- doc comments reach the IR (ROADMAP 3.4) ----------------------------
+
+
+def test_a_doxygen_block_becomes_the_function_doc(tmp_path):
+    # The regex reader has no notion of which declaration a comment belongs to;
+    # Clang attaches it, so this is AST-only territory. The block's prose is
+    # kept verbatim, @param lines included: the consumer is an MCP tool
+    # description read by a model, which does better with the parameter notes
+    # than without them.
+    module = parse(
+        """
+        /**
+         * Bubble point pressure from the Standing correlation.
+         *
+         * @param api stock-tank oil gravity, degrees API
+         */
+        double bubble_point(double api);
+        """,
+        tmp_path,
+    )
+
+    (fn,) = module.functions
+    assert fn.doc == (
+        "Bubble point pressure from the Standing correlation. "
+        "@param api stock-tank oil gravity, degrees API"
+    )
+
+
+def test_a_slash_slash_slash_run_becomes_one_line(tmp_path):
+    # libclang hands back the whole `///` run as a single raw comment, so the
+    # markers on lines 2..n are still in the text and have to be stripped per
+    # line — not just off the front.
+    module = parse(
+        """
+        /// Solution gas-oil ratio, scf/stb.
+        /// Valid above the bubble point only.
+        double solution_gor(double pressure);
+        """,
+        tmp_path,
+    )
+
+    (fn,) = module.functions
+    assert fn.doc == "Solution gas-oil ratio, scf/stb. Valid above the bubble point only."
+
+
+def test_an_undocumented_declaration_has_no_doc(tmp_path):
+    # None, not "" and not a synthesised sentence: the IR must not contain
+    # prose that appears nowhere in the native source. The skeleton text the
+    # endpoint falls back to is the generator's business.
+    module = parse("double undocumented(double pressure);", tmp_path)
+
+    (fn,) = module.functions
+    assert fn.doc is None
+
+
+def test_hostile_comment_text_is_carried_verbatim_on_one_line(tmp_path):
+    # The parser does NOT sanitise for Python's benefit. A `"""` or a trailing
+    # backslash in a comment would break the docstring it is interpolated into,
+    # but neutralising them here would silently rewrite a routine's
+    # documentation to suit one consumer. That escaping belongs to the
+    # generator, which does it losslessly via repr() — see
+    # tests/test_endpoint_docstrings.py, which executes the hostile cases.
+    #
+    # What the parser DOES guarantee is the one property it can promise
+    # honestly: the value is a single line.
+    module = parse(
+        '''
+        /** Prints """quoted""" output.
+         *  Writes to C:\\logs\\out.txt \\
+         */
+        double noisy(double pressure);
+        ''',
+        tmp_path,
+    )
+
+    (fn,) = module.functions
+    assert "\n" not in fn.doc
+    # Verbatim: the quotes and the backslashes are still there.
+    assert '"""quoted"""' in fn.doc
+    assert "C:\\logs\\out.txt" in fn.doc
+    assert fn.doc.startswith('Prints """quoted""" output.')
+
+
+def test_a_comment_not_attached_to_the_declaration_is_not_borrowed(tmp_path):
+    # A file-header comment separated from the declaration by other code must
+    # not become that declaration's doc. Clang's own attachment rules decide
+    # this; the test pins that we rely on them rather than scanning backwards
+    # through the text the way the regex reader would have to.
+    module = parse(
+        """
+        /** Correlations for black-oil PVT properties. */
+        struct Unrelated { double v; };
+
+        double orphan(double pressure);
+        """,
+        tmp_path,
+    )
+
+    (fn,) = module.functions
+    assert fn.doc is None

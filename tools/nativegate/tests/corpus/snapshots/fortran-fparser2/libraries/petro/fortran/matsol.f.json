@@ -6,6 +6,7 @@
   "functions": [
     {
       "cpp_name": null,
+      "doc": "TRIDIAGONAL SOLVE, NO PIVOTING.  A = SUB, B = DIAG, C = SUPER.\nD IS DESTROYED.  USED BY THE LINE SOR SWEEPS AND BY WELLBORE.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -90,6 +91,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "LINE SUCCESSIVE OVER RELAXATION IN THE X DIRECTION.\nONE TRIDIAGONAL SOLVE PER (J,K) LINE, THEN RELAX.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -270,6 +272,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "L2 NORM OF RHS - A*X OVER ACTIVE CELLS ONLY.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": false,
@@ -390,6 +393,7 @@
     },
     {
       "cpp_name": null,
+      "doc": "DENSE GAUSSIAN ELIMINATION WITH PARTIAL PIVOTING.  USED ONLY FOR\nTHE SMALL WELL COUPLING SYSTEM (N .LE. MXWELL) AND FOR THE EOS\nFLASH JACOBIAN.  A IS OVERWRITTEN, B RETURNS THE SOLUTION.",
       "fortran_module": null,
       "is_overloaded": false,
       "is_subroutine": true,
@@ -463,7 +467,7 @@
   ],
   "language": "fortran",
   "name": "matsol",
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "skipped": [],
   "source_file": "libraries/petro/fortran/matsol.f",
   "structs": []
