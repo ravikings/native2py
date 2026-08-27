@@ -46,3 +46,8 @@ site/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# Console app runtime state: SQLite DB, per-project workspaces (uploads,
+# generated bindings, built wheels/images) — all reproducible, none of it
+# belongs in version control.
+console/data/

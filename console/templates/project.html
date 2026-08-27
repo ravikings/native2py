@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} — nativegate{% endblock %}
+
+{% block content %}
+{% set step = "project" %}
+{% include "_breadcrumb.html" %}
+<h1>
+  {{ project.name }}
+  <span class="mono" style="color: var(--text-faint); font-size: 0.6em;">{{ project.slug }}</span>
+</h1>
+
+<p>
+  {% if service.running %}
+    <span class="badge pass">running</span>
+  {% else %}
+    <span class="badge warn">not deployed</span>
+  {% endif %}
+  <span class="badge">{{ project.language or "unknown" }}</span>
+  <span class="badge">{{ project.status }}</span>
+</p>
+
+<div class="action-row">
+  <a class="btn" href="/p/{{ project.slug }}/discover">Discover / change functions</a>
+  <form method="post" action="/p/{{ project.slug }}/rebuild" style="display: inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn">&#8635; Rebuild (same configuration)</button>
+  </form>
+</div>
+
+<div class="panel">
+  <div class="panel-header">Live endpoints</div>
+  <div class="panel-body">
+    {% if service.running %}
+      <table class="table">
+        <tr>
+          <th>REST</th>
+          <td><a href="{{ service.url }}" target="_blank" rel="noopener">{{ service.url }}</a></td>
+        </tr>
+        <tr>
+          <th>OpenAPI docs</th>
+          <td><a href="{{ service.url | trim('/') }}/docs" target="_blank" rel="noopener">{{ service.url | trim('/') }}/docs</a></td>
+        </tr>
+        <tr>
+          <th>MCP</th>
+          <td><a href="{{ service.mcp_url }}" target="_blank" rel="noopener">{{ service.mcp_url }}</a></td>
+        </tr>
+        <tr>
+          <th>Port</th>
+          <td class="num">{{ service.port }}</td>
+        </tr>
+      </table>
+
+      <p style="margin-top: 1rem; color: var(--text-dim);">MCP client config — paste into Claude Desktop / an agent config:</p>
+      <pre class="log-view">{
+  "mcpServers": {
+    "{{ project.slug }}": {
+      "url": "{{ service.mcp_url }}"
+    }
+  }
+}</pre>
+
+      <p style="margin-top: 1rem; color: var(--text-dim);">Equivalent <code>docker run</code>:</p>
+      <pre class="log-view">docker run -d -p {{ service.port }}:8000 {{ project.slug }}:latest</pre>
+    {% else %}
+      <p style="color: var(--text-dim);">Not deployed yet. Run a build to deploy this project's service.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">Build history</div>
+  <div class="panel-body">
+    {% if builds %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Build</th>
+            <th>Status</th>
+            <th>Started</th>
+            <th>Finished</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for build in builds %}
+            <tr>
+              <td><a href="/p/{{ project.slug }}/build/{{ build.id }}">#{{ build.id }}</a></td>
+              <td>
+                {% if build.status == "success" %}
+                  <span class="badge pass">{{ build.status }}</span>
+                {% elif build.status == "failed" %}
+                  <span class="badge fail">{{ build.status }}</span>
+                {% else %}
+                  <span class="badge warn">{{ build.status }}</span>
+                {% endif %}
+              </td>
+              <td>{{ build.created_at }}</td>
+              <td>{{ build.finished_at or "—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="color: var(--text-dim);">No builds yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="panel" style="border-color: var(--fail);">
+  <div class="panel-header">Danger zone</div>
+  <div class="panel-body">
+    <details>
+      <summary style="cursor: pointer; color: var(--fail);">Delete this project</summary>
+      <div style="margin-top: 0.5rem;">
+        <p style="color: var(--text-dim); font-size: 0.9em;">
+          Stops the running container, removes the built image
+          ({{ project.slug }}:latest), deletes the workspace on disk, and
+          drops all build history. Cannot be undone.
+        </p>
+        <form method="post" action="/p/{{ project.slug }}/delete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" style="border-color: var(--fail); color: var(--fail);">
+            Confirm delete {{ project.slug }}
+          </button>
+        </form>
+      </div>
+    </details>
+  </div>
+</div>
+
+<p><a href="/projects">&larr; all projects</a></p>
+{% endblock %}

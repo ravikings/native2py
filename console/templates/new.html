@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}New project — nativegate{% endblock %}
+
+{% block content %}
+{% set step = "new" %}
+{% include "_breadcrumb.html" %}
+<h1>New project</h1>
+<p class="mono" style="color: var(--text-dim);">
+  Drop in C++ or Fortran source — an upload or a public GitHub URL.
+</p>
+
+{% if error %}
+<div class="panel" style="border-color: var(--fail);">
+  <div class="panel-body" style="color: var(--fail);">{{ error }}</div>
+</div>
+{% endif %}
+
+<div class="panel" x-data="{ mode: 'upload' }">
+  <div class="panel-header">Source</div>
+  <div class="panel-body">
+    <form method="post" action="/new" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <p>
+        <label class="mono">
+          <input type="radio" name="source_mode" value="upload" x-model="mode" checked>
+          Upload files (.zip / .tar.gz / one or more source files)
+        </label>
+        <br>
+        <label class="mono">
+          <input type="radio" name="source_mode" value="folder" x-model="mode">
+          Upload a folder
+        </label>
+        <br>
+        <label class="mono">
+          <input type="radio" name="source_mode" value="repo" x-model="mode">
+          Public GitHub URL
+        </label>
+      </p>
+
+      <p>
+        <label class="mono" style="display:block; margin-bottom:0.3rem;">Project name (optional)</label>
+        <input type="text" name="name" placeholder="derived from upload/repo name if left blank"
+               style="width: 100%; max-width: 420px; background: var(--bg-inset); color: var(--text); border: 1px solid var(--line-strong); padding: 0.4rem 0.6rem;">
+      </p>
+
+      <div x-show="mode === 'upload'">
+        <label class="mono" style="display:block; margin-bottom:0.3rem;">File(s)</label>
+        <input type="file" name="upload" multiple :disabled="mode !== 'upload'"
+               accept=".zip,.tar,.tar.gz,.tgz,.f,.f90,.f77,.cpp,.hpp,.h,.cc,.c">
+        <p class="mono" style="color: var(--text-faint); font-size: 0.85em; margin-top: 0.3rem;">
+          A header needs its matching .cpp/.cc alongside it — select both
+          (cmd/ctrl-click, or drag a selection) or upload a single .zip/.tar.gz instead.
+        </p>
+      </div>
+
+      <div x-show="mode === 'folder'">
+        <label class="mono" style="display:block; margin-bottom:0.3rem;">Folder</label>
+        <input type="file" name="folder_upload" webkitdirectory directory multiple
+               :disabled="mode !== 'folder'">
+        <p class="mono" style="color: var(--text-faint); font-size: 0.85em; margin-top: 0.3rem;">
+          Picks up every .cpp/.hpp/.f90/etc under the folder, preserving its
+          layout (so a header can still find a sibling in a different
+          subdirectory). Anything else in the folder (.git/, build output,
+          docs) is skipped.
+        </p>
+      </div>
+
+      <div x-show="mode === 'repo'" style="margin-top: 0.75rem;">
+        <label class="mono" style="display:block; margin-bottom:0.3rem;">Repository URL</label>
+        <input type="text" name="repo_url" placeholder="https://github.com/org/repo"
+               style="width: 100%; max-width: 420px; background: var(--bg-inset); color: var(--text); border: 1px solid var(--line-strong); padding: 0.4rem 0.6rem;">
+      </div>
+
+      <p style="margin-top: 1.25rem;">
+        <button type="submit" class="cta" style="border: 1px solid var(--line-strong); background: var(--bg-raised); color: var(--text); padding: 0.5rem 1rem; cursor: pointer;">
+          Continue &rarr;
+        </button>
+      </p>
+    </form>
+  </div>
+</div>
+{% endblock %}

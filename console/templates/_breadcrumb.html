@@ -1,0 +1,30 @@
+{# Included with two context vars:
+     - step: "new" | "discover" | "build" | "project"
+     - project: the project row, or undefined/None on /new (before one exists)
+
+   Always shows all four stops so the user can see the whole flow and jump
+   back — "discover" and "project" are only links once a project exists;
+   before that they're plain text, since there's nowhere to send someone
+   back to. This is the fix for getting stuck on a failed build with only a
+   single "back to project" link and no way to revisit function selection. #}
+<nav class="breadcrumb mono">
+  <a href="/new" class="{{ 'current' if step == 'new' else '' }}">1. Source</a>
+  <span class="sep">&rsaquo;</span>
+  {% if project %}
+    <a href="/p/{{ project.slug }}/discover" class="{{ 'current' if step == 'discover' else '' }}">2. Discover</a>
+  {% else %}
+    <span class="disabled">2. Discover</span>
+  {% endif %}
+  <span class="sep">&rsaquo;</span>
+  {% if project %}
+    <a href="/p/{{ project.slug }}" class="{{ 'current' if step == 'build' else '' }}">3. Build</a>
+  {% else %}
+    <span class="disabled">3. Build</span>
+  {% endif %}
+  <span class="sep">&rsaquo;</span>
+  {% if project %}
+    <a href="/p/{{ project.slug }}" class="{{ 'current' if step == 'project' else '' }}">4. Live</a>
+  {% else %}
+    <span class="disabled">4. Live</span>
+  {% endif %}
+</nav>

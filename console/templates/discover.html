@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Discover — {{ project.name }} — nativegate{% endblock %}
+
+{% block content %}
+{% set step = "discover" %}
+{% include "_breadcrumb.html" %}
+<h1>{{ project.name }}</h1>
+<p class="mono" style="color: var(--text-dim);">
+  slug: {{ project.slug }} &middot; language: {{ project.language or "unknown" }}
+</p>
+
+{% if ir_error %}
+<div class="panel" style="border-color: var(--fail);">
+  <div class="panel-header">ngate inspect failed</div>
+  <div class="panel-body"><pre class="log-view">{{ ir_error }}</pre></div>
+</div>
+{% endif %}
+
+<form method="post" action="/p/{{ project.slug }}/discover">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="panel">
+    <div class="panel-header">Discovered functions ({{ functions|length }})</div>
+    <div class="panel-body" style="overflow-x: auto;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Name</th>
+            <th>File</th>
+            <th>Parameters (name:type, intent)</th>
+            <th>Returns</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fn in functions %}
+          <tr>
+            <td><input type="checkbox" name="function" value="{{ fn.name }}" checked></td>
+            <td class="mono">{{ fn.name }}</td>
+            <td class="mono" style="color: var(--text-faint);">{{ fn.source_file or "" }}</td>
+            <td class="mono">
+              {% for p in fn.parameters %}
+                {{ p.name }}:{{ p.type or "?" }}{% if p.intent %}&nbsp;({{ p.intent }}){% endif %}{% if not loop.last %}, {% endif %}
+              {% else %}
+                <span style="color: var(--text-faint);">(none)</span>
+              {% endfor %}
+            </td>
+            <td class="mono">{{ fn.returns or "?" }}</td>
+            <td class="mono">
+              {# Best-effort: source-line correlation needs richer IR data
+                 (line numbers / snippets) than `ngate inspect` currently
+                 emits — see console/routes/pages.py's discover() comment.
+                 Fall back to showing the inferred signature and doc string. #}
+              {% if fn.source_snippet %}
+                <code>{{ fn.source_snippet }}</code>
+              {% elif fn.doc %}
+                <span style="color: var(--text-dim);">{{ fn.doc }}</span>
+              {% else %}
+                <span style="color: var(--text-faint);">(signature inferred only)</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" style="color: var(--text-faint);">No functions discovered.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if unresolved %}
+  <div class="panel" style="border-color: var(--warn);">
+    <div class="panel-header">Unresolved symbols ({{ unresolved|length }})</div>
+    <div class="panel-body">
+      <ul class="mono">
+        {% for u in unresolved %}
+        <li>{{ u.text }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <p>
+    <button type="submit" class="cta" style="border: 1px solid var(--line-strong); background: var(--bg-raised); color: var(--text); padding: 0.5rem 1rem; cursor: pointer;">
+      Confirm &amp; build &rarr;
+    </button>
+  </p>
+</form>
+{% endblock %}

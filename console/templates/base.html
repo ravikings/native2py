@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}nativegate{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12"
+          integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/alpinejs@3.16.3/dist/cdn.min.js" defer
+          integrity="sha384-GWGIn3FlbC6EIhIhKi0GSHWq/UCqPc7qpVE5J/bsAW8FMyMAyA08W86xYxy+8i5/"
+          crossorigin="anonymous"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="page">
+    <header class="topnav">
+      <div class="container">
+        <a class="wordmark" href="/">nativegate</a>
+        <nav>
+          <a href="/projects">Projects</a>
+          <a href="/new" class="cta">New Project</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="container">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <footer>
+      <div class="container">
+        nativegate is open source. Every action here is a plain <code>ngate</code> CLI command — nothing runs that you can't run yourself.
+      </div>
+    </footer>
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

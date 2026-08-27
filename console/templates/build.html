@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Build #{{ build_id }} — nativegate{% endblock %}
+
+{% block content %}
+{% set step = "build" %}
+{% include "_breadcrumb.html" %}
+<h1>{{ project.name }} — build #{{ build_id }}</h1>
+
+<div class="panel">
+  <div class="panel-header">PIPELINE</div>
+  <div class="pipeline" id="pipeline">
+    <div class="pipeline-step" data-step="generate"><span class="step-num">01</span><div>Generate</div></div>
+    <div class="pipeline-step" data-step="build"><span class="step-num">02</span><div>Build</div></div>
+    <div class="pipeline-step" data-step="test"><span class="step-num">03</span><div>Test</div></div>
+    <div class="pipeline-step" data-step="verify"><span class="step-num">04</span><div>Verify</div></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    LOG <span id="status-badge" class="badge"><span id="live-dot" class="live-dot"></span>running</span>
+  </div>
+  <div class="panel-body">
+    <pre id="log" class="log-view"><span id="log-placeholder" class="log-placeholder">Connecting&hellip; waiting for ngate to produce output.</span></pre>
+    <p id="stream-note" class="stream-note" style="display: none;">
+      Log stream disconnected &mdash; the build itself may still be running server-side. Reconnecting&hellip;
+    </p>
+  </div>
+</div>
+
+<div id="failure-actions" class="panel" style="border-color: var(--fail); display: none;">
+  <div class="panel-header">Build failed &mdash; what next</div>
+  <div class="panel-body">
+    <p style="color: var(--text-dim);">
+      Read the log above for the actual error. From here you can go back and
+      change which functions are exposed, or just retry the same
+      configuration &mdash; useful if the failure was environmental (Docker
+      not running, a network blip) rather than something in
+      <code>nativegate.yaml</code> itself.
+    </p>
+    <div class="action-row">
+      <a class="btn" href="/p/{{ project.slug }}/discover">&larr; Back to discover (change functions)</a>
+      <form method="post" action="/p/{{ project.slug }}/rebuild" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn">&#8635; Retry this build</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="action-row">
+  <a class="btn" href="/p/{{ project.slug }}">&larr; Back to project</a>
+  <a class="btn" href="/p/{{ project.slug }}/discover">Discover / change functions</a>
+</div>
+
+{% block scripts %}
+<script>
+(function () {
+  var logEl = document.getElementById("log");
+  var placeholder = document.getElementById("log-placeholder");
+  var badge = document.getElementById("status-badge");
+  var liveDot = document.getElementById("live-dot");
+  var streamNote = document.getElementById("stream-note");
+  var steps = document.querySelectorAll(".pipeline-step");
+  var failurePanel = document.getElementById("failure-actions");
+  var stepOrder = ["generate", "build", "test", "verify"];
+  var seen = 0;
+  var gotAnyLine = false;
+
+  var initialStatus = "{{ build.status }}";
+  if (initialStatus === "failed") {
+    failurePanel.style.display = "block";
+  }
+  if (initialStatus === "success" || initialStatus === "failed") {
+    // Terminal already, before the stream even opens (e.g. revisiting an
+    // old build's page) — no point pulsing "live" for something that isn't.
+    liveDot.style.display = "none";
+  }
+
+  function markStep(i, cls) {
+    if (i < 0 || i >= steps.length) return;
+    steps[i].classList.remove("active", "done", "failed");
+    steps[i].classList.add(cls);
+  }
+
+  function appendLine(line) {
+    if (!gotAnyLine) {
+      gotAnyLine = true;
+      placeholder.remove();
+    }
+    logEl.appendChild(document.createTextNode(line + "\n"));
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  var es = new EventSource("/p/{{ project.slug }}/build/{{ build_id }}/stream");
+  markStep(0, "active");
+
+  // A real network drop (server restart, laptop sleep) vs. EventSource's own
+  // silent auto-reconnect attempts look identical from `onerror` alone, so
+  // this only surfaces the note if the connection is actually down when it
+  // fires — not on every transient retry — by checking readyState.
+  es.onerror = function () {
+    if (es.readyState === EventSource.CONNECTING || es.readyState === EventSource.CLOSED) {
+      streamNote.style.display = "block";
+    }
+  };
+  es.onopen = function () {
+    streamNote.style.display = "none";
+  };
+
+  es.onmessage = function (evt) {
+    appendLine(evt.data);
+
+    var line = evt.data;
+    var marker = line.indexOf(">>> ngate ");
+    if (marker !== -1) {
+      var step = line.slice(marker + ">>> ngate ".length).trim().split(" ")[0];
+      var idx = stepOrder.indexOf(step);
+      if (idx !== -1) {
+        for (var i = 0; i < idx; i++) markStep(i, "done");
+        markStep(idx, "active");
+        seen = idx;
+      }
+    }
+  };
+
+  es.addEventListener("done", function (evt) {
+    es.close();
+    liveDot.style.display = "none";
+    streamNote.style.display = "none";
+    badge.textContent = evt.data;
+    badge.classList.add(evt.data === "success" ? "pass" : "fail");
+    for (var i = 0; i < steps.length; i++) {
+      if (evt.data === "success") {
+        markStep(i, "done");
+      } else if (i < seen) {
+        markStep(i, "done");
+      } else if (i === seen) {
+        markStep(i, "failed");
+      }
+    }
+    if (evt.data === "success") {
+      setTimeout(function () { window.location = "/p/{{ project.slug }}"; }, 1500);
+    } else if (evt.data === "failed") {
+      failurePanel.style.display = "block";
+    }
+  });
+})();
+</script>
+{% endblock %}
+{% endblock %}

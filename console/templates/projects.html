@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Projects — nativegate{% endblock %}
+
+{% block content %}
+<h1>Projects</h1>
+
+<div class="panel">
+  <div class="panel-header">All projects ({{ projects|length }})</div>
+  <div class="panel-body" style="overflow-x: auto;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Slug</th>
+          <th>Name</th>
+          <th>Language</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in projects %}
+        <tr>
+          <td class="mono"><a href="/p/{{ p.slug }}">{{ p.slug }}</a></td>
+          <td>{{ p.name }}</td>
+          <td class="mono">{{ p.language or "?" }}</td>
+          <td class="mono">{{ p.status }}</td>
+          <td class="mono">{{ p.created_at }}</td>
+          <td>
+            <details>
+              <summary style="cursor: pointer; color: var(--fail);">Delete</summary>
+              <div style="margin-top: 0.5rem;">
+                <p style="color: var(--text-dim); font-size: 0.9em;">
+                  Stops the container, removes the built image, deletes the
+                  workspace and build history. Cannot be undone.
+                </p>
+                <form method="post" action="/p/{{ p.slug }}/delete">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit" style="border-color: var(--fail); color: var(--fail);">
+                    Confirm delete {{ p.slug }}
+                  </button>
+                </form>
+              </div>
+            </details>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="color: var(--text-faint);">No projects yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

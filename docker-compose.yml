@@ -1,0 +1,57 @@
+# Self-host the nativegate console. See console/README.md for setup notes.
+#
+#   docker compose up
+#   open http://localhost:8000
+
+services:
+  console:
+    build:
+      context: .
+      dockerfile: console/Dockerfile
+    ports:
+      # Bound to loopback only, deliberately — see the NGATE_AUTH warning
+      # below. Change to "8000:8000" only once NGATE_AUTH=github is on;
+      # binding this to all interfaces with auth disabled hands anyone who
+      # can reach the port unauthenticated `docker run`/`docker build`
+      # access via the socket mount below, i.e. root-equivalent code
+      # execution on this host.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # The console shells out to `docker run`/`docker build` to run build
+      # jobs and deploy service containers — it needs the host's socket.
+      # This is exactly why NGATE_AUTH=none must never be paired with a
+      # non-loopback port binding: with no auth AND this mount, any request
+      # that reaches the console can ask it to shell out to Docker as root.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - console-data:/app/console/data
+    environment:
+      # NGATE_AUTH=none is single-user/no-login — safe ONLY behind the
+      # loopback-only port binding above. To expose this beyond localhost
+      # (a shared host, a cloud VM, a LAN), switch to GitHub OAuth first:
+      # comment the line below, uncomment the four under it, change the
+      # port mapping above to "8000:8000", and register an OAuth app at
+      # https://github.com/settings/developers (see console/README.md).
+      - NGATE_AUTH=none
+      # - NGATE_AUTH=github
+      # - GITHUB_CLIENT_ID=your-client-id
+      # - GITHUB_CLIENT_SECRET=your-client-secret
+      # - NGATE_SECRET_KEY=some-long-random-string
+    restart: unless-stopped
+
+  # Optional reverse proxy / TLS termination for a public deployment
+  # (docs/console-design.md §2). Not required for local use — uncomment and
+  # supply a Caddyfile if you're exposing this beyond localhost.
+  # caddy:
+  #   image: caddy:2-alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy-data:/data
+  #   depends_on:
+  #     - console
+
+volumes:
+  console-data:
+  # caddy-data:

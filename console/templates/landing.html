@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}nativegate — Paste a repo. Get an API.{% endblock %}
+
+{% block content %}
+<section style="padding: 3rem 0 2rem; max-width: 720px;">
+  <h1 style="font-size: 2.2rem; margin-bottom: 1rem;">Paste a repo. Get an API.<br>And an MCP endpoint.</h1>
+
+  <p style="color: var(--text-dim); font-size: 1.05rem; max-width: 640px;">
+    Drop in legacy C++ or Fortran — a tarball, a zip, or a public GitHub URL — and
+    nativegate parses it, generates the bindings, builds it in an isolated container,
+    and hands you back a live REST endpoint and a live MCP endpoint. No source
+    rewrites, no hand-written wrappers. The build runs in a network-isolated,
+    non-root container, so a compiler we don't control never touches your process.
+  </p>
+
+  <div style="margin-top: 2rem;">
+    <a class="btn primary" href="/new" style="font-size: 1rem; padding: 0.7rem 1.4rem;">Start a new project &rarr;</a>
+  </div>
+</section>
+
+<section class="panel" style="max-width: 720px;">
+  <div class="panel-header">Pipeline</div>
+  <div class="panel-body">
+    <div class="pipeline">
+      <div class="pipeline-step done">
+        <span class="step-index">01</span>
+        <span class="step-name">Discover</span>
+      </div>
+      <div class="pipeline-step done">
+        <span class="step-index">02</span>
+        <span class="step-name">Generate</span>
+      </div>
+      <div class="pipeline-step active">
+        <span class="step-index">03</span>
+        <span class="step-name">Build</span>
+      </div>
+      <div class="pipeline-step">
+        <span class="step-index">04</span>
+        <span class="step-name">Verify</span>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
