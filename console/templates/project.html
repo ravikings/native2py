@@ -26,6 +26,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="btn">&#8635; Rebuild (same configuration)</button>
   </form>
+  {# Outside the service.running check: call history outlives the container, so
+     evidence stays exportable for a service that has since been stopped. #}
+  <a class="btn" href="/p/{{ project.slug }}/calls">Calls</a>
+  <a class="btn" href="/p/{{ project.slug }}/evidence">Evidence pack</a>
 </div>
 
 <div class="panel">
@@ -51,15 +55,6 @@
         </tr>
       </table>
 
-      <p style="margin-top: 1rem; color: var(--text-dim);">MCP client config — paste into Claude Desktop / an agent config:</p>
-      <pre class="log-view">{
-  "mcpServers": {
-    "{{ project.slug }}": {
-      "url": "{{ service.mcp_url }}"
-    }
-  }
-}</pre>
-
       <p style="margin-top: 1rem; color: var(--text-dim);">Equivalent <code>docker run</code>:</p>
       <pre class="log-view">docker run -d -p {{ service.port }}:8000 {{ project.slug }}:latest</pre>
     {% else %}
@@ -67,6 +62,74 @@
     {% endif %}
   </div>
 </div>
+
+{% if service.running %}
+<div class="panel">
+  <div class="panel-header">Connect an agent</div>
+  <div class="panel-body">
+    <p style="color: var(--text-dim);">
+      One URL, every client — every step below points at the same endpoint:
+    </p>
+    <pre class="log-view">{{ service.mcp_url }}</pre>
+
+    <details class="connect-guide" open>
+      <summary>Claude Code (CLI)</summary>
+      <div class="connect-body">
+        <ol class="connect-steps">
+          <li>Run: <code>claude mcp add --transport http {{ project.slug }} {{ service.mcp_url }}</code></li>
+          <li>Restart Claude Code, or run <code>/mcp</code> in an active session, to pick up the new server.</li>
+          <li>Confirm it connected: <code>claude mcp list</code> should show <code>{{ project.slug }}</code> as connected.</li>
+        </ol>
+      </div>
+    </details>
+
+    <details class="connect-guide">
+      <summary>Claude Desktop</summary>
+      <div class="connect-body">
+        <ol class="connect-steps">
+          <li>Open Claude Desktop &rarr; <strong>Settings</strong> &rarr; <strong>Connectors</strong> &rarr; <strong>Add custom connector</strong>.</li>
+          <li>Name it <code>{{ project.slug }}</code> and paste the URL above.</li>
+          <li>Save — tools from this service appear in the composer's tool picker.</li>
+        </ol>
+      </div>
+    </details>
+
+    <details class="connect-guide">
+      <summary>Codex CLI</summary>
+      <div class="connect-body">
+        <p style="color: var(--text-dim); margin: 0.5rem 0;">Add to <code>~/.codex/config.toml</code>:</p>
+        <pre class="log-view">[mcp_servers.{{ project.slug }}]
+url = "{{ service.mcp_url }}"</pre>
+        <p style="color: var(--text-dim); margin: 0.5rem 0 0 0; font-size: 0.85em;">
+          Requires a Codex CLI version with remote HTTP MCP support — older
+          versions only accept a local <code>command</code>.
+        </p>
+      </div>
+    </details>
+
+    <details class="connect-guide">
+      <summary>Any other MCP-compatible client</summary>
+      <div class="connect-body">
+        <p style="color: var(--text-dim); margin: 0.5rem 0;">Generic <code>mcpServers</code> config block:</p>
+        <pre class="log-view">{
+  "mcpServers": {
+    "{{ project.slug }}": {
+      "url": "{{ service.mcp_url }}"
+    }
+  }
+}</pre>
+      </div>
+    </details>
+
+    {% if "localhost" in service.mcp_url or "127.0.0.1" in service.mcp_url %}
+      <p style="margin-top: 1rem; color: var(--warn); font-size: 0.85em;">
+        &#9888; This URL only works for clients on this machine. To let someone
+        else connect, put it behind a public URL or tunnel first.
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 
 <div class="panel">
   <div class="panel-header">Build history</div>

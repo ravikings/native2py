@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} — evidence pack — nativegate{% endblock %}
+
+{% block content %}
+{% set step = "project" %}
+{% include "_breadcrumb.html" %}
+<h1>{{ project.name }} — evidence pack</h1>
+
+<p style="color: var(--text-dim); max-width: 62ch;">
+  A single signed JSON file recording every call this console logged for this
+  service over a date range, plus which builds served them. Hand it to a
+  reviewer with the verifier below — they can check it offline, with no
+  account here and no access to this machine.
+</p>
+
+<div class="panel">
+  <div class="panel-header">GENERATE</div>
+  <div class="panel-body">
+    <form method="post" action="/p/{{ project.slug }}/evidence">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="since">From (UTC date, blank = earliest recorded)</label>
+        <input type="date" id="since" name="since">
+      </div>
+      <div class="field">
+        <label for="until">To (UTC date, inclusive; blank = latest recorded)</label>
+        <input type="date" id="until" name="until">
+      </div>
+      <div class="field">
+        <label for="build_id">Build (optional — limit to one build)</label>
+        <select id="build_id" name="build_id">
+          <option value="">All builds</option>
+          {% for build in builds %}
+            <option value="{{ build.id }}">#{{ build.id }} — {{ build.status }} — {{ build.created_at }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="action-row">
+        <button type="submit" class="btn primary">Download signed pack</button>
+        <a class="btn" href="/p/{{ project.slug }}/evidence/verifier">Download verifier</a>
+      </div>
+    </form>
+    <p style="color: var(--text-faint); margin-top: 1rem; font-size: 0.85rem;">
+      {{ total_calls }} call{{ '' if total_calls == 1 else 's' }} recorded for this project in total.
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">WHAT THE SIGNATURE ESTABLISHES</div>
+  <div class="panel-body">
+    <p><span class="badge pass">proves</span></p>
+    <ul>
+      {% for claim in claims %}<li>{{ claim }}</li>{% endfor %}
+    </ul>
+    <p style="margin-top: 1rem;"><span class="badge fail">does not prove</span></p>
+    <ul>
+      {% for item in disclaimers %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+    <p style="color: var(--text-dim); margin-top: 1rem;">
+      The same wording travels inside every pack, under <code>attestation</code>,
+      so a reader who never saw this page still sees the limits.
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">HOW A RECIPIENT VERIFIES IT</div>
+  <div class="panel-body">
+    <p>Send them both files. They need Python 3.8+ and one package:</p>
+    <pre class="mono">pip install cryptography
+python3 verify_evidence.py evidence-{{ project.slug }}-....json</pre>
+    <p style="color: var(--text-dim);">
+      The verifier reads only the pack — no network, no database, no checkout
+      of this repo. It prints the range, the builds that served it, and
+      <code>VALID</code> or <code>INVALID</code>, then restates what the result
+      does and does not mean.
+    </p>
+    <p style="margin-top: 1rem;">
+      This console's signing key (base64 Ed25519 public key) — confirm this
+      out of band with whoever receives your packs:
+    </p>
+    <pre class="mono">{{ public_key }}</pre>
+    <p style="color: var(--text-faint); font-size: 0.85rem;">
+      Generated once and kept for the life of this console's data volume.
+      Rotating it would invalidate every pack already issued, so it is never
+      regenerated automatically.
+    </p>
+  </div>
+</div>
+
+<p><a href="/p/{{ project.slug }}">&larr; back to project</a></p>
+{% endblock %}

@@ -31,7 +31,7 @@ import os
 
 import httpx
 
-from console import db, deploy
+from console import calls, db, deploy
 
 logger = logging.getLogger("console.orchestrator")
 
@@ -62,6 +62,10 @@ def forget(slug: str) -> None:
     clean.
     """
     _failure_counts.pop(slug, None)
+    # A deleted project's container is gone, but its supervised tailer would
+    # otherwise keep respawning `docker logs` against a name that no longer
+    # exists for the life of the process.
+    calls.stop_tailer(slug)
 
 
 async def _check_health(port: int) -> bool:
@@ -94,18 +98,39 @@ def reconcile_on_startup() -> None:
         if status["running"]:
             continue
         try:
-            info = deploy.start_service(slug)
+            build_id = db.get_latest_successful_build_id(project["id"])
+            info = deploy.start_service(slug, build_id=build_id)
             logger.info("reconcile: restarted %s at %s", slug, info["url"])
         except RuntimeError as exc:
             logger.warning("reconcile: could not restart %s: %s", slug, exc)
             db.update_project_status(slug, "stopped")
 
 
+async def _sync_tailer(project, running: bool) -> None:
+    """Keep exactly one call-log tailer alive per running service.
+
+    Failures here are swallowed: durable call history is a nice-to-have next
+    to the monitor loop's actual job of keeping services up, and must never
+    be the reason a health check doesn't happen.
+    """
+    try:
+        if running:
+            await asyncio.to_thread(calls.ensure_tailer, project["slug"], project["id"])
+        else:
+            await asyncio.to_thread(calls.stop_tailer, project["slug"])
+    except Exception:  # noqa: BLE001
+        logger.exception("call tailer bookkeeping failed for %s", project["slug"])
+
+
 async def _monitor_tick() -> None:
     projects = [p for p in db.list_projects() if p["status"] in ("running", "crashed")]
     for project in projects:
         slug = project["slug"]
-        status = deploy.service_status(slug)
+        # `docker inspect` under the hood: seconds of blocking I/O per
+        # project, which run directly on the event loop would stall every
+        # in-flight console request for the whole tick.
+        status = await asyncio.to_thread(deploy.service_status, slug)
+        await _sync_tailer(project, status["running"])
         healthy = status["running"] and await _check_health(status["port"])
 
         if healthy:
@@ -125,7 +150,10 @@ async def _monitor_tick() -> None:
 
         if failures == MAX_CONSECUTIVE_FAILURES:
             try:
-                info = deploy.start_service(slug)
+                build_id = db.get_latest_successful_build_id(project["id"])
+                info = await asyncio.to_thread(
+                    deploy.start_service, slug, build_id=build_id
+                )
                 logger.info("auto-restarted %s at %s", slug, info["url"])
                 _failure_counts[slug] = 0
             except RuntimeError as exc:
@@ -140,12 +168,18 @@ async def monitor_loop() -> None:
     from the lifespan context in app.py). Exceptions from a single tick are
     logged and swallowed so one bad tick doesn't kill monitoring entirely.
     """
-    while True:
-        try:
-            await _monitor_tick()
-        except Exception:  # noqa: BLE001 - the loop must survive any single tick's failure
-            logger.exception("orchestrator monitor tick failed")
-        await asyncio.sleep(HEALTH_INTERVAL_SECONDS)
+    try:
+        while True:
+            try:
+                await _monitor_tick()
+            except Exception:  # noqa: BLE001 - the loop must survive any single tick's failure
+                logger.exception("orchestrator monitor tick failed")
+            await asyncio.sleep(HEALTH_INTERVAL_SECONDS)
+    finally:
+        # This task being cancelled *is* console shutdown; the tailers it
+        # started hold `docker logs -f` subprocesses that would otherwise
+        # outlive the process that owns them.
+        calls.stop_all_tailers()
 
 
 def fleet_status(owner_id: int | None = None) -> list[dict]:

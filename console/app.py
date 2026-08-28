@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 from console import orchestrator
 from console.auth import auth_router, get_current_user
 from console.db import init_db
+from console.routes.evidence import router as evidence_router
 from console.routes.pages import router as pages_router
 from console.routes.stream import router as stream_router
 
@@ -62,6 +63,7 @@ app.mount(
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app.include_router(pages_router)
+app.include_router(evidence_router)
 app.include_router(stream_router)
 app.include_router(auth_router)
 

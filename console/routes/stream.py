@@ -11,6 +11,8 @@ terminal build status.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import queue
 import sqlite3
 import time
@@ -18,7 +20,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from .. import db, jobs
+from .. import calls, db, deploy, jobs
 from ..auth import get_current_user
 
 router = APIRouter()
@@ -113,5 +115,86 @@ async def stream_build_log(
         # (docs/console-design.md's MVP topology has none), but it's a single
         # header and cheap insurance against a byte-buffering intermediary
         # silently turning "streamed" back into "arrives all at once".
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/p/{slug}/calls/stream")
+async def stream_calls(slug: str, user: sqlite3.Row = Depends(get_current_user)) -> EventSourceResponse:
+    # Ownership check up front, same reasoning as stream_build_log above.
+    project = db.get_project(slug)
+    if project is None or project["owner_id"] != user["id"]:
+        raise HTTPException(status_code=404, detail="project not found")
+
+    async def event_generator():
+        # `docker inspect` under the hood — seconds of blocking I/O. Run
+        # directly on the event loop it stalls every other console request,
+        # once at connect and again on every poll below, multiplied by open
+        # tabs. Same reason orchestrator._monitor_tick offloads it.
+        service = await asyncio.to_thread(deploy.service_status, slug)
+        if not service["running"]:
+            yield {"event": "done", "data": "not_running"}
+            return
+
+        # 1. Subscribe to the single supervised tailer's fan-out rather than
+        # starting a tail of our own. One `docker logs -f` per open browser
+        # tab meant N subprocesses on the same container on top of the
+        # supervisor's, and a second parsing path that could disagree with
+        # what actually got persisted; the supervised tailer is the only
+        # producer, and this is one of its consumers.
+        #
+        # ensure_tailer here as well as from the orchestrator's monitor loop:
+        # it's idempotent under a lock, and it means opening the page doesn't
+        # wait out a monitor tick for the producer to exist.
+        #
+        # Subscribing BEFORE the replay for the same reason stream_build_log
+        # does: an entry landing in the gap would otherwise appear in neither
+        # the ring buffer snapshot nor this queue, and the client dedupes, so
+        # a duplicate is free while a gap is invisible.
+        calls.ensure_tailer(slug, project["id"])
+        q = calls.subscribe(slug)
+
+        try:
+            # 2. Replay recent history immediately, oldest first.
+            #
+            # The calls page now server-renders its history from the DB, so
+            # this replay is no longer how a fresh page gets populated — it
+            # only closes the gap between "page was rendered" and
+            # "EventSource connected", during which a call can land in
+            # neither place. The overlap it causes is expected: the client
+            # dedupes on request_id + ts (the same key as the DB's UNIQUE
+            # constraint) against the rows it already rendered.
+            for entry in calls.recent_calls(slug):
+                yield {"data": json.dumps(entry)}
+
+            last_poll = time.monotonic()
+            while True:
+                try:
+                    # Offloaded for the same reason as service_status below:
+                    # a quiet stream parks here for the full timeout, and on
+                    # the event loop that is a one-second stall of every other
+                    # console request, per open tab.
+                    entry = await asyncio.to_thread(q.get, True, _POLL_INTERVAL_S)
+                except queue.Empty:
+                    entry = None
+
+                if entry is not None:
+                    yield {"data": json.dumps(entry)}
+                    continue
+
+                now = time.monotonic()
+                if now - last_poll >= _POLL_INTERVAL_S:
+                    last_poll = now
+                    alive = await asyncio.to_thread(deploy.service_status, slug)
+                    if not alive["running"]:
+                        yield {"event": "done", "data": "stopped"}
+                        return
+        finally:
+            # Deterministic teardown: unsubscribing is what makes an
+            # abandoned tab leak nothing — no thread, no subprocess, and no
+            # queue left accumulating entries for a reader that is gone.
+            calls.unsubscribe(slug, q)
+    return EventSourceResponse(
+        event_generator(),
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

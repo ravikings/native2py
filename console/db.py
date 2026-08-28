@@ -46,6 +46,32 @@ CREATE TABLE IF NOT EXISTS builds (
     finished_at TEXT,
     FOREIGN KEY (project_id) REFERENCES projects (id)
 );
+
+CREATE TABLE IF NOT EXISTS service_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    ts TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    method TEXT,
+    path TEXT,
+    tool TEXT,
+    status INTEGER,
+    duration_ms REAL,
+    request_id TEXT,
+    build_id INTEGER,
+    image_digest TEXT,
+    received_at TEXT NOT NULL,
+    -- The tailer re-reads an overlapping window of `docker logs` after every
+    -- restart (see console/calls.py), so the same line is offered more than
+    -- once by design; this constraint is what makes that replay idempotent.
+    UNIQUE(project_id, request_id, ts)
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_calls_project_ts
+    ON service_calls (project_id, ts DESC);
+
+CREATE INDEX IF NOT EXISTS idx_service_calls_project_build
+    ON service_calls (project_id, build_id);
 """
 
 
@@ -202,6 +228,20 @@ def list_builds(project_id: int) -> list[sqlite3.Row]:
         conn.close()
 
 
+def get_latest_successful_build_id(project_id: int) -> int | None:
+    """Id of the newest successful build for a project, or None if there is none."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id FROM builds WHERE project_id = ? AND status = 'success' "
+            "ORDER BY id DESC LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        return row["id"] if row is not None else None
+    finally:
+        conn.close()
+
+
 def append_build_log(build_id: int, line: str) -> None:
     conn = get_db()
     try:
@@ -224,6 +264,132 @@ def set_build_status(build_id: int, status: str, finished: bool = False) -> None
         else:
             conn.execute("UPDATE builds SET status = ? WHERE id = ?", (status, build_id))
         conn.commit()
+    finally:
+        conn.close()
+
+
+_CALL_FIELDS = (
+    "ts",
+    "kind",
+    "method",
+    "path",
+    "tool",
+    "status",
+    "duration_ms",
+    "request_id",
+    "build_id",
+    "image_digest",
+)
+
+
+class MalformedCallEntry(ValueError):
+    """A call-log entry missing the fields that make it a call record."""
+
+
+def record_service_call(project_id: int, entry: dict) -> bool:
+    """Persist one parsed call-log entry. Returns False if it was a duplicate.
+
+    Raises MalformedCallEntry if the entry lacks a usable ``ts`` or ``kind``.
+
+    INSERT OR IGNORE against ``UNIQUE(project_id, request_id, ts)``: the
+    supervised tailer deliberately re-reads an overlapping slice of container
+    stdout whenever it restarts, so re-offering an already-stored line is the
+    normal case, not an error.
+
+    Entries from older service images lack the newer provenance keys
+    (``build_id``/``image_digest``) — those store as NULL rather than raising,
+    so upgrading the console never requires redeploying every service first.
+    """
+    values = [entry.get(field) for field in _CALL_FIELDS]
+    # Reject rather than substitute. A placeholder ts also left request_id
+    # NULL, and SQLite treats NULL as distinct under a UNIQUE constraint, so
+    # every malformed line inserted a fresh row that could never dedupe —
+    # letting a burst of garbage inflate the call count in a signed evidence
+    # pack. The caller (console/calls.py) logs the rejection.
+    ts = values[0]
+    if not isinstance(ts, str) or not ts.strip():
+        raise MalformedCallEntry(f"call entry has no usable ts: {entry!r}")
+    kind = values[1]
+    if not isinstance(kind, str) or not kind.strip():
+        raise MalformedCallEntry(f"call entry has no usable kind: {entry!r}")
+
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO service_calls "
+            "(project_id, ts, kind, method, path, tool, status, duration_ms, "
+            " request_id, build_id, image_digest, received_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+            (project_id, *values),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _call_filters(
+    project_id: int,
+    since: str | None,
+    until: str | None,
+    build_id: int | None,
+) -> tuple[str, list]:
+    where = ["project_id = ?"]
+    params: list = [project_id]
+    if since is not None:
+        where.append("ts >= ?")
+        params.append(since)
+    if until is not None:
+        where.append("ts <= ?")
+        params.append(until)
+    if build_id is not None:
+        where.append("build_id = ?")
+        params.append(build_id)
+    return " AND ".join(where), params
+
+
+def get_service_calls(
+    project_id: int,
+    *,
+    since: str | None = None,
+    until: str | None = None,
+    build_id: int | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[dict]:
+    """Newest-first page of a project's recorded calls, as plain dicts.
+
+    ``since``/``until`` are ISO8601 strings compared against ``ts``.
+    """
+    clause, params = _call_filters(project_id, since, until, build_id)
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, ts, kind, method, path, tool, status, duration_ms, "
+            "request_id, build_id, image_digest, received_at "
+            f"FROM service_calls WHERE {clause} "
+            "ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def count_service_calls(
+    project_id: int,
+    *,
+    since: str | None = None,
+    until: str | None = None,
+    build_id: int | None = None,
+) -> int:
+    clause, params = _call_filters(project_id, since, until, build_id)
+    conn = get_db()
+    try:
+        row = conn.execute(
+            f"SELECT COUNT(*) AS n FROM service_calls WHERE {clause}", tuple(params)
+        ).fetchone()
+        return row["n"]
     finally:
         conn.close()
 
@@ -278,6 +444,7 @@ def delete_project(project_id: int) -> None:
     """
     conn = get_db()
     try:
+        conn.execute("DELETE FROM service_calls WHERE project_id = ?", (project_id,))
         conn.execute("DELETE FROM builds WHERE project_id = ?", (project_id,))
         conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         conn.commit()

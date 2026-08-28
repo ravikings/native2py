@@ -26,6 +26,9 @@ its own test:
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 import pytest
 
 from nativegate.generators import gateway_gen, mcp_gen, python_pkg_gen
@@ -262,6 +265,197 @@ def test_generated_gateway_mcp_module_mounts_each_service_under_its_prefix():
     assert "from demo.router import router as demo_router" in source
     assert '_inner.include_router(demo_router, prefix="/demo")' in source
     assert '_inner.include_router(calculator_router, prefix="/calculator")' in source
+
+
+@pytest.mark.anyio
+async def test_mcp_tool_calls_are_logged_as_json_with_the_real_tool_name(tmp_path, monkeypatch, capsys):
+    """The FastMCP middleware in mcp_server.py logs the parsed tool name.
+
+    Built the same way the generated file constructs it: `middleware.py` next
+    to a hand-assembled `mcp_server.py` module executing the same source
+    `mcp_gen.generate_mcp_py` would emit, with the router wired in directly
+    rather than imported (there is no package on disk here to import from).
+    """
+    from nativegate.generators import middleware_gen
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    (tmp_path / "middleware.py").write_text(
+        middleware_gen.generate_middleware_py("petro", "none")
+    )
+
+    router = _router_from(PVT_IR, "petro", NATIVE)
+
+    namespace: dict = {"router": router}
+    source = mcp_gen.generate_mcp_py("petro").replace(
+        "from .router import router", ""
+    ).replace("from .middleware import log_call", "from middleware import log_call")
+    exec(compile(source, "mcp_server.py", "exec"), namespace)  # noqa: S102
+
+    async with fastmcp.Client(namespace["mcp"]) as client:
+        await client.call_tool("petro_solution_gor", {"pressure": 21.0})
+
+    lines = [l for l in capsys.readouterr().out.splitlines() if l.strip()]
+    rows = [json.loads(l) for l in lines]
+    mcp_rows = [r for r in rows if r["kind"] == "mcp"]
+
+    assert mcp_rows, f"no kind=mcp row emitted; got {rows}"
+    row = mcp_rows[-1]
+    assert row["tool"] == "petro_solution_gor"
+    assert row["method"] is None
+    assert row["path"] is None
+    assert row["status"] == 200
+    assert row["service"] == "petro"
+    assert isinstance(row["duration_ms"], (int, float))
+    assert row["request_id"]
+    assert row["project"] is None
+    assert row["build_id"] is None
+    assert row["image_digest"] is None
+
+
+@pytest.mark.anyio
+async def test_mcp_rows_carry_the_same_provenance_fields_as_rest_rows(
+    tmp_path, monkeypatch, capsys
+):
+    """Provenance is resolved in one place, so `kind: "mcp"` gets it too."""
+    from nativegate.generators import middleware_gen
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    (tmp_path / "middleware.py").write_text(
+        middleware_gen.generate_middleware_py("petro", "none")
+    )
+
+    router = _router_from(PVT_IR, "petro", NATIVE)
+
+    namespace: dict = {"router": router}
+    source = mcp_gen.generate_mcp_py("petro").replace(
+        "from .router import router", ""
+    ).replace("from .middleware import log_call", "from middleware import log_call")
+    exec(compile(source, "mcp_server.py", "exec"), namespace)  # noqa: S102
+
+    monkeypatch.setenv(middleware_gen.ENV_PROJECT, "petro")
+    monkeypatch.setenv(middleware_gen.ENV_BUILD_ID, "417")
+    monkeypatch.setenv(middleware_gen.ENV_IMAGE_DIGEST, "sha256:abc123")
+
+    async with fastmcp.Client(namespace["mcp"]) as client:
+        await client.call_tool("petro_solution_gor", {"pressure": 21.0})
+
+    rows = [json.loads(l) for l in capsys.readouterr().out.splitlines() if l.strip()]
+    mcp_rows = [r for r in rows if r["kind"] == "mcp"]
+
+    assert mcp_rows, f"no kind=mcp row emitted; got {rows}"
+    row = mcp_rows[-1]
+    assert row["project"] == "petro"
+    assert row["build_id"] == 417
+    assert row["image_digest"] == "sha256:abc123"
+
+
+# --- the status an mcp row records ----------------------------------------
+#
+# A signed evidence pack is built from these rows, so a status of 200 has to
+# mean the call actually succeeded. Three ways a call can fail to succeed, and
+# only one of them used to be recorded honestly.
+
+
+def _generated_mcp_module(tmp_path, monkeypatch, service="petro"):
+    """The real generated mcp_server.py, executed with its imports rewired."""
+    from nativegate.generators import middleware_gen
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    (tmp_path / "middleware.py").write_text(
+        middleware_gen.generate_middleware_py(service, "none")
+    )
+
+    namespace: dict = {"router": _router_from(PVT_IR, service, NATIVE)}
+    source = (
+        mcp_gen.generate_mcp_py(service)
+        .replace("from .router import router", "")
+        .replace("from .middleware import log_call", "from middleware import log_call")
+    )
+    exec(compile(source, "mcp_server.py", "exec"), namespace)  # noqa: S102
+    return namespace
+
+
+def _last_mcp_row(capsys, tool):
+    rows = [json.loads(l) for l in capsys.readouterr().out.splitlines() if l.strip()]
+    matching = [r for r in rows if r["kind"] == "mcp" and r["tool"] == tool]
+    assert matching, f"no kind=mcp row for {tool!r}; got {rows}"
+    return matching[-1]
+
+
+@pytest.mark.anyio
+async def test_a_tool_that_raises_is_not_recorded_as_a_success(
+    tmp_path, monkeypatch, capsys
+):
+    namespace = _generated_mcp_module(tmp_path, monkeypatch)
+    mcp = namespace["mcp"]
+
+    @mcp.tool
+    def boom() -> float:
+        """Always fails."""
+        raise RuntimeError("native routine blew up")
+
+    async with fastmcp.Client(mcp) as client:
+        with pytest.raises(Exception):
+            await client.call_tool("boom", {})
+
+    assert _last_mcp_row(capsys, "boom")["status"] == 500
+
+
+@pytest.mark.anyio
+async def test_a_tool_returning_an_error_result_is_not_recorded_as_a_success(
+    tmp_path, monkeypatch, capsys
+):
+    # This one never touches an except clause: the tool reports failure by
+    # RETURNING a result flagged isError, so only inspecting the returned
+    # ToolResult catches it. It used to log 200.
+    from fastmcp.tools.base import ToolResult
+
+    namespace = _generated_mcp_module(tmp_path, monkeypatch)
+    mcp = namespace["mcp"]
+
+    @mcp.tool
+    def refused() -> str:
+        """Reports failure in-band rather than raising."""
+        return ToolResult(content="the native routine refused", is_error=True)
+
+    async with fastmcp.Client(mcp) as client:
+        with pytest.raises(Exception):
+            await client.call_tool("refused", {})
+
+    assert _last_mcp_row(capsys, "refused")["status"] == 500
+
+
+@pytest.mark.anyio
+async def test_a_cancelled_tool_call_is_recorded_as_neither_success_nor_crash(
+    tmp_path, monkeypatch, capsys
+):
+    # CancelledError derives from BaseException, so `except Exception` never
+    # saw it and a client disconnecting mid-call logged a completed 200. 499
+    # rather than 500 because an abandoned call is not a failed one, and the
+    # exception must propagate — swallowing a cancellation breaks the
+    # structured-concurrency contract above this hook.
+    namespace = _generated_mcp_module(tmp_path, monkeypatch)
+    mcp = namespace["mcp"]
+
+    @mcp.tool
+    def abandoned() -> float:
+        """Simulates the client vanishing mid-call."""
+        raise asyncio.CancelledError()
+
+    async with fastmcp.Client(mcp) as client:
+        with pytest.raises(BaseException):
+            await client.call_tool("abandoned", {})
+
+    assert _last_mcp_row(capsys, "abandoned")["status"] == 499
+
+
+def test_the_cancellation_path_is_not_caught_as_a_plain_exception():
+    # Pins the mechanism, because the bug is invisible in a passing call: a
+    # bare `except Exception` silently reinstates it.
+    source = mcp_gen.generate_mcp_py("petro")
+
+    assert "except asyncio.CancelledError:" in source
+    assert "except Exception:" not in source
 
 
 def test_the_mcp_app_is_built_at_the_root_path_not_at_the_default():

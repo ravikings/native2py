@@ -11,8 +11,15 @@ The native call still runs under router.py's `_NATIVE_LOCK`: a tool call
 re-enters the same endpoint function in the same process, so MCP does NOT open
 a second, unsynchronised path into COMMON-block state.
 """
+import asyncio
+import time
+import uuid
+
 from fastapi import FastAPI
 from fastmcp import FastMCP
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+
+from .middleware import log_call
 
 from .router import router
 
@@ -25,6 +32,57 @@ _inner = FastAPI(title="petro_api")
 _inner.include_router(router)
 
 mcp = FastMCP.from_fastapi(app=_inner, name="petro_api")
+
+
+class _AccessLogMiddleware(Middleware):
+    """Logs each tool call with its real name, not the outer app's generic
+    "POST /mcp/" — the outer HTTP middleware sees only the JSON-RPC envelope,
+    the tool name is inside the body, and this hook is where FastMCP has
+    already parsed it out."""
+
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        request_id = uuid.uuid4().hex[:12]
+        started = time.perf_counter()
+        # Pessimistic until the call demonstrably succeeds: an audit trail a
+        # signed evidence pack rests on must never claim a 200 for a call that
+        # did not finish. Any exception that is not a cancellation propagates
+        # uncaught and leaves this value standing, so no future failure mode
+        # can escape by simply not having a clause here.
+        status = 500
+        try:
+            result = await call_next(context)
+        except asyncio.CancelledError:
+            # CancelledError derives from BaseException, so `except Exception`
+            # never saw it: a client disconnecting mid-call used to record a
+            # completed 200. Distinct from 500 because an abandoned call is not
+            # a failed one — 499 is the same "client went away" sense nginx
+            # gives it. Re-raised, never swallowed: swallowing a cancellation
+            # breaks the structured-concurrency contract above us.
+            status = 499
+            raise
+        else:
+            # A tool can report failure by RETURNING a result flagged
+            # `is_error` (mapped to CallToolResult.isError on the wire) instead
+            # of raising, and that path never touches an except clause.
+            status = 500 if getattr(result, "is_error", False) else 200
+            return result
+        finally:
+            log_call(
+                kind="mcp",
+                request_id=request_id,
+                # getattr, not attribute access: this runs in a `finally`
+                # while an exception may be unwinding, and an AttributeError
+                # raised here would replace the real tool failure with a
+                # confusing error from the logging hook. FastMCP's own
+                # timing middleware hedges the same way.
+                tool=getattr(context.message, "name", "unknown"),
+                status=status,
+                duration_ms=(time.perf_counter() - started) * 1000.0,
+                service_name="petro_api",
+            )
+
+
+mcp.add_middleware(_AccessLogMiddleware())
 
 # path="/" because the app that mounts this does so at "/mcp", and FastMCP's
 # own default path is ALSO "/mcp" — passing neither serves the endpoint at

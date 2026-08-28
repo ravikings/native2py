@@ -42,7 +42,7 @@ COPY tools/nativegate /app/tools/nativegate
 # Fortran build in this console to fail); the extras are what nativegate
 # itself declares it needs, so this can't drift out of sync with that again.
 RUN pip install --no-cache-dir -e "/app/tools/nativegate[build,test]" \
-    && pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart httpx sse-starlette
+    && pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart httpx sse-starlette cryptography
 
 COPY console /app/console
 

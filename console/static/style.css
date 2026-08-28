@@ -228,6 +228,44 @@ footer {
 
 .table .num { text-align: right; font-variant-numeric: tabular-nums; }
 
+/* ---------- connect guide ---------- */
+
+.connect-guide { border: 1px solid var(--line); margin-bottom: 0.6rem; }
+
+.connect-guide summary {
+  cursor: pointer;
+  padding: 0.6rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.connect-guide summary::-webkit-details-marker { display: none; }
+
+.connect-guide summary::before {
+  content: "\25B8";
+  color: var(--text-faint);
+  transition: transform 0.15s ease;
+}
+
+.connect-guide[open] summary::before { transform: rotate(90deg); }
+
+.connect-guide summary:hover { color: var(--accent); }
+
+.connect-guide .connect-body {
+  padding: 0 1rem 1rem 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.connect-steps { margin: 0.75rem 0 0 1.2rem; padding: 0; }
+.connect-steps li { margin-bottom: 0.6rem; font-size: 0.9rem; color: var(--text-dim); }
+.connect-steps li:last-child { margin-bottom: 0; }
+.connect-steps code { color: var(--text); }
+
 /* ---------- log view ---------- */
 
 .log-view {

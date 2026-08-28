@@ -80,6 +80,20 @@ def _image_exists(slug: str) -> bool:
     return proc.returncode == 0
 
 
+def _image_digest(slug: str) -> str | None:
+    """Return the image's config ID (``sha256:...``), or None if unknown.
+
+    ``.Id``, not ``RepoDigests``: these images are built locally and never
+    pushed, so RepoDigests is empty. Never raises — a missing digest costs
+    provenance detail, and must not stop a deploy.
+    """
+    proc = _run_docker(["image", "inspect", "--format", "{{.Id}}", _image_name(slug)])
+    if proc.returncode != 0:
+        return None
+    digest = proc.stdout.strip()
+    return digest or None
+
+
 def _remove_existing_container(slug: str) -> None:
     """Stop and remove any existing container for this slug, ignoring absence."""
     name = _container_name(slug)
@@ -89,12 +103,16 @@ def _remove_existing_container(slug: str) -> None:
         raise RuntimeError(f"Failed to remove existing container {name!r}: {proc.stderr.strip()}")
 
 
-def start_service(slug: str) -> dict:
+def start_service(slug: str, build_id: int | None = None) -> dict:
     """Start (or restart) the service container for ``slug``.
 
     Idempotent: any existing container with the same name is stopped and
     removed first. Raises ``RuntimeError`` with an actionable message if the
     image has not been built yet.
+
+    ``build_id`` is stamped into the container's environment (alongside the
+    slug and image digest) so every call the service logs can be traced back
+    to the build that produced it.
     """
     image = _image_name(slug)
     if not _image_exists(slug):
@@ -108,6 +126,17 @@ def start_service(slug: str) -> dict:
 
     port = allocate_port()
     name = _container_name(slug)
+
+    # Unknown values get no -e flag at all rather than an empty one: the
+    # service treats an unset var as null, and an empty string would have to
+    # be special-cased there to mean the same thing.
+    provenance = ["-e", f"NATIVEGATE_PROJECT={slug}"]
+    if build_id is not None:
+        provenance += ["-e", f"NATIVEGATE_BUILD_ID={build_id}"]
+    digest = _image_digest(slug)
+    if digest is not None:
+        provenance += ["-e", f"NATIVEGATE_IMAGE_DIGEST={digest}"]
+
     proc = _run_docker(
         [
             "run",
@@ -122,6 +151,7 @@ def start_service(slug: str) -> dict:
             "unless-stopped",
             "-p",
             f"{port}:8000",
+            *provenance,
             image,
         ]
     )

@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 from .. import db, deploy, jobs, ngate, orchestrator, sources
 from ..auth import get_current_user
 from ..csrf import get_csrf_token, set_csrf_cookie, verify_csrf
+from ..timerange import BadTimeBound, normalize_bound
 
 
 def _owned_project(slug: str, user: sqlite3.Row) -> sqlite3.Row:
@@ -574,6 +575,95 @@ async def submit_discover(
     ).start()
 
     return RedirectResponse(url=f"/p/{slug}/build/{build_id}", status_code=303)
+
+
+CALLS_PAGE_SIZE = 100
+CALLS_MAX_PAGE_SIZE = 500
+
+
+@router.get("/p/{slug}/calls")
+def calls_page(
+    request: Request,
+    slug: str,
+    build_id: int | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int = CALLS_PAGE_SIZE,
+    offset: int = 0,
+    user: sqlite3.Row = Depends(get_current_user),
+):
+    project = _owned_project(slug, user)
+    service = deploy.service_status(slug)
+
+    # Clamp rather than 400: these are user-editable query params on a
+    # read-only view, and an absurd limit is a denial-of-service on our own
+    # SQLite connection, not a user error worth an error page.
+    limit = max(1, min(limit, CALLS_MAX_PAGE_SIZE))
+    offset = max(0, offset)
+
+    # A build filter naming a build that isn't this project's would otherwise
+    # render an empty table as if the build simply served no calls.
+    if build_id is not None:
+        build = db.get_build(build_id)
+        if build is None or build["project_id"] != project["id"]:
+            raise HTTPException(status_code=404, detail="build not found")
+
+    since = (since or "").strip() or None
+    until = (until or "").strip() or None
+
+    # Same normalization the evidence pack uses, shared rather than
+    # duplicated: passing a bare `until` through unextended made this page
+    # under-report the last day of a range while the signed export for the
+    # identical range included it.
+    #
+    # A typo in a date field flags the filter and shows the unfiltered page.
+    # Failing the request outright would take the build filter, the
+    # pagination and the history itself down with it.
+    filter_error = None
+    try:
+        since_norm = normalize_bound(since, end_of_day=False)
+        until_norm = normalize_bound(until, end_of_day=True)
+    except BadTimeBound as exc:
+        filter_error = str(exc)
+        since_norm = until_norm = None
+        since = until = None
+
+    filters = {"since": since_norm, "until": until_norm, "build_id": build_id}
+    calls_rows = db.get_service_calls(project["id"], limit=limit, offset=offset, **filters)
+    total = db.count_service_calls(project["id"], **filters)
+    # Identical query when nothing is filtered, and this is the page's hot path.
+    any_filter = any(v is not None for v in filters.values())
+    unfiltered_total = db.count_service_calls(project["id"]) if any_filter else total
+
+    token = get_csrf_token(request)
+    response = templates.TemplateResponse(
+        request,
+        "calls.html",
+        {
+            "project": project,
+            "service": service,
+            "calls": calls_rows,
+            "builds": db.list_builds(project["id"]),
+            "filter_build_id": build_id,
+            "filter_since": since,
+            "filter_until": until,
+            # The live SSE rows are matched client-side against these, which
+            # must be the *normalized* bounds the server queried with — the
+            # raw text would let a live row be accepted where a reload would
+            # reject it, so the pane and the page would disagree.
+            "filter_since_norm": since_norm,
+            "filter_until_norm": until_norm,
+            "filter_error": filter_error,
+            "filter_active": bool(build_id or since or until),
+            "total": total,
+            "unfiltered_total": unfiltered_total,
+            "limit": limit,
+            "offset": offset,
+            "csrf_token": token,
+        },
+    )
+    set_csrf_cookie(response, token)
+    return response
 
 
 @router.get("/p/{slug}/build/{build_id}")

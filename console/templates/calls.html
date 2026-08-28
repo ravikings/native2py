@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} — calls — nativegate{% endblock %}
+
+{%- macro qs(build_id, since, until, limit, offset) -%}
+{%- set parts = [] -%}
+{%- if build_id %}{% set _ = parts.append("build_id=" ~ build_id) %}{% endif -%}
+{%- if since %}{% set _ = parts.append("since=" ~ since|urlencode) %}{% endif -%}
+{%- if until %}{% set _ = parts.append("until=" ~ until|urlencode) %}{% endif -%}
+{%- set _ = parts.append("limit=" ~ limit) -%}
+{%- if offset %}{% set _ = parts.append("offset=" ~ offset) %}{% endif -%}
+{#- A bare "&": autoescaping turns it into "&amp;" on output, which is the
+    correct way to write a separator inside an href. Writing "&amp;" here
+    instead gets escaped again to "&amp;amp;", and the browser then sends the
+    whole tail as one parameter value — silently dropping every filter after
+    the first. -#}
+{{ "?" ~ parts|join("&") if parts else "" }}
+{%- endmacro -%}
+
+{% block content %}
+{% set step = "project" %}
+{% include "_breadcrumb.html" %}
+<h1>{{ project.name }} — calls</h1>
+
+<div class="panel">
+  <div class="panel-header">
+    CALLS
+    {% if service.running %}
+      <span id="status-badge" class="badge"><span id="live-dot" class="live-dot"></span>live</span>
+    {% else %}
+      <span id="status-badge" class="badge warn">not running</span>
+    {% endif %}
+  </div>
+  <div class="panel-body">
+
+    <form method="get" action="/p/{{ project.slug }}/calls"
+          style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 1rem;">
+      <label>
+        Build
+        <select name="build_id">
+          <option value="">all builds</option>
+          {% for b in builds %}
+            <option value="{{ b.id }}" {% if filter_build_id == b.id %}selected{% endif %}>#{{ b.id }} ({{ b.status }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        From
+        <input type="text" name="since" value="{{ filter_since or '' }}" placeholder="2026-08-27T09:00">
+      </label>
+      <label>
+        To
+        <input type="text" name="until" value="{{ filter_until or '' }}" placeholder="2026-08-27T18:00">
+      </label>
+      <button type="submit">Apply</button>
+      {% if filter_active %}
+        <a href="/p/{{ project.slug }}/calls">clear filter</a>
+      {% endif %}
+    </form>
+
+    {% if filter_error %}
+      <p class="stream-note" style="display: block; color: var(--warn);">
+        {{ filter_error }} &mdash; showing unfiltered results.
+      </p>
+    {% endif %}
+
+    {% if filter_active %}
+      <p class="stream-note" style="display: block;">
+        Filtered{% if filter_build_id %} to build <a href="/p/{{ project.slug }}/build/{{ filter_build_id }}">#{{ filter_build_id }}</a>{% endif %}{% if filter_since %} from {{ filter_since }}{% endif %}{% if filter_until %} to {{ filter_until }}{% endif %}
+        &mdash; {{ total }} of {{ unfiltered_total }} recorded call(s).
+      </p>
+    {% endif %}
+
+    {% if unfiltered_total == 0 %}
+      {% if not service.running %}
+        <p style="color: var(--text-dim);">Not deployed yet. Run a build to deploy this project's service.</p>
+      {% else %}
+        <p id="calls-empty" style="color: var(--text-dim);">No calls recorded yet &mdash; no REST or MCP activity has reached this service.</p>
+      {% endif %}
+    {% elif total == 0 %}
+      <p style="color: var(--text-dim);">
+        No calls match this filter. <a href="/p/{{ project.slug }}/calls">Show all {{ unfiltered_total }}</a>.
+      </p>
+    {% endif %}
+
+    {# Hidden rather than omitted when empty: a bare header row under "no calls
+       recorded yet" reads as a half-loaded page, but the live pane still needs
+       a tbody to append into — a running service with no calls yet is exactly
+       when the first row arrives over SSE. The script reveals it on append. #}
+    {% if total > 0 or service.running %}
+      <table class="table" id="calls-table"{% if total == 0 %} style="display: none;"{% endif %}>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Kind</th>
+            <th>Method / tool</th>
+            <th>Path / tool</th>
+            <th>Status</th>
+            <th>Duration (ms)</th>
+            <th>Build</th>
+            <th>Image</th>
+          </tr>
+        </thead>
+        <tbody id="calls-body">
+          {% for c in calls %}
+            <tr data-key="{{ (c.request_id or '') ~ '|' ~ (c.ts or '') }}">
+              <td>{{ c.ts or "" }}</td>
+              <td><span class="badge">{{ (c.kind or "?")|upper }}</span></td>
+              <td>{{ (c.tool if c.kind == "mcp" else c.method) or "" }}</td>
+              <td>{{ (c.tool if c.kind == "mcp" else c.path) or "" }}</td>
+              <td>
+                {% if c.status is not none %}
+                  {% if c.status >= 200 and c.status < 400 %}{% set sc = "pass" %}
+                  {% elif c.status >= 400 and c.status < 500 %}{% set sc = "warn" %}
+                  {% else %}{% set sc = "fail" %}{% endif %}
+                  <span class="badge {{ sc }}">{{ c.status }}</span>
+                {% endif %}
+              </td>
+              <td>{{ "%.1f"|format(c.duration_ms) if c.duration_ms is not none else "" }}</td>
+              <td>
+                {% if c.build_id is not none %}
+                  <a href="/p/{{ project.slug }}/build/{{ c.build_id }}">#{{ c.build_id }}</a>
+                  {% if filter_build_id != c.build_id %}
+                    <a class="badge" href="/p/{{ project.slug }}/calls?build_id={{ c.build_id }}"
+                       title="Show only calls served by build #{{ c.build_id }}">only</a>
+                  {% endif %}
+                {% else %}&mdash;{% endif %}
+              </td>
+              <td>
+                {% if c.image_digest %}
+                  <span class="mono" title="{{ c.image_digest }}">{{ (c.image_digest|replace("sha256:", ""))[:12] }}</span>
+                {% else %}&mdash;{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% set shown_to = offset + calls|length %}
+      {% if total > calls|length %}
+        <p class="stream-note" style="display: block;">
+          Showing {{ offset + 1 }}&ndash;{{ shown_to }} of {{ total }} matching call(s).
+          {% if offset > 0 %}
+            <a href="/p/{{ project.slug }}/calls{{ qs(filter_build_id, filter_since, filter_until, limit,[offset - limit, 0]|max) }}">&larr; newer</a>
+          {% endif %}
+          {% if shown_to < total %}
+            <a href="/p/{{ project.slug }}/calls{{ qs(filter_build_id, filter_since, filter_until, limit,offset + limit) }}">older &rarr;</a>
+          {% endif %}
+        </p>
+      {% endif %}
+
+      <p id="live-note" class="stream-note" style="display: none;"></p>
+      <p id="stream-note" class="stream-note" style="display: none;">
+        Log stream disconnected &mdash; reconnecting&hellip;
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+<p><a href="/p/{{ project.slug }}">&larr; back to project</a></p>
+{% endblock %}
+
+{% block scripts %}
+{% if service.running %}
+<script>
+(function () {
+  var body = document.getElementById("calls-body");
+  var badge = document.getElementById("status-badge");
+  var liveDot = document.getElementById("live-dot");
+  var streamNote = document.getElementById("stream-note");
+  var liveNote = document.getElementById("live-note");
+  var MAX_ROWS = 500;
+
+  var filter = {
+    build_id: {{ filter_build_id if filter_build_id is not none else "null" }},
+    // The normalized bounds the server actually queried with, not the raw
+    // form text: comparing a live row against "2026-08-27" when the server
+    // queried "2026-08-27T23:59:59.999999" accepts rows here that a reload
+    // would drop, so the live pane and the page would disagree.
+    since: {{ (filter_since_norm or "")|tojson }},
+    until: {{ (filter_until_norm or "")|tojson }},
+    offset: {{ offset }}
+  };
+
+  // Seeded from the server-rendered rows so an entry that arrives over SSE
+  // and is already on screen (the stream deliberately replays a recent
+  // overlap) doesn't render twice. Same key as the DB's UNIQUE constraint.
+  var seen = Object.create(null);
+  Array.prototype.forEach.call(body.querySelectorAll("tr[data-key]"), function (tr) {
+    seen[tr.getAttribute("data-key")] = true;
+  });
+
+  var outsideCount = 0;
+
+  function keyOf(entry) {
+    return (entry.request_id || "") + "|" + (entry.ts || "");
+  }
+
+  function matchesFilter(entry) {
+    if (filter.build_id !== null && entry.build_id !== filter.build_id) return false;
+    var ts = entry.ts || "";
+    if (filter.since && ts < filter.since) return false;
+    if (filter.until && ts > filter.until) return false;
+    return true;
+  }
+
+  function statusBadgeClass(status) {
+    if (status === null || status === undefined) return "";
+    if (status >= 200 && status < 400) return "pass";
+    if (status >= 400 && status < 500) return "warn";
+    return "fail";
+  }
+
+  function noteOutside(reason) {
+    outsideCount += 1;
+    liveNote.textContent =
+      outsideCount + " new call(s) arrived that this view is not showing (" + reason +
+      "). Reload to see them.";
+    liveNote.style.display = "block";
+  }
+
+  function addRow(entry) {
+    var tr = document.createElement("tr");
+    tr.setAttribute("data-key", keyOf(entry));
+
+    var kind = entry.kind || "";
+    var methodOrTool = kind === "mcp" ? (entry.tool || "") : (entry.method || "");
+    var pathOrTool = kind === "mcp" ? (entry.tool || "") : (entry.path || "");
+    var status = entry.status;
+    var duration = entry.duration_ms;
+
+    var cells = [
+      entry.ts || "",
+      null,
+      methodOrTool,
+      pathOrTool,
+      null,
+      duration != null ? Number(duration).toFixed(1) : "",
+    ];
+
+    cells.forEach(function (val, i) {
+      var td = document.createElement("td");
+      if (i === 1) {
+        var kb = document.createElement("span");
+        kb.className = "badge";
+        kb.textContent = kind ? kind.toUpperCase() : "?";
+        td.appendChild(kb);
+      } else if (i === 4) {
+        if (status != null) {
+          var sb = document.createElement("span");
+          sb.className = "badge " + statusBadgeClass(status);
+          sb.textContent = status;
+          td.appendChild(sb);
+        }
+      } else {
+        td.textContent = val;
+      }
+      tr.appendChild(td);
+    });
+
+    var buildTd = document.createElement("td");
+    if (entry.build_id != null) {
+      var link = document.createElement("a");
+      link.href = "/p/{{ project.slug }}/build/" + entry.build_id;
+      link.textContent = "#" + entry.build_id;
+      buildTd.appendChild(link);
+      if (filter.build_id !== entry.build_id) {
+        buildTd.appendChild(document.createTextNode(" "));
+        var only = document.createElement("a");
+        only.className = "badge";
+        only.href = "/p/{{ project.slug }}/calls?build_id=" + entry.build_id;
+        only.title = "Show only calls served by build #" + entry.build_id;
+        only.textContent = "only";
+        buildTd.appendChild(only);
+      }
+    } else {
+      buildTd.textContent = "—";
+    }
+    tr.appendChild(buildTd);
+
+    var imageTd = document.createElement("td");
+    var digest = entry.image_digest;
+    if (digest) {
+      var span = document.createElement("span");
+      span.className = "mono";
+      span.title = digest;
+      span.textContent = digest.replace(/^sha256:/, "").slice(0, 12);
+      imageTd.appendChild(span);
+    } else {
+      imageTd.textContent = "—";
+    }
+    tr.appendChild(imageTd);
+
+    // Newest first, matching the server-rendered ordering.
+    body.insertBefore(tr, body.firstChild);
+
+    // The table ships hidden when the page rendered with no history, so the
+    // first live call is what reveals it.
+    var table = document.getElementById("calls-table");
+    if (table && table.style.display === "none") {
+      table.style.display = "";
+      var empty = document.getElementById("calls-empty");
+      if (empty) empty.style.display = "none";
+    }
+    while (body.children.length > MAX_ROWS) {
+      body.removeChild(body.lastChild);
+    }
+  }
+
+  function handle(entry) {
+    var key = keyOf(entry);
+    if (seen[key]) return;
+    seen[key] = true;
+    // A live row must never be shown where it would contradict what the page
+    // claims to be showing: on a filtered view it would make the filter lie,
+    // and on page 2+ it would jump the pagination window.
+    if (!matchesFilter(entry)) {
+      noteOutside("they fall outside the active filter");
+      return;
+    }
+    if (filter.offset > 0) {
+      noteOutside("you are viewing an older page");
+      return;
+    }
+    addRow(entry);
+  }
+
+  var es = new EventSource("/p/{{ project.slug }}/calls/stream");
+
+  es.onerror = function () {
+    if (es.readyState === EventSource.CONNECTING || es.readyState === EventSource.CLOSED) {
+      streamNote.style.display = "block";
+    }
+  };
+  es.onopen = function () {
+    streamNote.style.display = "none";
+  };
+
+  es.onmessage = function (evt) {
+    try {
+      var entry = JSON.parse(evt.data);
+      handle(entry);
+    } catch (e) {
+      // Ignore malformed payloads rather than breaking the stream.
+    }
+  };
+
+  es.addEventListener("done", function (evt) {
+    es.close();
+    if (liveDot) liveDot.style.display = "none";
+    streamNote.style.display = "none";
+    if (evt.data === "stopped" || evt.data === "not_running") {
+      badge.textContent = "not running";
+      badge.classList.add("warn");
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

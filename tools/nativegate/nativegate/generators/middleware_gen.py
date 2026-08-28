@@ -33,6 +33,8 @@ control that is trusted until the day it matters.
 
 from __future__ import annotations
 
+from .mcp_gen import MCP_MOUNT_PATH
+
 MIDDLEWARE_FILENAME = "middleware.py"
 
 # Names of the env vars the generated middleware reads. Kept here so the CLI
@@ -40,6 +42,13 @@ MIDDLEWARE_FILENAME = "middleware.py"
 ENV_API_KEYS = "NATIVEGATE_API_KEYS"
 ENV_RATE_LIMIT = "NATIVEGATE_RATE_LIMIT_PER_MINUTE"
 ENV_MAX_BODY = "NATIVEGATE_MAX_REQUEST_BYTES"
+
+# Provenance stamped onto every access-log line. Set by whatever runs the
+# container (the console's deployer), not by the image, so they are read per
+# call rather than frozen at import.
+ENV_PROJECT = "NATIVEGATE_PROJECT"
+ENV_BUILD_ID = "NATIVEGATE_BUILD_ID"
+ENV_IMAGE_DIGEST = "NATIVEGATE_IMAGE_DIGEST"
 
 AUTH_MODES = ("none", "api_key")
 
@@ -67,12 +76,15 @@ just as importantly, what it does not.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import os
 import signal
+import sys
 import time
 import uuid
 from collections import deque
+from datetime import datetime, timezone
 from threading import Lock
 
 from fastapi import HTTPException, Request
@@ -84,10 +96,139 @@ __all__ = [
     "start_draining",
     "AuthNotConfigured",
     "current_request_id",
+    "log_call",
 ]
 
 _LOG = logging.getLogger("nativegate.{service_name}")
 _ACCESS_LOG = logging.getLogger("nativegate.{service_name}.access")
+
+
+def _provenance() -> dict:
+    """Which project, which build, which image produced this line.
+
+    `build_id` is emitted as an int because a consumer joining log rows against
+    build records wants a number, not the string form it arrived as; an
+    unparseable value is nulled rather than passed through half-typed.
+    """
+    raw_build_id = os.environ.get("{ENV_BUILD_ID}") or ""
+    try:
+        build_id = int(raw_build_id)
+    except ValueError:
+        build_id = None
+    return {{
+        "project": os.environ.get("{ENV_PROJECT}") or None,
+        "build_id": build_id,
+        "image_digest": os.environ.get("{ENV_IMAGE_DIGEST}") or None,
+    }}
+
+
+class _JsonLineFormatter(logging.Formatter):
+    """One JSON object per line on stdout — the schema the console tails.
+
+    Not the stdlib `extra=` fields verbatim: the console needs a fixed set of
+    keys present on every line (nulled, not omitted, when a field does not
+    apply to that call), so it can parse REST and MCP rows with one schema
+    rather than two.
+
+    The provenance fields (`project`, `build_id`, `image_digest`) are resolved
+    here rather than at the call sites so REST and MCP rows cannot drift, and
+    from the environment on every line rather than at import: a container's env
+    is set at `docker run`, after this module is already loaded.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps(
+            {{
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "service": getattr(record, "service", "{service_name}"),
+                "kind": getattr(record, "kind", "rest"),
+                "method": getattr(record, "method", None),
+                "path": getattr(record, "path", None),
+                "tool": getattr(record, "tool", None),
+                "status": getattr(record, "status", None),
+                "duration_ms": getattr(record, "duration_ms", None),
+                "request_id": getattr(record, "request_id", "-"),
+                **_provenance(),
+            }}
+        )
+
+
+class _StdoutHandler(logging.StreamHandler):
+    """Resolves `sys.stdout` on every emit rather than once at construction.
+
+    A handler built with `logging.StreamHandler(sys.stdout)` freezes whatever
+    stream object `sys.stdout` was at import time — wrong the moment anything
+    (a test's capsys, a reloader) swaps `sys.stdout` out afterwards.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(sys.stdout)
+
+    @property
+    def stream(self):
+        return sys.stdout
+
+    @stream.setter
+    def stream(self, value) -> None:
+        pass
+
+
+def _install_json_access_log() -> None:
+    # Idempotent: install_middleware and the MCP server's module-level import
+    # can both run in the same process, and a second handler would duplicate
+    # every line.
+    if any(isinstance(h, _StdoutHandler) for h in _ACCESS_LOG.handlers):
+        return
+    handler = _StdoutHandler()
+    handler.setFormatter(_JsonLineFormatter())
+    _ACCESS_LOG.addHandler(handler)
+    _ACCESS_LOG.setLevel(logging.INFO)
+    _ACCESS_LOG.propagate = False
+
+
+def log_call(
+    *,
+    kind: str,
+    request_id: str,
+    method: str | None = None,
+    path: str | None = None,
+    tool: str | None = None,
+    status: int | None = None,
+    duration_ms: float,
+    service_name: str = "{service_name}",
+) -> None:
+    """Emit one access-log line. Shared by the REST middleware and the MCP
+    server so both `kind`s go through the same formatter and schema."""
+    _install_json_access_log()
+    _ACCESS_LOG.info(
+        "%s %s",
+        kind,
+        tool if tool is not None else path,
+        extra={{
+            "service": service_name,
+            "kind": kind,
+            "method": method,
+            "path": path,
+            "tool": tool,
+            "status": status,
+            "duration_ms": round(duration_ms, 3),
+            "request_id": request_id,
+        }},
+    )
+
+MCP_MOUNT_PATH = "{MCP_MOUNT_PATH}"
+
+
+def _is_mcp_transport_path(path: str) -> bool:
+    """Whether `path` addresses the mounted MCP app.
+
+    A boundary match, not `startswith("{MCP_MOUNT_PATH}")`: a sibling route such as
+    `/mcpconfig` or `/mcp-status` shares the prefix but is ordinary REST
+    traffic, and labelling it `mcp_http` would put a row in the audit trail
+    describing a layer the request never went through.
+    """
+    return path == MCP_MOUNT_PATH or path.startswith(MCP_MOUNT_PATH + "/")
+
 
 # Baked in at generate time from `api.auth` in nativegate.yaml. Deliberately not
 # an environment variable: a service generated to require authentication must
@@ -161,14 +302,19 @@ def install_middleware(app, service_name: str = "{service_name}") -> None:
 
     1. request id — so everything below it, including rejections, can be
        correlated. A 401 with no id is an unanswerable support ticket.
-    2. body size — cheapest rejection, and it runs before anything reads the
+    2. access log — directly inside the request id, so it sees an id on every
+       line, and OUTSIDE the layers that reject. An access log nested inside
+       auth records only the calls that got through: a 401, a 413 and a 429
+       would each leave no row at all, which is exactly the traffic an audit
+       of a governed service most needs to see. The cost is that the recorded
+       duration includes the layers below rather than the handler alone —
+       cheap, and honest, since that is what the caller waited for.
+    3. body size — cheapest rejection, and it runs before anything reads the
        body into memory.
-    3. auth — before the rate limiter, so an unauthenticated flood is rejected
+    4. auth — before the rate limiter, so an unauthenticated flood is rejected
        without consuming the caller's quota, and so the limiter can key on the
        authenticated identity rather than a spoofable address.
-    4. rate limit — keyed by API key when there is one, client address if not.
-    5. access log — innermost of the cross-cutting layers, so its duration
-       measurement covers the handler and not the middleware above it.
+    5. rate limit — keyed by API key when there is one, client address if not.
 
     Starlette runs `add_middleware` in reverse registration order, so these
     are registered bottom-up.
@@ -192,28 +338,6 @@ def install_middleware(app, service_name: str = "{service_name}") -> None:
 
     limiter = _RateLimiter(_int_env("{ENV_RATE_LIMIT}", 0))
     max_body = _int_env("{ENV_MAX_BODY}", 1_048_576)
-
-    @app.middleware("http")
-    async def _access_log(request: Request, call_next):
-        started = time.perf_counter()
-        response = await call_next(request)
-        duration_ms = (time.perf_counter() - started) * 1000.0
-        # Structured via `extra` so a JSON formatter can pick the fields up,
-        # while the default formatter still prints something readable.
-        _ACCESS_LOG.info(
-            "%s %s %s %.1fms",
-            request.method, request.url.path, response.status_code, duration_ms,
-            extra={{
-                "request_id": current_request_id(request),
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "duration_ms": round(duration_ms, 3),
-                "service": service_name,
-            }},
-        )
-        response.headers["X-Response-Time-Ms"] = f"{{duration_ms:.1f}}"
-        return response
 
     @app.middleware("http")
     async def _rate_limit(request: Request, call_next):
@@ -287,6 +411,32 @@ def install_middleware(app, service_name: str = "{service_name}") -> None:
                     content={{"error": "malformed Content-Length"}},
                 )
         return await call_next(request)
+
+    @app.middleware("http")
+    async def _access_log(request: Request, call_next):
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - started) * 1000.0
+        # MCP transport requests are logged under their own kind rather than
+        # skipped. mcp_server.py's FastMCP hook only fires for actual tool
+        # dispatch, so skipping the whole mount left `initialize`, `tools/list`
+        # and malformed JSON-RPC bodies with no record anywhere — an audit hole
+        # in a governed service. A tools/call now yields two rows, one per
+        # layer, which is honest because they are two distinct events; the
+        # `kind` keeps them unambiguously separable, and they are deliberately
+        # NOT correlated by a contextvar (the tool call re-enters through an
+        # in-process ASGI transport and may run in a different task).
+        log_call(
+            kind="mcp_http" if _is_mcp_transport_path(request.url.path) else "rest",
+            request_id=current_request_id(request),
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            duration_ms=duration_ms,
+            service_name=service_name,
+        )
+        response.headers["X-Response-Time-Ms"] = f"{{duration_ms:.1f}}"
+        return response
 
     @app.middleware("http")
     async def _request_id(request: Request, call_next):

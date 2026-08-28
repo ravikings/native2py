@@ -162,6 +162,57 @@ MCP clients that need a key send it as a normal header:
 }
 ```
 
+## Access logging
+
+Every call — REST or MCP — writes one JSON line to stdout, via
+`nativegate.<service>.access`:
+
+```json
+{"ts": "2026-01-01T00:00:00+00:00", "service": "petro_api", "kind": "rest", "method": "POST", "path": "/solution_gor", "tool": null, "status": 200, "duration_ms": 4.2, "request_id": "a1b2c3d4e5f6", "project": "petro", "build_id": 417, "image_digest": "sha256:abc123"}
+{"ts": "2026-01-01T00:00:01+00:00", "service": "petro_api", "kind": "mcp", "method": null, "path": null, "tool": "petro_api_solution_gor", "status": 200, "duration_ms": 5.1, "request_id": "6f5e4d3c2b1a", "project": "petro", "build_id": 417, "image_digest": "sha256:abc123"}
+```
+
+`project`, `build_id` and `image_digest` are provenance — which project, which
+build, which image answered the call. They come from `NATIVEGATE_PROJECT`,
+`NATIVEGATE_BUILD_ID` and `NATIVEGATE_IMAGE_DIGEST`, set by whatever runs the
+container, and are read per call rather than at import, since a container's
+environment is set at `docker run`. All three are `null` when unset — never
+omitted — and `build_id` is an integer (`null` if it does not parse as one).
+
+There are three kinds, one per layer a call can pass through:
+
+| `kind` | Emitted by | One row per |
+| --- | --- | --- |
+| `rest` | `middleware.py`'s access-log layer | HTTP request to a REST route |
+| `mcp_http` | the same layer | HTTP request to the `/mcp` mount |
+| `mcp` | `mcp_server.py`'s FastMCP `Middleware` | tool dispatch |
+
+`method` and `path` are set on `rest` and `mcp_http` rows; `tool` is set on
+`mcp` rows. Only the `on_call_tool` hook sees the parsed tool name — it is
+inside the JSON-RPC body, which plain HTTP middleware does not read.
+
+**A tool call produces both an `mcp_http` row and an `mcp` row.** That is not
+double counting: they are two events at two layers, and both are needed. The
+transport row is the only record of an MCP request that never reaches a tool —
+`initialize`, `tools/list`, a malformed JSON-RPC body, a request rejected with
+401, 413 or 429 before any tool ran — and the tool row is the only record
+carrying the tool
+name and the outcome of the native call. Filter on `kind` to pick a layer;
+never sum the two. They are deliberately not correlated by a shared id: the
+tool call re-enters through an in-process ASGI transport and may run in a
+different task, so a contextvar set in the hook would not reliably reach it.
+
+`/mcp` is matched at the mount boundary (exactly `/mcp`, or `/mcp/…`), so a
+sibling route such as `/mcpconfig` stays `kind: "rest"`.
+
+An `mcp` row's `status` is `200` only when the tool returned a result that is
+not flagged `isError`. A tool that raises logs `500`; a tool that returns an
+error result logs `500`; a call cancelled by a client disconnecting mid-flight
+logs `499`, since an abandoned call is neither a success nor a crash.
+
+Every layer calls the same `log_call()` helper in `middleware.py`, so the
+schema is one place, not three.
+
 ## Gateways
 
 A composed gateway serves **one** MCP endpoint covering every mounted service —

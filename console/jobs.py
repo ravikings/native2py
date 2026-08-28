@@ -192,7 +192,7 @@ def run_build(project_slug: str, build_id: int, project_dir: Path) -> None:
     # start (e.g. Docker not available in this environment). Surface the
     # failure in the log rather than the build's terminal status.
     try:
-        info = deploy.start_service(project_slug)
+        info = deploy.start_service(project_slug, build_id=build_id)
         _log(build_id, f">>> deployed: {info['url']}  mcp: {info['mcp_url']}")
     except Exception as exc:  # noqa: BLE001 - deploy failure must not fail the build
         _log(build_id, f">>> deploy skipped: {exc}")

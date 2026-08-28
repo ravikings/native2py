@@ -6,6 +6,7 @@ which is not the same claim as "an unauthenticated caller is refused".
 """
 
 import importlib
+import json
 import os
 import signal
 import sys
@@ -34,6 +35,9 @@ def load_middleware(tmp_path, monkeypatch):
             middleware_gen.ENV_API_KEYS,
             middleware_gen.ENV_RATE_LIMIT,
             middleware_gen.ENV_MAX_BODY,
+            middleware_gen.ENV_PROJECT,
+            middleware_gen.ENV_BUILD_ID,
+            middleware_gen.ENV_IMAGE_DIGEST,
         ):
             monkeypatch.delenv(key, raising=False)
         for key, value in env.items():
@@ -197,6 +201,176 @@ def test_an_inbound_request_id_is_honoured_but_bounded(load_middleware):
         response = client.get("/compute", headers={"X-Request-ID": hostile})
         assert response.headers["X-Request-ID"] != hostile
         assert len(response.headers["X-Request-ID"]) == 12
+
+
+# --- access logging --------------------------------------------------------
+
+
+def test_access_log_emits_one_json_line_per_rest_call(load_middleware, capsys):
+    module = load_middleware("none")
+    client = _app_with(module)
+
+    client.get("/compute")
+    line = [l for l in capsys.readouterr().out.splitlines() if l.strip()][-1]
+    row = json.loads(line)
+
+    assert row["kind"] == "rest"
+    assert row["service"] == "demo"
+    assert row["method"] == "GET"
+    assert row["path"] == "/compute"
+    assert row["tool"] is None
+    assert row["status"] == 200
+    assert isinstance(row["duration_ms"], (int, float))
+    assert row["request_id"]
+    assert "ts" in row
+    # Nulled, not omitted: the console parses one fixed schema.
+    assert row["project"] is None
+    assert row["build_id"] is None
+    assert row["image_digest"] is None
+
+
+def test_access_log_carries_provenance_from_the_environment(
+    load_middleware, monkeypatch, capsys
+):
+    """Set at `docker run` by whatever deploys the image, read per call."""
+    module = load_middleware("none")
+    client = _app_with(module)
+
+    monkeypatch.setenv(middleware_gen.ENV_PROJECT, "petro")
+    monkeypatch.setenv(middleware_gen.ENV_BUILD_ID, "417")
+    monkeypatch.setenv(middleware_gen.ENV_IMAGE_DIGEST, "sha256:abc123")
+
+    client.get("/compute")
+    row = json.loads([l for l in capsys.readouterr().out.splitlines() if l.strip()][-1])
+
+    assert row["project"] == "petro"
+    assert row["build_id"] == 417
+    assert row["image_digest"] == "sha256:abc123"
+
+
+def test_a_non_numeric_build_id_is_nulled_rather_than_emitted_as_a_string(
+    load_middleware, monkeypatch, capsys
+):
+    # A consumer joining on build_id wants a number; half-typed is worse than
+    # absent.
+    module = load_middleware("none")
+    client = _app_with(module)
+
+    monkeypatch.setenv(middleware_gen.ENV_BUILD_ID, "not-a-number")
+
+    client.get("/compute")
+    row = json.loads([l for l in capsys.readouterr().out.splitlines() if l.strip()][-1])
+
+    assert row["build_id"] is None
+
+
+def _app_with_mcp_stub(module):
+    app = FastAPI()
+
+    @app.post("/mcp/")
+    def mcp_stub():
+        return {"ok": True}
+
+    @app.get("/mcpconfig")
+    def mcpconfig():
+        return {"ok": True}
+
+    @app.get("/mcp")
+    def mcp_root():
+        return {"ok": True}
+
+    @app.post("/compute")
+    def compute(payload: dict):
+        return {"result": 42}
+
+    module.install_middleware(app, "demo")
+    return TestClient(app)
+
+
+def _rows(capsys):
+    return [json.loads(l) for l in capsys.readouterr().out.splitlines() if l.strip()]
+
+
+@pytest.mark.parametrize(
+    "auth, env, headers, path, expected_status, expected_kind",
+    [
+        ("api_key", {"NATIVEGATE_API_KEYS": "k"}, {}, "/mcp/", 401, "mcp_http"),
+        ("api_key", {"NATIVEGATE_API_KEYS": "k"}, {}, "/compute", 401, "rest"),
+        ("none", {"NATIVEGATE_MAX_REQUEST_BYTES": "50"}, {}, "/compute", 413, "rest"),
+    ],
+    ids=["mcp-401", "rest-401", "rest-413"],
+)
+def test_a_rejected_request_is_still_logged(
+    load_middleware, capsys, auth, env, headers, path, expected_status, expected_kind
+):
+    # An access log nested inside the layers that reject records only the
+    # calls that got through, which is precisely backwards for an audit: a
+    # 401 or a 413 against a governed service is the traffic most worth
+    # seeing. The log layer therefore sits directly inside the request-id
+    # layer and outside every rejecting layer.
+    module = load_middleware(auth, **env)
+    client = _app_with_mcp_stub(module)
+
+    response = client.post(path, json={"blob": "z" * 500}, headers=headers)
+    assert response.status_code == expected_status
+
+    row = _rows(capsys)[-1]
+    assert row["kind"] == expected_kind
+    assert row["path"] == path
+    assert row["status"] == expected_status
+    # Correlatable with the rejection the caller saw — a 401 with no id is an
+    # unanswerable support ticket.
+    assert row["request_id"] == response.headers["X-Request-ID"]
+
+
+def test_an_mcp_transport_request_is_logged_under_its_own_kind(load_middleware, capsys):
+    # The FastMCP hook only fires for tool dispatch, so if this layer skipped
+    # the mount entirely an `initialize`, a `tools/list` or a malformed
+    # JSON-RPC body would leave no record at all — an audit hole. The distinct
+    # kind is what keeps a transport row from being mistaken for a tool row.
+    client = _app_with_mcp_stub(load_middleware("none"))
+
+    client.post("/mcp/")
+    rows = _rows(capsys)
+
+    mcp_http = [row for row in rows if row["path"] == "/mcp/"]
+    assert mcp_http, f"no row for the /mcp transport request; got {rows}"
+    row = mcp_http[-1]
+    assert row["kind"] == "mcp_http"
+    assert row["method"] == "POST"
+    assert row["status"] == 200
+    # A transport row never carries a tool name: the name lives in the
+    # JSON-RPC body, which this layer does not parse.
+    assert row["tool"] is None
+    assert row["service"] == "demo"
+    assert isinstance(row["duration_ms"], (int, float))
+    assert row["request_id"]
+    assert row["project"] is None
+    assert row["build_id"] is None
+    assert row["image_digest"] is None
+
+
+def test_the_mcp_mount_itself_is_transport_traffic(load_middleware, capsys):
+    client = _app_with_mcp_stub(load_middleware("none"))
+
+    client.get("/mcp")
+
+    assert _rows(capsys)[-1]["kind"] == "mcp_http"
+
+
+def test_a_sibling_route_sharing_the_prefix_is_not_treated_as_mcp(
+    load_middleware, capsys
+):
+    # `startswith("/mcp")` also swallows /mcpconfig and /mcp-status. Such a
+    # route is ordinary REST traffic, and mislabelling it would describe a
+    # layer the request never went through.
+    client = _app_with_mcp_stub(load_middleware("none"))
+
+    client.get("/mcpconfig")
+    row = _rows(capsys)[-1]
+
+    assert row["kind"] == "rest"
+    assert row["path"] == "/mcpconfig"
 
 
 # --- draining -------------------------------------------------------------
