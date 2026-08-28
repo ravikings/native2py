@@ -6,15 +6,25 @@
   <title>nativegate — paste a repo, get an API</title>
   <meta name="description" content="nativegate turns legacy C++ and Fortran into a live REST API and MCP endpoint, without hand-written bindings, built inside an isolated container.">
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d0f'/%3E%3Cpath d='M11 9 L5 16 L11 23' stroke='%237dd3fc' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M21 9 L27 16 L21 23' stroke='%237dd3fc' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='16' r='2.2' fill='%237dd3fc'/%3E%3C/svg%3E">
 </head>
 <body>
 
   <header class="topnav">
     <div class="container">
-      <a class="wordmark" href="#top">nativegate</a>
+      <a class="wordmark" href="#top">
+        <svg class="logomark" width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="var(--bg-inset)" stroke="var(--line-strong)"/>
+          <path d="M11 9 L5 16 L11 23" stroke="var(--accent)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 9 L27 16 L21 23" stroke="var(--accent)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="2.2" fill="var(--accent)"/>
+        </svg>
+        nativegate
+      </a>
       <nav>
         <a href="#how-it-works">How it works</a>
         <a href="#features">Features</a>
+        <a href="#agents">Agentic tools</a>
         <a href="#cli">CLI</a>
         <a href="http://localhost:8000" class="cta">Open console &rarr;</a>
       </nav>
@@ -137,6 +147,54 @@
             <span class="feature-tag">One CLI</span>
             <h3>From header to container</h3>
             <p><code>detect</code>, <code>generate</code>, <code>build</code>, <code>verify</code>, <code>serve</code>, <code>docker</code> — the whole path is one binary, scriptable, no web app required.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="agents">
+      <div class="container">
+        <div class="section-label">Agentic coding</div>
+        <h2 class="section-heading">Your coding agent gets the native library as a tool, in one command.</h2>
+        <p class="section-sub">
+          Every generated service already speaks MCP. Pointing an agentic coding
+          platform at it is a config entry, not an integration project.
+        </p>
+
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="title">adding petro_api to an MCP client</span>
+          </div>
+          <div class="terminal-body"><span class="prompt">$ </span><span class="cmd">ngate serve petro_api</span>
+<span class="out">  mcp endpoint at     </span><span class="path">http://127.0.0.1:8000/mcp</span>
+
+<span class="prompt">$ </span><span class="cmd">claude mcp add --transport http petro_api http://127.0.0.1:8000/mcp</span>
+<span class="out">  added mcp server "petro_api" to </span><span class="path">~/.claude.json</span>
+
+<span class="out">  or by hand, in any MCP-config-driven client:</span>
+<span class="out">  {
+    "mcpServers": {
+      "petro_api": { "url": "http://127.0.0.1:8000/mcp" }
+    }
+  }</span></div>
+        </div>
+
+        <div class="feature-grid">
+          <div class="feature">
+            <span class="feature-tag">Claude Code</span>
+            <h3>claude mcp add</h3>
+            <p>One line — <code>claude mcp add --transport http petro_api http://127.0.0.1:8000/mcp</code> — and every exposed routine shows up as a tool.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-tag">Cursor / Windsurf</span>
+            <h3>Drop into mcp.json</h3>
+            <p>Same URL, same shape — paste it into <code>.cursor/mcp.json</code> or the Windsurf MCP panel and the routines show up as callable tools.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-tag">Any MCP client</span>
+            <h3>No SDK to write against</h3>
+            <p>It's a standard streamable-HTTP MCP endpoint — no custom client, no auth dance, no generated stubs to keep in sync with the source.</p>
           </div>
         </div>
       </div>

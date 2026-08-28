@@ -110,14 +110,9 @@ button, .btn, a:focus-visible, button:focus-visible {
   align-items: center;
 }
 
-.wordmark::before {
-  content: "";
-  display: inline-block;
-  width: 0.55em;
-  height: 0.55em;
+.logomark {
   margin-right: 0.5em;
-  background: var(--accent);
-  box-shadow: 0 0 0.6em var(--accent-glow-strong);
+  filter: drop-shadow(0 0 0.5em var(--accent-glow-strong));
 }
 
 .wordmark:hover { text-decoration: none; color: var(--accent); }
