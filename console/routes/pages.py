@@ -48,6 +48,16 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # default of "console/data/console.db".
 PROJECTS_DIR = BASE_DIR / "data" / "projects"
 
+# The repo's shared native libraries (libraries/common-cpp, libraries/petro,
+# ...) — `console/Dockerfile` COPYs this alongside `console/` and
+# `tools/nativegate/` for exactly this lookup. Only entries with a
+# CMakeLists.txt are real linkable libraries (mirrors nativegate's own
+# `_validated_libraries` check, tools/nativegate/nativegate/cli.py); the
+# other subdirectories of libraries/ (e.g. libraries/demo, libraries/geometry)
+# are standalone example sources, not something a service can declare as a
+# `libraries:` dependency.
+REPO_LIBRARIES_DIR = BASE_DIR.parent / "libraries"
+
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -273,6 +283,61 @@ def _find_native_files(native_dir: Path, language: str | None = None) -> list[Pa
     return headers + fortran
 
 
+_INCLUDE_RE = re.compile(r'#\s*include\s*[<"]([^">]+)[>"]')
+
+
+def _detect_libraries(native_dir: Path, language: str | None) -> list[str]:
+    """Which `libraries/<name>` a project's uploaded sources actually need.
+
+    nativegate's `libraries:` is config-declared, not auto-discovered (see
+    `_validated_libraries` in tools/nativegate/nativegate/cli.py) — it just
+    trusts `nativegate.yaml` and expects `libraries/<name>` to already exist
+    next to `services/`. An uploaded project has no `nativegate.yaml` of its
+    own to declare that, so this fills the gap: if an uploaded source
+    `#include`s a header that only exists inside one of the repo's real
+    shared libraries, that library must be what it meant. Only C++ has a
+    `libraries:` story in nativegate today (see cli.py: fortran always gets
+    `libraries=[]`), so this is a no-op for Fortran uploads.
+    """
+    if language not in ("cpp", "c++") or not REPO_LIBRARIES_DIR.is_dir():
+        return []
+
+    included = set()
+    own_headers = set()
+    for path in native_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() in (".hpp", ".hh", ".h"):
+            own_headers.add(path.name)
+        if path.suffix.lower() in _CPP_EXTS:
+            try:
+                text = path.read_text(errors="ignore")
+            except OSError:
+                continue
+            for match in _INCLUDE_RE.finditer(text):
+                included.add(Path(match.group(1)).name)
+
+    # An `#include "x.hpp"` naming a header the project itself already ships
+    # resolves to that local file, not a same-named header in some shared
+    # library — matching on bare filename alone would otherwise misdetect a
+    # dependency on a library that just happens to share a header's name.
+    included -= own_headers
+
+    if not included:
+        return []
+
+    detected = []
+    for lib_dir in sorted(REPO_LIBRARIES_DIR.iterdir()):
+        if not lib_dir.is_dir() or not (lib_dir / "CMakeLists.txt").is_file():
+            continue
+        lib_headers = {
+            p.name for p in lib_dir.rglob("*") if p.suffix.lower() in (".hpp", ".hh", ".h")
+        }
+        if included & lib_headers:
+            detected.append(lib_dir.name)
+    return detected
+
+
 def _other_language_files(native_dir: Path, language: str | None) -> list[Path]:
     """Files under native_dir that belong to the OTHER language family.
 
@@ -467,11 +532,28 @@ async def submit_discover(
 
     workspace = PROJECTS_DIR / slug
     service_dir = workspace / "services" / slug
+    native_dir = service_dir / "native"
+
     manifest = {
         "name": project["slug"],
         "language": project["language"],
         "expose": {"classes": classes, "functions": functions},
     }
+
+    # `ngate build` resolves `libraries:` entries relative to its cwd
+    # (workspace, per the comment below) — copy each detected library in
+    # from the repo's own libraries/ before declaring it, so the build
+    # actually finds it there instead of just failing later with the same
+    # "no such file" error the declaration was meant to prevent.
+    detected_libraries = _detect_libraries(native_dir, project["language"])
+    if detected_libraries:
+        libraries_dir = workspace / "libraries"
+        for lib_name in detected_libraries:
+            dest = libraries_dir / lib_name
+            if not dest.exists():
+                shutil.copytree(REPO_LIBRARIES_DIR / lib_name, dest)
+        manifest["libraries"] = detected_libraries
+
     manifest_path = service_dir / "nativegate.yaml"
     manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False))
 
