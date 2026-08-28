@@ -7,8 +7,11 @@ service — all as plain `ngate` CLI commands run for you.
 ## Quick start
 
 ```
-docker compose up
+./console/start.sh
 ```
+
+(equivalent to `docker compose up --build` from the repo root, with a couple
+of sanity checks — Docker installed, daemon reachable — first)
 
 Then open `http://localhost:8000`. By default `NGATE_AUTH=none`, so there is
 no login — everything is owned by a single local user, suitable for
@@ -25,6 +28,40 @@ anyone who can reach the port can ask the console to run arbitrary `docker`
 commands as root. Don't change the port mapping to `8000:8000` (or put this
 behind a reverse proxy reachable from outside the host) without switching to
 `NGATE_AUTH=github` first.
+
+Port 8000 already taken? Pass `--port` (or set `CONSOLE_PORT`):
+
+```
+./console/start.sh --port 8010
+# or: CONSOLE_PORT=8010 docker compose up --build
+```
+
+The container always listens on 8000 internally — only the host-side mapping
+changes, so open `http://localhost:8010` instead.
+
+## Orchestration
+
+The console itself is single-instance, but the service containers it deploys
+(one per project, `ngate-svc-<slug>`) are kept alive by a small orchestration
+layer (`console/orchestrator.py`), not just left to fend for themselves:
+
+- **Startup reconciliation** — every project the database thinks is
+  `running` is checked against Docker on boot; if the container is gone
+  (host reboot, someone ran `docker rm`), it's started back up from the
+  last built image, or marked `stopped` if that image no longer exists.
+- **Background health monitoring** — a loop polls each running project's
+  `/healthz` every `NGATE_HEALTH_INTERVAL` seconds (default `30`). A
+  project that fails 3 checks in a row gets auto-restarted; if the restart
+  itself fails, it's marked `crashed` and left alone rather than
+  restart-looped forever.
+- **Fleet status** — `GET /api/services` returns live status (DB status,
+  actual container state, port, health-check failure count) for every
+  deployed project, useful for a quick "is anything down?" check without
+  opening each project page.
+
+This is still one Docker daemon on one host (the same socket mount described
+above) — there's no multi-host scheduling here, just making sure what's
+supposed to be running actually is.
 
 ## GitHub OAuth (`NGATE_AUTH=github`)
 

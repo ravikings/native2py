@@ -2,6 +2,10 @@
 #
 #   docker compose up
 #   open http://localhost:8000
+#
+# Port 8000 taken? Set CONSOLE_PORT before starting instead of editing this
+# file, e.g. `CONSOLE_PORT=8010 docker compose up` (or `./console/start.sh
+# --port 8010`) — the container still listens on 8000 internally.
 
 services:
   console:
@@ -10,12 +14,12 @@ services:
       dockerfile: console/Dockerfile
     ports:
       # Bound to loopback only, deliberately — see the NGATE_AUTH warning
-      # below. Change to "8000:8000" only once NGATE_AUTH=github is on;
-      # binding this to all interfaces with auth disabled hands anyone who
-      # can reach the port unauthenticated `docker run`/`docker build`
-      # access via the socket mount below, i.e. root-equivalent code
-      # execution on this host.
-      - "127.0.0.1:8000:8000"
+      # below. Change to "0.0.0.0:${CONSOLE_PORT:-8000}:8000" only once
+      # NGATE_AUTH=github is on; binding this to all interfaces with auth
+      # disabled hands anyone who can reach the port unauthenticated
+      # `docker run`/`docker build` access via the socket mount below, i.e.
+      # root-equivalent code execution on this host.
+      - "127.0.0.1:${CONSOLE_PORT:-8000}:8000"
     volumes:
       # The console shells out to `docker run`/`docker build` to run build
       # jobs and deploy service containers — it needs the host's socket.
