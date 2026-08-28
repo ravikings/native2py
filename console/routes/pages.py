@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from .. import db, deploy, jobs, ngate, sources
+from .. import db, deploy, jobs, ngate, orchestrator, sources
 from ..auth import get_current_user
 from ..csrf import get_csrf_token, set_csrf_cookie, verify_csrf
 
@@ -550,8 +550,13 @@ async def submit_discover(
         libraries_dir = workspace / "libraries"
         for lib_name in detected_libraries:
             dest = libraries_dir / lib_name
-            if not dest.exists():
-                shutil.copytree(REPO_LIBRARIES_DIR / lib_name, dest)
+            # Always re-copy rather than skip when dest already exists — a
+            # rediscover after the repo's library changed (or after a
+            # previous copytree was interrupted) must pick up the current
+            # sources, not silently build against a stale/partial copy.
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(REPO_LIBRARIES_DIR / lib_name, dest)
         manifest["libraries"] = detected_libraries
 
     manifest_path = service_dir / "nativegate.yaml"
@@ -630,6 +635,7 @@ def delete_project(slug: str, user: sqlite3.Row = Depends(get_current_user)):
     if workspace.exists():
         shutil.rmtree(workspace, ignore_errors=True)
 
+    orchestrator.forget(slug)
     db.delete_project(project["id"])
 
     return RedirectResponse(url="/projects", status_code=303)

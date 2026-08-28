@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blog — nativegate</title>
+  <meta name="description" content="Notes on turning legacy C++ and Fortran into live APIs: generated bindings, isolated builds, and numeric drift detection — from the team building nativegate.">
+  <link rel="canonical" href="https://ravikings.github.io/nativegate/blog/">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d0f'/%3E%3Cpath d='M11 9 L5 16 L11 23' stroke='%237dd3fc' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M21 9 L27 16 L21 23' stroke='%237dd3fc' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='16' r='2.2' fill='%237dd3fc'/%3E%3C/svg%3E">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="nativegate blog">
+  <meta property="og:description" content="Notes on turning legacy C++ and Fortran into live APIs: generated bindings, isolated builds, and numeric drift detection.">
+  <meta property="og:url" content="https://ravikings.github.io/nativegate/blog/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="nativegate blog">
+  <meta name="twitter:description" content="Notes on turning legacy C++ and Fortran into live APIs.">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    "name": "nativegate blog",
+    "url": "https://ravikings.github.io/nativegate/blog/",
+    "publisher": {
+      "@type": "Organization",
+      "name": "nativegate",
+      "url": "https://ravikings.github.io/nativegate/",
+      "sameAs": ["https://github.com/ravikings/nativegate"]
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <header class="topnav">
+    <div class="container">
+      <a class="wordmark" href="../index.html#top">
+        <svg class="logomark" width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="var(--bg-inset)" stroke="var(--line-strong)"/>
+          <path d="M11 9 L5 16 L11 23" stroke="var(--accent)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 9 L27 16 L21 23" stroke="var(--accent)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="2.2" fill="var(--accent)"/>
+        </svg>
+        nativegate
+      </a>
+      <nav>
+        <a href="../index.html#how-it-works">How it works</a>
+        <a href="../index.html#features">Features</a>
+        <a href="../index.html#agents">Agentic tools</a>
+        <a href="index.html" aria-current="page">Blog</a>
+        <a href="http://localhost:8000" class="cta">Open console &rarr;</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="block" style="border-top:none; padding-top: var(--space-16);">
+      <div class="container">
+        <div class="section-label">Blog</div>
+        <h1 class="section-heading" style="font-size: 2.4rem; max-width: 32ch;">How nativegate actually works, in public.</h1>
+        <p class="section-sub">
+          Write-ups on the generator, the container a generated service runs in,
+          and what it takes to expose forty-year-old Fortran as a REST + MCP
+          service without rewriting it. Also mirrored as
+          <a href="https://github.com/ravikings/nativegate/discussions">GitHub Discussions</a>
+          on the repo, if that's where you'd rather read or reply.
+        </p>
+
+        <div class="post-list">
+
+          <a class="post-card" href="isolated-native-builds.html">
+            <span class="post-date"><time datetime="2026-08-20">2026-08-20</time></span>
+            <h2>Non-root by default: the container a generated service actually runs in</h2>
+            <p>Every service <code>ngate</code> generates runs as an unprivileged, explicit UID —
+            matching the Kubernetes manifests it also generates, not fighting them.</p>
+            <span class="post-readmore">Read the post &rarr;</span>
+          </a>
+
+          <a class="post-card" href="generated-bindings-vs-handwritten.html">
+            <span class="post-date"><time datetime="2026-08-13">2026-08-13</time></span>
+            <h2>Generated bindings, not hand-written ones</h2>
+            <p>pybind11 and f2py already solve the C++/Fortran-to-Python boundary. The
+            hard part was never writing bindings by hand — it's everything around them.</p>
+            <span class="post-readmore">Read the post &rarr;</span>
+          </a>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>nativegate is open source. Every action is a plain <code>ngate</code> CLI command.</span>
+      <nav>
+        <a href="http://localhost:8000">Console</a>
+        <a href="https://github.com/ravikings/nativegate">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+
+</body>
+</html>

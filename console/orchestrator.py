@@ -52,6 +52,18 @@ HEALTH_TIMEOUT_SECONDS = 5.0
 _failure_counts: dict[str, int] = {}
 
 
+def forget(slug: str) -> None:
+    """Drop `slug`'s tracked failure count.
+
+    Call this when a project is deleted — otherwise `_failure_counts` grows
+    unbounded over the life of the process (one entry per slug that ever
+    failed a health check, never removed), and a *new* project that reuses a
+    deleted slug would inherit the old one's stale count instead of starting
+    clean.
+    """
+    _failure_counts.pop(slug, None)
+
+
 async def _check_health(port: int) -> bool:
     """Async health check — must not block the event loop.
 

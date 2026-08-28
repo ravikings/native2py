@@ -450,6 +450,90 @@ footer nav { display: flex; gap: 1.25rem; }
 footer nav a { color: var(--text-dim); }
 footer nav a:hover { color: var(--text); }
 
+/* ---------- blog ---------- */
+
+.post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.post-card {
+  display: block;
+  background: var(--bg-raised);
+  padding: var(--space-8);
+  color: var(--text);
+}
+.post-card:hover { text-decoration: none; background: var(--bg-inset); }
+
+.post-date {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  margin-bottom: var(--space-2);
+}
+
+.post-card h2 {
+  font-size: 1.3rem;
+  margin-bottom: var(--space-2);
+}
+
+.post-card p {
+  color: var(--text-dim);
+  max-width: 68ch;
+  margin: 0 0 var(--space-3);
+}
+
+.post-readmore {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--accent);
+}
+
+.post-container { max-width: 760px; }
+
+.post-back {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: var(--space-6);
+}
+.post-back:hover { color: var(--accent); }
+
+.post-title {
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-3);
+}
+
+.post-byline {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-faint);
+  margin-bottom: var(--space-12);
+}
+
+.post-body { color: var(--text); font-size: 1.02rem; }
+.post-body p { margin: 0 0 var(--space-6); color: var(--text-dim); max-width: 70ch; }
+.post-body h2 { font-size: 1.4rem; margin: var(--space-12) 0 var(--space-4); color: var(--text); }
+.post-body ul { color: var(--text-dim); max-width: 70ch; margin: 0 0 var(--space-6); padding-left: 1.2em; }
+.post-body li { margin-bottom: var(--space-2); }
+.post-body code { background: var(--bg-inset); padding: 0.1em 0.35em; border: 1px solid var(--line); font-size: 0.88em; }
+.post-body a { text-decoration: underline; text-underline-offset: 0.15em; }
+
+.post-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-12);
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--line);
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 860px) {

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Generated bindings, not hand-written ones — nativegate</title>
+  <meta name="description" content="pybind11 and f2py already solve the C++/Fortran-to-Python boundary. nativegate generates the bindings, the CMake wiring, and a golden-record check that catches numeric drift on every rebuild.">
+  <link rel="canonical" href="https://ravikings.github.io/nativegate/blog/generated-bindings-vs-handwritten.html">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d0f'/%3E%3Cpath d='M11 9 L5 16 L11 23' stroke='%237dd3fc' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M21 9 L27 16 L21 23' stroke='%237dd3fc' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='16' r='2.2' fill='%237dd3fc'/%3E%3C/svg%3E">
+
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Generated bindings, not hand-written ones">
+  <meta property="og:description" content="pybind11 and f2py already solve the C++/Fortran-to-Python boundary. The hard part was never writing bindings by hand — it's everything around them.">
+  <meta property="og:url" content="https://ravikings.github.io/nativegate/blog/generated-bindings-vs-handwritten.html">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Generated bindings, not hand-written ones">
+  <meta name="twitter:description" content="pybind11 and f2py already solve the C++/Fortran-to-Python boundary.">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Generated bindings, not hand-written ones",
+    "datePublished": "2026-08-13",
+    "dateModified": "2026-08-13",
+    "author": { "@type": "Organization", "name": "nativegate", "url": "https://github.com/ravikings/nativegate" },
+    "publisher": { "@type": "Organization", "name": "nativegate", "url": "https://ravikings.github.io/nativegate/" },
+    "mainEntityOfPage": "https://ravikings.github.io/nativegate/blog/generated-bindings-vs-handwritten.html",
+    "description": "pybind11 and f2py already solve the C++/Fortran-to-Python boundary. nativegate generates the bindings, the CMake wiring, and a golden-record check that catches numeric drift on every rebuild."
+  }
+  </script>
+</head>
+<body>
+
+  <header class="topnav">
+    <div class="container">
+      <a class="wordmark" href="../index.html#top">
+        <svg class="logomark" width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="var(--bg-inset)" stroke="var(--line-strong)"/>
+          <path d="M11 9 L5 16 L11 23" stroke="var(--accent)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 9 L27 16 L21 23" stroke="var(--accent)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="2.2" fill="var(--accent)"/>
+        </svg>
+        nativegate
+      </a>
+      <nav>
+        <a href="../index.html#how-it-works">How it works</a>
+        <a href="../index.html#features">Features</a>
+        <a href="../index.html#agents">Agentic tools</a>
+        <a href="index.html">Blog</a>
+        <a href="http://localhost:8000" class="cta">Open console &rarr;</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <article class="post block" style="border-top:none; padding-top: var(--space-16);">
+      <div class="container post-container">
+        <a class="post-back" href="index.html">&larr; Blog</a>
+        <div class="section-label">Engineering notes</div>
+        <h1 class="post-title">Generated bindings, not hand-written ones</h1>
+        <p class="post-byline">Published <time datetime="2026-08-13">2026-08-13</time> · nativegate project</p>
+
+        <div class="post-body">
+          <p>
+            The C++/Fortran-to-Python boundary isn't an unsolved problem.
+            <a href="https://pybind11.readthedocs.io/" rel="noopener">pybind11</a>
+            has covered C++ well for a decade; <code>f2py</code>, shipped with NumPy,
+            has covered Fortran for longer than that. If your library is small — a
+            handful of functions, one header — writing those bindings by hand is a
+            reasonable afternoon.
+          </p>
+          <p>
+            It stops being reasonable around function thirty. Petroleum reservoir
+            libraries, seismic processors, finite-element solvers — the kind of code
+            nativegate targets — routinely expose hundreds of routines across a dozen
+            files, half of them Fortran 77 fixed-form decks with implicit typing. At
+            that scale the binding code itself becomes the maintenance burden: every
+            signature change upstream is a signature change in three more places
+            (the binding, the type stub, the test), and nothing catches the drift
+            until an import fails at runtime with a symbol-not-found error nobody
+            can immediately place.
+          </p>
+
+          <h2>What actually gets generated</h2>
+          <p>
+            <code>ngate generate &lt;name&gt;</code> reads the parsed IR — function
+            signatures, parameter types, class methods for C++; subroutine and
+            function declarations for Fortran — and produces:
+          </p>
+          <ul>
+            <li>pybind11 <code>.cpp</code> binding source for C++, or an <code>f2py</code>
+              signature file for Fortran</li>
+            <li>the CMake (or <code>meson</code>-via-<code>f2py</code>) build wiring to
+              compile it</li>
+            <li>an installable Python package layout, with type stubs</li>
+            <li>a FastAPI service exposing each bound routine as a REST endpoint,
+              plus the same routines as MCP tools</li>
+            <li>a generated test suite, including a numeric regression check —
+              more on that below</li>
+          </ul>
+          <p>
+            None of this is novel technology. It's the same pybind11/f2py output an
+            experienced engineer would hand-write — just produced from what the
+            source already declares, consistently, in the time it takes to run a
+            command instead of the time it takes to review someone's manual
+            transcription of forty function signatures.
+          </p>
+
+          <h2>The part hand-written bindings usually skip</h2>
+          <p>
+            A binding that compiles isn't proof it's correct — it's proof the types
+            line up. Whether <code>WELLIB</code> still returns the pressure it
+            returned before someone touched the flash-calculation routine three
+            files away is a different question, and it's the one that actually
+            matters when the "legacy" code has been quietly correct in production
+            for twenty years.
+          </p>
+          <p>
+            That's what <code>ngate golden record</code> is for. It runs the
+            <em>built</em> package — not the source, the compiled extension — against
+            representative inputs and pins the outputs it returns, at
+            <code>rtol=1e-9</code> by default. <code>ngate golden verify</code> replays
+            that same call against a fresh build and fails if any value moved outside
+            tolerance. The same check ships in the generated
+            <code>tests/test_golden.py</code>, so it runs automatically under
+            <code>ngate test</code> and in CI — no separate regression suite to
+            maintain by hand.
+          </p>
+
+          <div class="terminal" style="margin: var(--space-8) 0;">
+            <div class="terminal-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span class="title">pinning a baseline</span>
+            </div>
+            <div class="terminal-body"><span class="prompt">$ </span><span class="cmd">ngate build pvt && pip install services/pvt/dist/*.whl</span>
+<span class="prompt">$ </span><span class="cmd">ngate golden record pvt</span>
+<span class="out">  writes services/pvt/golden.json</span>
+
+<span class="prompt">$ </span><span class="cmd"># later, after a regeneration or a source change:</span>
+<span class="prompt">$ </span><span class="cmd">ngate golden verify pvt</span>
+<span class="out">  replays the baseline against the installed package — </span><span class="ok">fails on drift</span></div>
+          </div>
+
+          <p>
+            That's the actual value proposition: not that generating bindings is
+            faster than writing them (it is, but that's not the interesting part) —
+            it's that the interface, the packaging, and a numeric regression check
+            all come from one command instead of three separate things someone has
+            to remember to keep in sync.
+          </p>
+
+          <p>
+            Source: <a href="https://github.com/ravikings/nativegate/blob/main/tools/nativegate/docs/cli-reference.md#ngate-golden-recordverifyshow-name" rel="noopener">nativegate CLI reference, <code>ngate golden</code></a>.
+          </p>
+        </div>
+
+        <div class="post-cta">
+          <a class="btn primary" href="../index.html#cli">See the full CLI &rarr;</a>
+          <a class="btn" href="https://github.com/ravikings/nativegate">View on GitHub</a>
+        </div>
+      </div>
+    </article>
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>nativegate is open source. Every action is a plain <code>ngate</code> CLI command.</span>
+      <nav>
+        <a href="http://localhost:8000">Console</a>
+        <a href="https://github.com/ravikings/nativegate">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+
+</body>
+</html>
