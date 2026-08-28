@@ -115,6 +115,18 @@ def generate_pack(
         private_key=evidence.load_or_create_key(),
     )
 
+    # Verify before handing it over. The recipient runs the standalone
+    # verifier with no way to ask us what went wrong, so a pack that fails
+    # there is worse than one that was never issued — it reads as tampering.
+    # This is the only place that can tell "we signed it wrong" apart from
+    # "someone changed it", and it costs one signature check.
+    ok, detail = evidence.verify_pack(pack)
+    if not ok:
+        raise HTTPException(
+            status_code=500,
+            detail=f"refusing to issue a pack that does not verify: {detail}",
+        )
+
     # Indented for the human who opens it in an editor; the signature covers
     # the canonical form (console/evidence.py), never this rendering, so
     # pretty-printing here cannot break verification.

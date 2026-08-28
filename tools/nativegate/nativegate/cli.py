@@ -619,7 +619,24 @@ def golden_record(name: str, rtol: float, atol: float, force: bool) -> None:
     # `1.0` with a real reservoir pressure should not lose it on the next
     # re-record.
     entries, skips = golden_lib.run(module, package, existing)
-    document = golden_lib.build_document(module, entries, skips, rtol=rtol, atol=atol)
+
+    # Hash the sources this service actually compiles. Left to its default,
+    # `provenance()` records an empty `sources` map, which the generated
+    # golden test rejects — so a service built once could never build again,
+    # and the remedy the failure names (re-record) produced the same empty
+    # map. Resolved through oracle's helper so `oracle_check` recomputes an
+    # identical set rather than reporting a phantom source change.
+    sources_dir, source_names = oracle_lib.compiled_sources(service_dir, module.language)
+    document = golden_lib.build_document(
+        module,
+        entries,
+        skips,
+        rtol=rtol,
+        atol=atol,
+        environment=golden_lib.provenance(
+            sources=[sources_dir / n for n in source_names]
+        ),
+    )
 
     if existing is not None and not force:
         results = {key: entry["result"] for key, entry in entries.items()}

@@ -452,6 +452,18 @@ def _cpp_sources(service_dir: Path) -> tuple[Path, list]:
     return directory, names
 
 
+def compiled_sources(service_dir: Path, language: str) -> tuple[Path, list]:
+    """The sources the extension actually compiles, for either language.
+
+    Public because `golden record` must hash exactly the same files this
+    module hashes when it verifies. Recording a digest set the check then
+    computes differently would report every source as "now (absent)" and
+    refuse the historical diff — a provenance field is only worth having if
+    both sides derive it identically, so they share one resolver.
+    """
+    return _cpp_sources(service_dir) if language == "cpp" else _fortran_sources(service_dir)
+
+
 def _cpp_facade_source_name(module: ModuleIR, source_names: list) -> str:
     """The implementation `.cpp` the IR's header (`module.source_file`)
     pairs with — same-stem, the pairing `quickstart` itself uses
@@ -634,7 +646,7 @@ def oracle_check(
     work_root = Path(tempfile.mkdtemp(prefix=f"n2p_oracle_{re.sub(r'[^A-Za-z0-9_]', '_', name)}_"))
     try:
         if is_cpp:
-            sources_dir, source_names = _cpp_sources(service_dir)
+            sources_dir, source_names = compiled_sources(service_dir, module.language)
             extension_source_name = _cpp_facade_source_name(module, source_names)
             module_name = _sanitize_module_name(name)
 
@@ -667,7 +679,7 @@ def oracle_check(
             )
             package = _package_namespace(module, extension)
         else:
-            sources_dir, source_names = _fortran_sources(service_dir)
+            sources_dir, source_names = compiled_sources(service_dir, module.language)
             extension_source_name = _facade_source_name(module, source_names)
             module_name = _sanitize_module_name(name)
 
@@ -743,7 +755,13 @@ def oracle_check(
                 "section 2.9)"
             ]
 
-        current_provenance = golden.provenance()
+        # Same file set `golden record` hashes (see compiled_sources): the
+        # digests are what make "the code did not change" checkable rather
+        # than asserted, and they only compare if both sides list the same
+        # sources.
+        current_provenance = golden.provenance(
+            sources=[sources_dir / n for n in source_names]
+        )
         current_provenance["compile_flags"] = list(driver_result.extracted_flags)
 
         historical_diff: list = []
