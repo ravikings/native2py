@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 from .. import db, deploy, jobs, ngate, orchestrator, sources
 from ..auth import get_current_user
 from ..csrf import get_csrf_token, set_csrf_cookie, verify_csrf
-from ..timerange import BadTimeBound, normalize_bound
+from ..timerange import BadTimeBound, normalize_bound, to_datetime_local
 
 
 def _owned_project(slug: str, user: sqlite3.Row) -> sqlite3.Row:
@@ -588,6 +588,8 @@ def calls_page(
     build_id: int | None = None,
     since: str | None = None,
     until: str | None = None,
+    kind: str | None = None,
+    q: str | None = None,
     limit: int = CALLS_PAGE_SIZE,
     offset: int = 0,
     user: sqlite3.Row = Depends(get_current_user),
@@ -610,6 +612,10 @@ def calls_page(
 
     since = (since or "").strip() or None
     until = (until or "").strip() or None
+    kind = (kind or "").strip().lower() or None
+    if kind not in (None, "rest", "mcp", "mcp_http"):
+        kind = None
+    q = (q or "").strip() or None
 
     # Same normalization the evidence pack uses, shared rather than
     # duplicated: passing a bare `until` through unextended made this page
@@ -628,7 +634,13 @@ def calls_page(
         since_norm = until_norm = None
         since = until = None
 
-    filters = {"since": since_norm, "until": until_norm, "build_id": build_id}
+    filters = {
+        "since": since_norm,
+        "until": until_norm,
+        "build_id": build_id,
+        "kind": kind,
+        "q": q,
+    }
     calls_rows = db.get_service_calls(project["id"], limit=limit, offset=offset, **filters)
     total = db.count_service_calls(project["id"], **filters)
     # Identical query when nothing is filtered, and this is the page's hot path.
@@ -647,6 +659,13 @@ def calls_page(
             "filter_build_id": build_id,
             "filter_since": since,
             "filter_until": until,
+            # Distinct from filter_since/filter_until: those are the raw
+            # strings (used in the "Filtered ... from X" banner text), these
+            # are reshaped for the datetime-local input's value attribute,
+            # which rejects any form normalize_bound accepts but it can't
+            # render (a bare date, a space separator, trailing seconds).
+            "filter_since_input": to_datetime_local(since),
+            "filter_until_input": to_datetime_local(until),
             # The live SSE rows are matched client-side against these, which
             # must be the *normalized* bounds the server queried with — the
             # raw text would let a live row be accepted where a reload would
@@ -654,7 +673,9 @@ def calls_page(
             "filter_since_norm": since_norm,
             "filter_until_norm": until_norm,
             "filter_error": filter_error,
-            "filter_active": bool(build_id or since or until),
+            "filter_kind": kind,
+            "filter_q": q,
+            "filter_active": bool(build_id or since or until or kind or q),
             "total": total,
             "unfiltered_total": unfiltered_total,
             "limit": limit,

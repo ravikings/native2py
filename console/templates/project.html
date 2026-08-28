@@ -39,7 +39,11 @@
       <table class="table">
         <tr>
           <th>REST</th>
-          <td><a href="{{ service.url }}" target="_blank" rel="noopener">{{ service.url }}</a></td>
+          {# Not a link: the generated FastAPI app has no route at the bare
+             root, only under it (an endpoint path, /docs, /healthz, /mcp) —
+             this is the base URL to build those from, and linking it sent
+             every click here straight into a 404. #}
+          <td><span class="mono">{{ service.url }}</span></td>
         </tr>
         <tr>
           <th>OpenAPI docs</th>

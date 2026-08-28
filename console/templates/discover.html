@@ -5,6 +5,7 @@
 {% block content %}
 {% set step = "discover" %}
 {% include "_breadcrumb.html" %}
+<a class="back-link" href="/p/{{ project.slug }}">&larr; back to project</a>
 <h1>{{ project.name }}</h1>
 <p class="mono" style="color: var(--text-dim);">
   slug: {{ project.slug }} &middot; language: {{ project.language or "unknown" }}

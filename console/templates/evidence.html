@@ -5,6 +5,7 @@
 {% block content %}
 {% set step = "project" %}
 {% include "_breadcrumb.html" %}
+<a class="back-link" href="/p/{{ project.slug }}">&larr; back to project</a>
 <h1>{{ project.name }} — evidence pack</h1>
 
 <p style="color: var(--text-dim); max-width: 62ch;">
@@ -89,6 +90,4 @@ python3 verify_evidence.py evidence-{{ project.slug }}-....json</pre>
     </p>
   </div>
 </div>
-
-<p><a href="/p/{{ project.slug }}">&larr; back to project</a></p>
 {% endblock %}

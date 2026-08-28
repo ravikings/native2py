@@ -102,6 +102,21 @@ __all__ = [
 _LOG = logging.getLogger("nativegate.{service_name}")
 _ACCESS_LOG = logging.getLogger("nativegate.{service_name}.access")
 
+# Characters of a call's input/output payload kept per access-log line.
+# Bounded because these lines go to stdout, get parsed by the console's
+# tailer and stored in SQLite — an uploaded array or a large struct dump
+# would otherwise make one call balloon the log stream and the evidence
+# pack it feeds.
+_PAYLOAD_LIMIT = 2000
+
+
+def _truncate_payload(text: str | None) -> str | None:
+    if not text:
+        return None
+    if len(text) > _PAYLOAD_LIMIT:
+        return text[:_PAYLOAD_LIMIT] + f"... ({{len(text)}} chars total)"
+    return text
+
 
 def _provenance() -> dict:
     """Which project, which build, which image produced this line.
@@ -148,6 +163,8 @@ class _JsonLineFormatter(logging.Formatter):
                 "status": getattr(record, "status", None),
                 "duration_ms": getattr(record, "duration_ms", None),
                 "request_id": getattr(record, "request_id", "-"),
+                "input": getattr(record, "input", None),
+                "output": getattr(record, "output", None),
                 **_provenance(),
             }}
         )
@@ -196,9 +213,18 @@ def log_call(
     status: int | None = None,
     duration_ms: float,
     service_name: str = "{service_name}",
+    input_data: str | None = None,
+    output_data: str | None = None,
 ) -> None:
     """Emit one access-log line. Shared by the REST middleware and the MCP
-    server so both `kind`s go through the same formatter and schema."""
+    server so both `kind`s go through the same formatter and schema.
+
+    `input_data`/`output_data` are already-serialised JSON strings (the
+    caller owns encoding, since a request body and an MCP tool result are
+    shaped nothing alike) and are truncated here so one oversized payload
+    cannot inflate this line past what the console's tailer and SQLite
+    column are meant to hold.
+    """
     _install_json_access_log()
     _ACCESS_LOG.info(
         "%s %s",
@@ -213,6 +239,8 @@ def log_call(
             "status": status,
             "duration_ms": round(duration_ms, 3),
             "request_id": request_id,
+            "input": _truncate_payload(input_data),
+            "output": _truncate_payload(output_data),
         }},
     )
 

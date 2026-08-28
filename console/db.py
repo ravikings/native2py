@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS service_calls (
     request_id TEXT,
     build_id INTEGER,
     image_digest TEXT,
+    input_json TEXT,
+    output_json TEXT,
     received_at TEXT NOT NULL,
     -- The tailer re-reads an overlapping window of `docker logs` after every
     -- restart (see console/calls.py), so the same line is offered more than
@@ -101,8 +103,28 @@ def init_db() -> None:
     try:
         conn.executescript(SCHEMA)
         conn.commit()
+        _migrate_service_calls_columns(conn)
     finally:
         conn.close()
+
+
+def _migrate_service_calls_columns(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after a database already exists.
+
+    ``CREATE TABLE IF NOT EXISTS`` in ``SCHEMA`` only shapes a brand-new
+    database; a database created before ``input_json``/``output_json``
+    existed keeps its old columns forever unless something adds them. SQLite
+    has no ``ADD COLUMN IF NOT EXISTS``, so this checks ``PRAGMA
+    table_info`` first.
+    """
+    existing = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(service_calls)").fetchall()
+    }
+    for column in ("input_json", "output_json"):
+        if column not in existing:
+            conn.execute(f"ALTER TABLE service_calls ADD COLUMN {column} TEXT")
+    conn.commit()
 
 
 MAX_PROJECTS_PER_USER = 5
@@ -279,6 +301,8 @@ _CALL_FIELDS = (
     "request_id",
     "build_id",
     "image_digest",
+    "input",
+    "output",
 )
 
 
@@ -318,8 +342,8 @@ def record_service_call(project_id: int, entry: dict) -> bool:
         cur = conn.execute(
             "INSERT OR IGNORE INTO service_calls "
             "(project_id, ts, kind, method, path, tool, status, duration_ms, "
-            " request_id, build_id, image_digest, received_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+            " request_id, build_id, image_digest, input_json, output_json, received_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
             (project_id, *values),
         )
         conn.commit()
@@ -333,6 +357,8 @@ def _call_filters(
     since: str | None,
     until: str | None,
     build_id: int | None,
+    kind: str | None = None,
+    q: str | None = None,
 ) -> tuple[str, list]:
     where = ["project_id = ?"]
     params: list = [project_id]
@@ -345,6 +371,17 @@ def _call_filters(
     if build_id is not None:
         where.append("build_id = ?")
         params.append(build_id)
+    if kind is not None:
+        where.append("kind = ?")
+        params.append(kind)
+    if q is not None:
+        # Matches whichever of method/tool/path actually applies to a given
+        # row's kind — a REST row has no tool, an MCP row has no method or
+        # path, so one LIKE against all three is the "method / tool" filter
+        # the calls page shows as a single column.
+        where.append("(method LIKE ? OR tool LIKE ? OR path LIKE ?)")
+        needle = f"%{q}%"
+        params.extend([needle, needle, needle])
     return " AND ".join(where), params
 
 
@@ -354,6 +391,8 @@ def get_service_calls(
     since: str | None = None,
     until: str | None = None,
     build_id: int | None = None,
+    kind: str | None = None,
+    q: str | None = None,
     limit: int = 200,
     offset: int = 0,
 ) -> list[dict]:
@@ -361,12 +400,12 @@ def get_service_calls(
 
     ``since``/``until`` are ISO8601 strings compared against ``ts``.
     """
-    clause, params = _call_filters(project_id, since, until, build_id)
+    clause, params = _call_filters(project_id, since, until, build_id, kind, q)
     conn = get_db()
     try:
         rows = conn.execute(
             "SELECT id, ts, kind, method, path, tool, status, duration_ms, "
-            "request_id, build_id, image_digest, received_at "
+            "request_id, build_id, image_digest, input_json, output_json, received_at "
             f"FROM service_calls WHERE {clause} "
             "ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?",
             (*params, limit, offset),
@@ -382,8 +421,10 @@ def count_service_calls(
     since: str | None = None,
     until: str | None = None,
     build_id: int | None = None,
+    kind: str | None = None,
+    q: str | None = None,
 ) -> int:
-    clause, params = _call_filters(project_id, since, until, build_id)
+    clause, params = _call_filters(project_id, since, until, build_id, kind, q)
     conn = get_db()
     try:
         row = conn.execute(

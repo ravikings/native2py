@@ -120,6 +120,7 @@ re-enters the same endpoint function in the same process, so MCP does NOT open
 a second, unsynchronised path into COMMON-block state.
 """
 import asyncio
+import json
 import time
 import uuid
 
@@ -157,6 +158,15 @@ class _AccessLogMiddleware(Middleware):
         # uncaught and leaves this value standing, so no future failure mode
         # can escape by simply not having a clause here.
         status = 500
+        # Best-effort, never load-bearing: the call itself must not fail
+        # because its arguments happened to contain something json.dumps
+        # rejects (bytes, a custom object). default=str degrades those to
+        # their repr instead of raising.
+        try:
+            input_data = json.dumps(context.message.arguments, default=str)
+        except Exception:  # noqa: BLE001 - logging must never break the call
+            input_data = None
+        output_data = None
         try:
             result = await call_next(context)
         except asyncio.CancelledError:
@@ -173,6 +183,16 @@ class _AccessLogMiddleware(Middleware):
             # `is_error` (mapped to CallToolResult.isError on the wire) instead
             # of raising, and that path never touches an except clause.
             status = 500 if getattr(result, "is_error", False) else 200
+            try:
+                content = getattr(result, "structured_content", None)
+                if content is None:
+                    content = [
+                        getattr(block, "text", str(block))
+                        for block in getattr(result, "content", [])
+                    ]
+                output_data = json.dumps(content, default=str)
+            except Exception:  # noqa: BLE001 - logging must never break the call
+                output_data = None
             return result
         finally:
             log_call(
@@ -187,6 +207,8 @@ class _AccessLogMiddleware(Middleware):
                 status=status,
                 duration_ms=(time.perf_counter() - started) * 1000.0,
                 service_name="{name}",
+                input_data=input_data,
+                output_data=output_data,
             )
 
 

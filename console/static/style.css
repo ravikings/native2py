@@ -441,6 +441,20 @@ hr { border: none; border-top: 1px solid var(--line); margin: 1.5rem 0; }
   font-weight: 600;
 }
 
+/* ---------- back link (above a sub-page's h1) ---------- */
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  margin-bottom: 0.4rem;
+}
+
+.back-link:hover { color: var(--text); }
+
 .breadcrumb .disabled {
   color: var(--text-faint);
 }

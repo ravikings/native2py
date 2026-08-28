@@ -62,3 +62,24 @@ def normalize_bound(raw: str | None, end_of_day: bool) -> str | None:
     # history itself) because one date field has a typo in it is a worse
     # answer than showing the page with the filter flagged.
     raise BadTimeBound(f"Not a date: {value!r}. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM.")
+
+
+def to_datetime_local(raw: str | None) -> str:
+    """Best-effort ``YYYY-MM-DDTHH:MM`` for an ``<input type="datetime-local">``.
+
+    ``normalize_bound`` accepts more shapes than that control can render — a
+    bare date, a space instead of "T", trailing seconds/microseconds. Feeding
+    any of those back as the input's ``value`` makes the browser reject it
+    and render the field blank, which then looks unfilled and silently drops
+    the bound the moment the form is resubmitted. An unconvertible value
+    returns "" for the same reason: an empty field is honest, a stale one
+    that resubmits as nothing is not.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return ""
+    if _DATE.match(value):
+        return f"{value}T00:00"
+    if _DATETIME.match(value):
+        return value.replace(" ", "T")[:16]
+    return ""

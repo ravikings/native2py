@@ -2,11 +2,13 @@
 
 {% block title %}{{ project.name }} — calls — nativegate{% endblock %}
 
-{%- macro qs(build_id, since, until, limit, offset) -%}
+{%- macro qs(build_id, since, until, kind, q, limit, offset) -%}
 {%- set parts = [] -%}
 {%- if build_id %}{% set _ = parts.append("build_id=" ~ build_id) %}{% endif -%}
 {%- if since %}{% set _ = parts.append("since=" ~ since|urlencode) %}{% endif -%}
 {%- if until %}{% set _ = parts.append("until=" ~ until|urlencode) %}{% endif -%}
+{%- if kind %}{% set _ = parts.append("kind=" ~ kind|urlencode) %}{% endif -%}
+{%- if q %}{% set _ = parts.append("q=" ~ q|urlencode) %}{% endif -%}
 {%- set _ = parts.append("limit=" ~ limit) -%}
 {%- if offset %}{% set _ = parts.append("offset=" ~ offset) %}{% endif -%}
 {#- A bare "&": autoescaping turns it into "&amp;" on output, which is the
@@ -20,6 +22,7 @@
 {% block content %}
 {% set step = "project" %}
 {% include "_breadcrumb.html" %}
+<a class="back-link" href="/p/{{ project.slug }}">&larr; back to project</a>
 <h1>{{ project.name }} — calls</h1>
 
 <div class="panel">
@@ -45,12 +48,25 @@
         </select>
       </label>
       <label>
+        Kind
+        <select name="kind">
+          <option value="" {% if not filter_kind %}selected{% endif %}>REST + MCP</option>
+          <option value="mcp" {% if filter_kind == "mcp" %}selected{% endif %}>MCP tool calls</option>
+          <option value="rest" {% if filter_kind == "rest" %}selected{% endif %}>REST</option>
+          <option value="mcp_http" {% if filter_kind == "mcp_http" %}selected{% endif %}>MCP transport</option>
+        </select>
+      </label>
+      <label>
+        Method / tool contains
+        <input type="text" name="q" value="{{ filter_q or '' }}" placeholder="e.g. circle_area or POST">
+      </label>
+      <label>
         From
-        <input type="text" name="since" value="{{ filter_since or '' }}" placeholder="2026-08-27T09:00">
+        <input type="datetime-local" name="since" value="{{ filter_since_input or '' }}">
       </label>
       <label>
         To
-        <input type="text" name="until" value="{{ filter_until or '' }}" placeholder="2026-08-27T18:00">
+        <input type="datetime-local" name="until" value="{{ filter_until_input or '' }}">
       </label>
       <button type="submit">Apply</button>
       {% if filter_active %}
@@ -66,7 +82,7 @@
 
     {% if filter_active %}
       <p class="stream-note" style="display: block;">
-        Filtered{% if filter_build_id %} to build <a href="/p/{{ project.slug }}/build/{{ filter_build_id }}">#{{ filter_build_id }}</a>{% endif %}{% if filter_since %} from {{ filter_since }}{% endif %}{% if filter_until %} to {{ filter_until }}{% endif %}
+        Filtered{% if filter_build_id %} to build <a href="/p/{{ project.slug }}/build/{{ filter_build_id }}">#{{ filter_build_id }}</a>{% endif %}{% if filter_kind %} to {{ filter_kind|upper }}{% endif %}{% if filter_q %} matching &ldquo;{{ filter_q }}&rdquo;{% endif %}{% if filter_since %} from {{ filter_since }}{% endif %}{% if filter_until %} to {{ filter_until }}{% endif %}
         &mdash; {{ total }} of {{ unfiltered_total }} recorded call(s).
       </p>
     {% endif %}
@@ -88,6 +104,7 @@
        a tbody to append into — a running service with no calls yet is exactly
        when the first row arrives over SSE. The script reveals it on append. #}
     {% if total > 0 or service.running %}
+      <div style="overflow-x: auto;">
       <table class="table" id="calls-table"{% if total == 0 %} style="display: none;"{% endif %}>
         <thead>
           <tr>
@@ -97,6 +114,8 @@
             <th>Path / tool</th>
             <th>Status</th>
             <th>Duration (ms)</th>
+            <th>Input</th>
+            <th>Output</th>
             <th>Build</th>
             <th>Image</th>
           </tr>
@@ -117,6 +136,8 @@
                 {% endif %}
               </td>
               <td>{{ "%.1f"|format(c.duration_ms) if c.duration_ms is not none else "" }}</td>
+              <td class="mono" style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ c.input_json or '' }}">{{ (c.input_json or '')[:80] }}</td>
+              <td class="mono" style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ c.output_json or '' }}">{{ (c.output_json or '')[:80] }}</td>
               <td>
                 {% if c.build_id is not none %}
                   <a href="/p/{{ project.slug }}/build/{{ c.build_id }}">#{{ c.build_id }}</a>
@@ -135,16 +156,17 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
 
       {% set shown_to = offset + calls|length %}
       {% if total > calls|length %}
         <p class="stream-note" style="display: block;">
           Showing {{ offset + 1 }}&ndash;{{ shown_to }} of {{ total }} matching call(s).
           {% if offset > 0 %}
-            <a href="/p/{{ project.slug }}/calls{{ qs(filter_build_id, filter_since, filter_until, limit,[offset - limit, 0]|max) }}">&larr; newer</a>
+            <a href="/p/{{ project.slug }}/calls{{ qs(filter_build_id, filter_since, filter_until, filter_kind, filter_q, limit,[offset - limit, 0]|max) }}">&larr; newer</a>
           {% endif %}
           {% if shown_to < total %}
-            <a href="/p/{{ project.slug }}/calls{{ qs(filter_build_id, filter_since, filter_until, limit,offset + limit) }}">older &rarr;</a>
+            <a href="/p/{{ project.slug }}/calls{{ qs(filter_build_id, filter_since, filter_until, filter_kind, filter_q, limit,offset + limit) }}">older &rarr;</a>
           {% endif %}
         </p>
       {% endif %}
@@ -156,8 +178,6 @@
     {% endif %}
   </div>
 </div>
-
-<p><a href="/p/{{ project.slug }}">&larr; back to project</a></p>
 {% endblock %}
 
 {% block scripts %}
@@ -179,6 +199,8 @@
     // would drop, so the live pane and the page would disagree.
     since: {{ (filter_since_norm or "")|tojson }},
     until: {{ (filter_until_norm or "")|tojson }},
+    kind: {{ (filter_kind or "")|tojson }},
+    q: {{ (filter_q or "")|tojson }},
     offset: {{ offset }}
   };
 
@@ -201,6 +223,12 @@
     var ts = entry.ts || "";
     if (filter.since && ts < filter.since) return false;
     if (filter.until && ts > filter.until) return false;
+    if (filter.kind && entry.kind !== filter.kind) return false;
+    if (filter.q) {
+      var needle = filter.q.toLowerCase();
+      var haystack = ((entry.method || "") + " " + (entry.tool || "") + " " + (entry.path || "")).toLowerCase();
+      if (haystack.indexOf(needle) === -1) return false;
+    }
     return true;
   }
 
@@ -256,6 +284,19 @@
         td.textContent = val;
       }
       tr.appendChild(td);
+    });
+
+    ["input", "output"].forEach(function (field) {
+      var payloadTd = document.createElement("td");
+      payloadTd.className = "mono";
+      payloadTd.style.maxWidth = "220px";
+      payloadTd.style.overflow = "hidden";
+      payloadTd.style.textOverflow = "ellipsis";
+      payloadTd.style.whiteSpace = "nowrap";
+      var full = entry[field] || "";
+      payloadTd.title = full;
+      payloadTd.textContent = full.slice(0, 80);
+      tr.appendChild(payloadTd);
     });
 
     var buildTd = document.createElement("td");

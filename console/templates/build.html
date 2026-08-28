@@ -5,6 +5,7 @@
 {% block content %}
 {% set step = "build" %}
 {% include "_breadcrumb.html" %}
+<a class="back-link" href="/p/{{ project.slug }}">&larr; back to project</a>
 <h1>{{ project.name }} — build #{{ build_id }}</h1>
 
 <div class="panel">
@@ -50,7 +51,6 @@
 </div>
 
 <div class="action-row">
-  <a class="btn" href="/p/{{ project.slug }}">&larr; Back to project</a>
   <a class="btn" href="/p/{{ project.slug }}/discover">Discover / change functions</a>
 </div>
 {% endblock %}
