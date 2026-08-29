@@ -40,6 +40,25 @@ services:
       # - GITHUB_CLIENT_ID=your-client-id
       # - GITHUB_CLIENT_SECRET=your-client-secret
       # - NGATE_SECRET_KEY=some-long-random-string
+    # Polled by `docker compose up --wait`, which is how CI decides the stack
+    # actually came up (.github/workflows/ci.yml, the `compose` job) rather
+    # than merely that `docker run` returned 0. Uses python, not curl/wget:
+    # the python:3.11-slim base ships neither, and a healthcheck whose
+    # command is missing reports "unhealthy" forever, which looks exactly
+    # like a broken app.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status == 200 else 1)"
+      # start_period covers first-boot schema creation and the startup
+      # reconcile pass in console/orchestrator.py; retries inside it do not
+      # count as failures.
+      start_period: 40s
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   # Optional reverse proxy / TLS termination for a public deployment

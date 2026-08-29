@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 
 from console import orchestrator
 from console.auth import auth_router, get_current_user
-from console.db import init_db
+from console.db import get_db, init_db
 from console.routes.evidence import router as evidence_router
 from console.routes.pages import router as pages_router
 from console.routes.stream import router as stream_router
@@ -66,6 +66,30 @@ app.include_router(pages_router)
 app.include_router(evidence_router)
 app.include_router(stream_router)
 app.include_router(auth_router)
+
+
+@app.get("/healthz")
+def healthz():
+    """Unauthenticated readiness probe.
+
+    Deliberately outside the auth dependency: this is what the compose
+    healthcheck and CI's ``docker compose up --wait`` poll, and both run
+    before any login exists. It must therefore never disclose anything
+    tenant-scoped — no project slugs, no counts, no user data.
+
+    It is a *readiness* probe, not a liveness one: it touches SQLite so a
+    container that came up with an unwritable ``console-data`` volume
+    reports unhealthy instead of serving 500s on the first real request.
+    That failure mode is the whole reason this returns more than a
+    hardcoded ``{"status": "ok"}`` — a probe that cannot fail proves
+    nothing, and every one of these bugs is a volume-permission bug.
+    """
+    conn = get_db()
+    try:
+        conn.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    return {"status": "ok", "auth": NGATE_AUTH}
 
 
 @app.get("/")

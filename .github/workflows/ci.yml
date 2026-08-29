@@ -135,3 +135,124 @@ jobs:
       - name: Audit the pinned dependency set
         working-directory: tools/nativegate
         run: pip-audit --strict --requirement constraints.txt --disable-pip
+
+  # `docker compose up` is the primary artifact of this project: it is the
+  # local dev path, the demo, and the shape the self-hosted/air-gapped
+  # install has to take (docs/design-air-gapped-deployment.md §4). A compose
+  # file nobody exercises rots in about a month and you find out during a
+  # demo — so this job runs the real thing on every push and fails the build
+  # when it stops coming up.
+  #
+  # Linux only: the macOS runners have no usable Docker daemon.
+  compose:
+    name: docker compose up
+    runs-on: ubuntu-latest
+    # Job-level, not per-step: every `docker compose` subcommand re-parses
+    # docker-compose.yml, so a step that omits this resolves a different
+    # port mapping than the one that started the container.
+    env:
+      CONSOLE_PORT: "8123"
+    steps:
+      - uses: actions/checkout@v4
+
+      # 8000 is a popular port on hosted runners and the console's own
+      # deployed project containers claim ports of their own. Pin an
+      # unlikely one rather than debugging "port is already allocated" in
+      # a log six months from now.
+      - name: Build the console image
+        run: docker compose build
+
+      # `--wait` is the assertion, not the setup: it polls the healthcheck
+      # in docker-compose.yml and exits non-zero if the container never
+      # reports healthy. Without it this step would pass whenever the
+      # daemon accepted the container, which is not the same as the app
+      # serving requests — a stack that boots and then crashes on the
+      # startup reconcile pass would go green.
+      - name: Bring the stack up and wait for healthy
+        run: docker compose up -d --wait --wait-timeout 180
+
+      # The compose file spends a dozen lines explaining why this port must
+      # stay on loopback: the console mounts the host Docker socket, so with
+      # NGATE_AUTH=none a non-loopback binding hands anyone who can reach
+      # the port root-equivalent code execution on the host. That is a
+      # security invariant, which makes it a test, not a comment.
+      - name: Assert the port binding is loopback-only
+        run: |
+          binding=$(docker compose port console 8000)
+          echo "console 8000 -> $binding"
+          case "$binding" in
+            127.0.0.1:*) echo "OK: bound to loopback" ;;
+            *) echo "FAIL: console is bound to $binding, expected 127.0.0.1:*" >&2; exit 1 ;;
+          esac
+
+      # Endpoint smoke test. /healthz alone is too weak — it is the one
+      # route with no templates, no auth dependency and no router, so it can
+      # return 200 while every real page 500s on a missing template or an
+      # import error in a router module.
+      - name: Smoke-test the console routes
+        run: |
+          base="http://127.0.0.1:${CONSOLE_PORT}"
+          fail=0
+          for path in /healthz / /projects /api/services; do
+            code=$(curl -sS -o /tmp/body -w '%{http_code}' "$base$path" || echo 000)
+            if [ "$code" = "200" ]; then
+              printf 'OK   %-16s %s\n' "$path" "$code"
+            else
+              printf 'FAIL %-16s %s\n' "$path" "$code" >&2
+              head -c 500 /tmp/body >&2; echo >&2
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+      # Guards the exact regression the console/Dockerfile comments describe:
+      # a hand-picked package list went stale and every C++/Fortran build in
+      # the console failed at runtime, while the image still built cleanly.
+      # The image building is not evidence that a build inside it can run.
+      - name: Verify the build toolchain inside the image
+        run: |
+          docker compose exec -T console sh -c '
+            fail=0
+            for tool in ngate nativegate docker gfortran cmake g++; do
+              path=$(command -v "$tool" 2>/dev/null) || { echo "FAIL: $tool missing" >&2; fail=1; continue; }
+              printf "OK   %-12s %s\n" "$tool" "$path"
+            done
+            python -c "import pybind11, numpy" || { echo "FAIL: pybind11/numpy not importable" >&2; fail=1; }
+            exit "$fail"
+          '
+
+      # Startup can log a traceback and still leave a container that answers
+      # /healthz — the orchestrator reconcile pass runs in the lifespan hook
+      # and a failure there is swallowed by the task, not by the process.
+      - name: Check startup logs for tracebacks
+        run: |
+          set -o pipefail
+          # Capture to a file and check it is non-empty. `logs=$(...)` in a
+          # step that swallows the exit status turns "could not read logs"
+          # into "found no tracebacks" — a check that passes when it cannot
+          # run is worse than no check.
+          docker compose logs --no-color console > /tmp/console.log
+          if [ ! -s /tmp/console.log ]; then
+            echo "FAIL: console produced no logs at all" >&2
+            exit 1
+          fi
+          logs=$(cat /tmp/console.log)
+          if printf '%s' "$logs" | grep -q "Traceback (most recent call last)"; then
+            echo "FAIL: traceback in console startup logs" >&2
+            printf '%s\n' "$logs" >&2
+            exit 1
+          fi
+          echo "OK: no tracebacks in startup logs"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --no-color || true
+
+      # -v drops the console-data volume: a run that inherits a previous
+      # run's SQLite file is not testing first-boot schema creation, which
+      # is where the volume-permission failures actually live.
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans
