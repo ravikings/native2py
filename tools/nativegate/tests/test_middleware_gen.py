@@ -5,6 +5,7 @@ requests. Asserting on the generated text would prove the strings are present,
 which is not the same claim as "an unauthenticated caller is refused".
 """
 
+import gzip
 import importlib
 import json
 import os
@@ -12,7 +13,8 @@ import signal
 import sys
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 
 from nativegate.config import ApiConfig, ConfigError, ServiceConfig
@@ -321,6 +323,254 @@ def test_a_rejected_request_is_still_logged(
     # Correlatable with the rejection the caller saw — a 401 with no id is an
     # unanswerable support ticket.
     assert row["request_id"] == response.headers["X-Request-ID"]
+
+
+def test_a_rest_call_records_its_request_and_response_payloads(load_middleware, capsys):
+    # The console's calls page shows an Input and an Output column for every
+    # row. They were populated for MCP tool calls only, which left them blank
+    # for REST — the overwhelming majority of a service's traffic, and the
+    # part an evidence pack is most often asked to account for.
+    module = load_middleware("none")
+    client = _app_with(module)
+
+    response = client.post("/compute", json={"radius": 2.5})
+    assert response.status_code == 200
+
+    row = _rows(capsys)[-1]
+    assert json.loads(row["input"]) == {"radius": 2.5}
+    assert json.loads(row["output"]) == {"result": 42}
+
+
+def test_reading_the_body_to_log_it_does_not_starve_the_endpoint(load_middleware):
+    # Reading the body in middleware must not starve the endpoint. Starlette
+    # is what guarantees that — BaseHTTPMiddleware hands dispatch a
+    # `_CachedRequest` whose `wrapped_receive` replays a body `.body()` has
+    # already cached — so this passes without any help from the capture
+    # layer. It pins that contract rather than proving anything this layer
+    # does: if an upgrade ever drops the caching, every POST to a generated
+    # service breaks, and this is what says so.
+    module = load_middleware("none")
+    app = FastAPI()
+
+    @app.post("/echo")
+    def echo(payload: dict):
+        return {"seen": payload}
+
+    module.install_middleware(app, "demo")
+    client = TestClient(app)
+
+    response = client.post("/echo", json={"radius": 2.5})
+    assert response.status_code == 200
+    assert response.json() == {"seen": {"radius": 2.5}}
+
+
+def test_a_non_json_body_is_not_captured(load_middleware, capsys):
+    # A native-compute service's non-JSON payloads are binary (packed arrays,
+    # files). Their bytes are noise in a log line and their size is what the
+    # capture limit exists to keep out of memory.
+    module = load_middleware("none")
+    app = FastAPI()
+
+    @app.post("/raw")
+    async def raw(request: Request):
+        body = await request.body()
+        return Response(content=body, media_type="application/octet-stream")
+
+    module.install_middleware(app, "demo")
+    client = TestClient(app)
+
+    response = client.post(
+        "/raw", content=b"\x00\x01\x02", headers={"Content-Type": "application/octet-stream"}
+    )
+    assert response.status_code == 200
+    assert response.content == b"\x00\x01\x02"
+
+    row = _rows(capsys)[-1]
+    assert row["input"] is None
+    assert row["output"] is None
+
+
+def test_a_streaming_response_to_a_body_carrying_request_still_works(load_middleware):
+    # Regression test, and the sharpest one here. Reading the request body
+    # for the log and then re-injecting a replay onto `request._receive` --
+    # the obvious way to "hand the body back" -- broke this exact shape:
+    # once the body is consumed, Starlette's `wrapped_receive` awaits that
+    # same channel expecting only `http.disconnect`, and a replay that keeps
+    # answering `http.request` makes it raise "Unexpected message received".
+    # Every POST whose handler streamed its response died that way, while
+    # the plain JSON POSTs the other tests cover kept passing.
+    module = load_middleware("none")
+    app = FastAPI()
+
+    @app.post("/stream")
+    async def stream(request: Request):
+        await request.body()
+
+        async def gen():
+            yield b"chunk-1"
+            yield b"chunk-2"
+
+        return StreamingResponse(gen(), media_type="text/plain")
+
+    module.install_middleware(app, "demo")
+    client = TestClient(app)
+
+    response = client.post("/stream", json={"radius": 2.5})
+    assert response.status_code == 200
+    assert response.content == b"chunk-1chunk-2"
+
+
+def test_a_streaming_json_response_is_not_drained_by_the_capture(
+    load_middleware, capsys
+):
+    # Draining a response to log it is only safe once the response is whole.
+    # A handler streaming newline-delimited JSON has a JSON content type but
+    # is still being produced, so draining it would hold every chunk until
+    # the generator ended -- and never return at all for a generator that
+    # does not. The Content-Length header is the discriminator: Starlette
+    # sets it on a materialised body and cannot set it on a streaming one.
+    #
+    # Asserted as "the capture declined", not "the client got the first
+    # chunk early": TestClient buffers the whole ASGI response before
+    # returning, so any timing assertion here would be measuring the test
+    # client rather than the middleware.
+    module = load_middleware("none")
+    app = FastAPI()
+
+    @app.get("/ndjson")
+    def ndjson():
+        async def gen():
+            for i in range(3):
+                yield b'{"i": %d}\n' % i
+
+        return StreamingResponse(gen(), media_type="application/json")
+
+    module.install_middleware(app, "demo")
+    client = TestClient(app)
+
+    response = client.get("/ndjson")
+    assert response.status_code == 200
+    assert response.content == b'{"i": 0}\n{"i": 1}\n{"i": 2}\n'
+
+    row = _rows(capsys)[-1]
+    assert row["output"] is None
+
+
+def test_a_boundary_containing_json_does_not_open_the_gate(load_middleware, capsys):
+    # A multipart boundary is chosen by the client. A substring test for
+    # "json" would let a binary upload name its way past the content-type
+    # gate and into the log as mojibake -- the exact case the gate exists to
+    # exclude, selectable by whoever is uploading.
+    module = load_middleware("none")
+    app = FastAPI()
+
+    @app.post("/upload")
+    async def upload(request: Request):
+        await request.body()
+        return {"ok": True}
+
+    module.install_middleware(app, "demo")
+    client = TestClient(app)
+
+    response = client.post(
+        "/upload",
+        content=b"\x89PNG\r\n\x1a\n\x00\x00binary",
+        headers={
+            "Content-Type": "multipart/form-data; boundary=----WebKitFormBoundaryjson1a2b"
+        },
+    )
+    assert response.status_code == 200
+
+    row = _rows(capsys)[-1]
+    assert row["input"] is None
+
+
+def test_a_compressed_json_body_is_not_logged_as_mojibake(load_middleware, capsys):
+    # Still JSON by content type, but its bytes are compressed. Decoding
+    # them as text produces an unreadable string that looks like a real
+    # captured payload — a corrupted audit record is worse than an absent
+    # one, because nothing about it looks wrong.
+    module = load_middleware("none")
+    app = FastAPI()
+
+    @app.post("/gz")
+    async def gz(request: Request):
+        await request.body()
+        return {"ok": True}
+
+    module.install_middleware(app, "demo")
+    client = TestClient(app)
+
+    response = client.post(
+        "/gz",
+        content=gzip.compress(b'{"radius": 2.5}'),
+        headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
+    )
+    assert response.status_code == 200
+
+    row = _rows(capsys)[-1]
+    assert row["input"] is None
+
+
+def test_a_body_that_fails_mid_stream_is_not_silently_truncated(load_middleware):
+    # Pins a property, and is deliberately honest that it does not currently
+    # discriminate: it passes with and without the capture layer's re-raise,
+    # because an exception from the body iterator comes from the downstream
+    # app, which BaseHTTPMiddleware runs in a task group that re-raises on
+    # unwind either way.
+    #
+    # It earns its place by pinning the outcome that matters — a mid-stream
+    # failure reaches the caller as an error, never as a short body under a
+    # 200, which from a numerical service is a wrong answer rather than a
+    # failed one. If draining for the access log ever does start swallowing
+    # that, this is what notices.
+    module = load_middleware("none")
+    app = FastAPI()
+
+    @app.get("/half")
+    def half():
+        async def body():
+            yield b'{"partial": '
+            raise RuntimeError("stream died")
+
+        return StreamingResponse(body(), media_type="application/json")
+
+    module.install_middleware(app, "demo")
+    client = TestClient(app)
+
+    with pytest.raises(RuntimeError, match="stream died"):
+        client.get("/half")
+
+
+def test_an_oversized_payload_is_truncated_rather_than_logged_whole(
+    load_middleware, capsys
+):
+    # These lines go to stdout, get parsed by the console's tailer and stored
+    # in SQLite. One uploaded array must not be able to balloon the log
+    # stream, or the evidence pack drawn from it.
+    module = load_middleware("none")
+    client = _app_with(module)
+
+    client.post("/compute", json={"blob": "z" * 50_000})
+
+    row = _rows(capsys)[-1]
+    assert len(row["input"]) < 3000
+    assert row["input"].endswith("chars total)")
+
+
+def test_an_mcp_transport_request_records_no_payload(load_middleware, capsys):
+    # Not an oversight. The MCP mount speaks a streaming transport that must
+    # not be buffered, and the tool call underneath it logs its own decoded
+    # arguments and result — capturing here too would store the same payload
+    # twice under two kinds.
+    client = _app_with_mcp_stub(load_middleware("none"))
+
+    client.post("/mcp/", json={"jsonrpc": "2.0", "method": "tools/list", "id": 1})
+
+    row = [r for r in _rows(capsys) if r["path"] == "/mcp/"][-1]
+    assert row["kind"] == "mcp_http"
+    assert row["input"] is None
+    assert row["output"] is None
 
 
 def test_an_mcp_transport_request_is_logged_under_its_own_kind(load_middleware, capsys):

@@ -118,6 +118,63 @@ def _truncate_payload(text: str | None) -> str | None:
     return text
 
 
+# Bytes of an HTTP body carried forward from the capture into the log line.
+# Larger than _PAYLOAD_LIMIT so a body that will be truncated anyway is still
+# recognisably the right body.
+#
+# Honest about what this does NOT bound: a captured body is whole in memory
+# before it gets here, because reading a request body and draining a response
+# iterator are both all-or-nothing. What keeps that from being unbounded is
+# the content-type gate (binary payloads — the large ones for a native
+# service — are never read at all) and, for requests, the separate
+# `_limit_body` layer. This limit only stops a large *JSON* body from being
+# copied on into a log line no reader can use past _PAYLOAD_LIMIT anyway.
+_CAPTURE_LIMIT = 8192
+
+
+def _is_capturable(content_type: str, content_encoding: str = "") -> bool:
+    """Whether a body with these headers is worth recording.
+
+    JSON only. Everything else a generated service returns is binary (packed
+    arrays, files): its bytes are noise in a log line, and skipping it is
+    what keeps the large payloads out of memory. Notably this also excludes
+    `text/event-stream`, which must not be buffered at all — see the
+    streaming note in `_access_log`.
+
+    The media type is parsed rather than substring-matched. `"json" in
+    content_type` would admit `multipart/form-data;
+    boundary=----WebKitFormBoundaryjson1a2b` — a boundary is client-chosen,
+    so a binary upload could put itself in the log as mojibake purely by
+    naming itself that, which is precisely what this gate exists to stop.
+    `+json` is honoured so structured error bodies
+    (`application/problem+json`) are captured like any other JSON.
+
+    `content_encoding` rejects a compressed body (a GZipMiddleware installed
+    inside this one, a handler setting it by hand). Its bytes are still JSON
+    by content type, but decoding them as text yields mojibake — a corrupted
+    audit record is worse than an absent one, because nothing about it looks
+    wrong.
+    """
+    encoding = content_encoding.strip().lower()
+    if encoding and encoding != "identity":
+        return False
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    return media_type == "application/json" or media_type.endswith("+json")
+
+
+def _capture_body(raw: bytes) -> str | None:
+    """The loggable string form of a body already known to be capturable.
+
+    `errors="replace"` rather than a try/except: _CAPTURE_LIMIT cuts at a
+    byte offset, which lands mid-character often enough on non-ASCII input
+    that treating it as a decode failure would silently drop whole payloads
+    for the tail of one character.
+    """
+    if not raw:
+        return None
+    return raw[:_CAPTURE_LIMIT].decode("utf-8", errors="replace")
+
+
 def _provenance() -> dict:
     """Which project, which build, which image produced this line.
 
@@ -443,7 +500,121 @@ def install_middleware(app, service_name: str = "{service_name}") -> None:
     @app.middleware("http")
     async def _access_log(request: Request, call_next):
         started = time.perf_counter()
+        is_mcp = _is_mcp_transport_path(request.url.path)
+
+        # Payloads are recorded for REST only. The MCP mount speaks a
+        # streaming transport, and the tool call underneath it already logs
+        # its own decoded arguments and result (mcp_server.py) — capturing
+        # here as well would both risk buffering a live stream and store the
+        # same payload twice under two `kind`s.
+        input_data = None
+        if not is_mcp and _is_capturable(
+            request.headers.get("content-type", ""),
+            request.headers.get("content-encoding", ""),
+        ):
+            # Reading the body here does NOT starve the endpoint, and this
+            # layer must not try to help it along. BaseHTTPMiddleware hands
+            # dispatch a `_CachedRequest`, whose `wrapped_receive` replays a
+            # body that `.body()` already cached — downstream sees the whole
+            # request without anything from us.
+            #
+            # Re-injecting a replay onto `request._receive` (the obvious
+            # move, and wrong) additionally poisons the disconnect path: once
+            # the body is consumed, `wrapped_receive` awaits that same
+            # channel expecting only `http.disconnect`, and a replay that
+            # keeps answering `http.request` makes it raise "Unexpected
+            # message received". That crashed every body-carrying request
+            # whose handler returned a streaming response.
+            try:
+                raw = await request.body()
+            except Exception:  # noqa: BLE001 - logging must never break the call
+                raw = b""
+            input_data = _capture_body(raw)
+
         response = await call_next(request)
+
+        # Draining `body_iterator` is why this is gated on content type
+        # rather than done unconditionally: for a genuinely streaming
+        # response the loop below would not end until the stream did, turning
+        # an incremental response into a buffered one. JSON responses are
+        # already fully materialised by the time they reach here, so
+        # collecting and replaying their chunks changes nothing the client
+        # can observe.
+        output_data = None
+        body_iterator = getattr(response, "body_iterator", None)
+        if (
+            not is_mcp
+            and body_iterator is not None
+            # A Content-Length is the difference between a response that is
+            # already whole and one still being produced. Starlette sets it
+            # on a materialised body (JSONResponse and friends) and cannot
+            # set it on a StreamingResponse, whose length is unknown until
+            # the generator ends. Without this, a handler streaming
+            # newline-delimited JSON would be drained to completion before
+            # the client saw its first byte — and never released at all if
+            # the generator does not terminate.
+            #
+            # The header is taken at its word. A handler that returns a
+            # StreamingResponse and sets Content-Length on it by hand would
+            # still be drained — but that response is already malformed on
+            # its own terms (it declares a length Starlette will not
+            # enforce), and guessing around a handler that lies about its
+            # own body is not something this layer can do better than the
+            # framework.
+            and response.headers.get("content-length") is not None
+            and _is_capturable(
+                response.headers.get("content-type", ""),
+                response.headers.get("content-encoding", ""),
+            )
+        ):
+            # Chunks accumulate outside the try and the replacement iterator
+            # is installed unconditionally, so no path can leave the original
+            # (now partly drained) iterator on the response.
+            #
+            # Belt and braces, not a live bug: an exception here can only
+            # come from the downstream app, which BaseHTTPMiddleware runs in
+            # a task group that re-raises it on unwind regardless of what
+            # this clause does — measured, and the client sees the same error
+            # either way. It is written this way so the guarantee survives a
+            # future where that is no longer true, and so re-raising after
+            # the collected chunks keeps the failure the response's own
+            # rather than this layer's.
+            chunks: list = []
+            failure: BaseException | None = None
+            try:
+                async for chunk in body_iterator:
+                    chunks.append(chunk)
+            except Exception as exc:  # noqa: BLE001 - re-raised below, not swallowed
+                failure = exc
+
+            async def _replay_response(_chunks: list = chunks, _failure=failure):
+                for chunk in _chunks:
+                    yield chunk
+                if _failure is not None:
+                    raise _failure
+
+            response.body_iterator = _replay_response()
+            if failure is None:
+                # Not every chunk is a body chunk. `body_stream()` yields a
+                # raw ASGI message dict for `http.response.pathsend` (a
+                # FileResponse on a server advertising that extension) —
+                # Starlette's own `stream_response` has an `isinstance(chunk,
+                # dict)` branch for it, and `bytes(a_dict)` would raise
+                # TypeError here, failing a download that had already
+                # succeeded. Non-bytes chunks are passed through to the
+                # client by the replay above and simply left out of the log.
+                #
+                # str is handled for the same defensive reason, though it is
+                # currently unreachable: the downstream response encodes at
+                # the ASGI send boundary before this layer sees it (measured).
+                output_data = _capture_body(
+                    b"".join(
+                        c.encode("utf-8") if isinstance(c, str) else c
+                        for c in chunks
+                        if isinstance(c, (bytes, bytearray, memoryview, str))
+                    )
+                )
+
         duration_ms = (time.perf_counter() - started) * 1000.0
         # MCP transport requests are logged under their own kind rather than
         # skipped. mcp_server.py's FastMCP hook only fires for actual tool
@@ -462,6 +633,8 @@ def install_middleware(app, service_name: str = "{service_name}") -> None:
             status=response.status_code,
             duration_ms=duration_ms,
             service_name=service_name,
+            input_data=input_data,
+            output_data=output_data,
         )
         response.headers["X-Response-Time-Ms"] = f"{{duration_ms:.1f}}"
         return response
