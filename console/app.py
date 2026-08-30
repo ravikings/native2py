@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from console import orchestrator
+from console import deploy, orchestrator
 from console.auth import auth_router, get_current_user
 from console.db import get_db, init_db
 from console.routes.evidence import router as evidence_router
@@ -33,8 +33,22 @@ BASE_DIR = Path(__file__).resolve().parent
 NGATE_AUTH = os.environ.get("NGATE_AUTH", "none")
 
 
+# The deploy backend, resolved once at startup. Validating here rather than
+# per-request is deliberate: an unknown NGATE_DEPLOY_BACKEND is a
+# configuration error, and the two ways to surface one are not equal. Raising
+# inside /healthz would turn every probe into a 500, and an orchestrator that
+# restarts on failed health checks (compose's `restart: unless-stopped`,
+# Cloud Run, k8s) would loop-restart the container forever with no statement
+# of what is wrong. Raising in lifespan kills the container once, with the
+# message naming the bad value, and leaves /healthz a pure readiness signal
+# that configuration cannot break.
+DEPLOY_BACKEND = "unresolved"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global DEPLOY_BACKEND
+    DEPLOY_BACKEND = deploy.backend_name()
     init_db()
     # Bring container reality back in line with the DB (host reboot, a
     # container removed out from under the console, etc.) before serving
@@ -89,7 +103,12 @@ def healthz():
         conn.execute("SELECT 1 FROM users LIMIT 1").fetchone()
     finally:
         conn.close()
-    return {"status": "ok", "auth": NGATE_AUTH}
+    # DEPLOY_BACKEND is read, not recomputed: this route must not be able to
+    # fail on configuration. A bad NGATE_DEPLOY_BACKEND already stopped the
+    # container in lifespan, so anything answering here has a valid one, and
+    # reporting it makes "which backend is this deployment actually using"
+    # answerable without shell access.
+    return {"status": "ok", "auth": NGATE_AUTH, "backend": DEPLOY_BACKEND}
 
 
 @app.get("/")

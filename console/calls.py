@@ -1,6 +1,6 @@
 """Live tailing of a deployed service's REST/MCP call logs.
 
-Every deployed container (see console/deploy.py, ``_container_name``) writes
+Every deployed service (see console/backends/, ``log_follow_command``) writes
 one JSON object per line to stdout for each REST/MCP call, via the
 ``nativegate.<service>.access`` logger — see the parallel work adding that
 logging to generated services. This module shells out to
@@ -29,7 +29,7 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 
 from . import db
-from .deploy import _container_name
+from .deploy import log_follow_command
 
 logger = logging.getLogger("console.calls")
 
@@ -180,13 +180,13 @@ def tail_calls(
     legitimately bound its backfill, which is why the two cases pass
     different values instead of sharing one flag combination.
     """
-    name = _container_name(slug)
-    cmd = ["docker", "logs", "-f"]
-    if tail is not None:
-        cmd += ["--tail", tail]
-    if since is not None:
-        cmd += ["--since", since]
-    cmd.append(name)
+    # The argv comes from the active deploy backend rather than being built
+    # here: where the service runs decides how its logs are read, and this
+    # module only cares that the command follows and emits one line per log
+    # line. NOTE: the Cloud Run backend ignores `since`, so the resume path
+    # below is only lossless on Docker today — see
+    # console/backends/cloudrun.py's log_follow_command.
+    cmd = log_follow_command(slug, tail=tail, since=since)
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,

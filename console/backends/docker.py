@@ -1,0 +1,245 @@
+"""Deploy backend that runs services as containers on the host Docker daemon.
+
+This is the code that used to be console/deploy.py's body, moved behind
+DeployBackend unchanged in behaviour — same container names, same limits,
+same port range, same error strings. Anything that looks like a design
+decision in here was one already; see the interface in base.py for what is
+newly required of it.
+
+Assumes the build pipeline already ran ``ngate docker <slug> --build`` (see
+console/jobs.py) and produced a local image tagged ``<slug>:latest`` — that
+is the tag ``ngate docker --build`` actually produces
+(tools/nativegate/docs/cli-reference.md, "ngate docker <name>"), not a
+console-invented ``ngate-svc-<slug>`` prefix. This module only starts,
+stops, and inspects the resulting container — it does not build images.
+
+Shells out to the ``docker`` CLI via ``subprocess`` rather than depending on
+the ``docker`` Python SDK, since the CLI is always available wherever the
+Docker daemon is reachable and this keeps the console free of an extra
+dependency.
+
+Limits per docs/console-design.md §5: 512 MB memory, 1 CPU core. The service
+container runs on the default bridge network (unlike the build container,
+which runs with ``--network none`` — that is handled elsewhere).
+"""
+
+from __future__ import annotations
+
+import socket
+import subprocess
+
+from console.backends.base import DeployBackend
+
+DOCKER_TIMEOUT = 30
+PORT_RANGE_START = 20000
+PORT_RANGE_END = 29999
+
+
+def _container_name(slug: str) -> str:
+    return f"ngate-svc-{slug}"
+
+
+def _image_name(slug: str) -> str:
+    return f"{slug}:latest"
+
+
+def _run_docker(args: list[str], timeout: int = DOCKER_TIMEOUT) -> subprocess.CompletedProcess:
+    """Run a docker CLI command, returning the completed process.
+
+    Callers are responsible for interpreting the return code; this helper
+    only handles invocation and captures stdout/stderr as text.
+    """
+    return subprocess.run(
+        ["docker", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def allocate_port() -> int:
+    """Find a free TCP port in the 20000-29999 range.
+
+    Tries binding to candidate ports in the range until one succeeds, then
+    releases it immediately and returns it. This accepts a small TOCTOU
+    race (something else could grab the port before ``docker run`` binds
+    it) which is acceptable for an MVP.
+    """
+    for port in range(PORT_RANGE_START, PORT_RANGE_END + 1):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            continue
+        else:
+            return port
+        finally:
+            sock.close()
+    raise RuntimeError(
+        f"No free TCP port available in range {PORT_RANGE_START}-{PORT_RANGE_END}"
+    )
+
+
+def _image_exists(slug: str) -> bool:
+    proc = _run_docker(["image", "inspect", _image_name(slug)])
+    return proc.returncode == 0
+
+
+def _image_digest(slug: str) -> str | None:
+    """Return the image's config ID (``sha256:...``), or None if unknown.
+
+    ``.Id``, not ``RepoDigests``: these images are built locally and never
+    pushed, so RepoDigests is empty. Never raises — a missing digest costs
+    provenance detail, and must not stop a deploy.
+    """
+    proc = _run_docker(["image", "inspect", "--format", "{{.Id}}", _image_name(slug)])
+    if proc.returncode != 0:
+        return None
+    digest = proc.stdout.strip()
+    return digest or None
+
+
+def _remove_existing_container(slug: str) -> None:
+    """Stop and remove any existing container for this slug, ignoring absence."""
+    name = _container_name(slug)
+    _run_docker(["stop", name])
+    proc = _run_docker(["rm", "-f", name])
+    if proc.returncode != 0 and "No such container" not in proc.stderr:
+        raise RuntimeError(f"Failed to remove existing container {name!r}: {proc.stderr.strip()}")
+
+
+class DockerBackend(DeployBackend):
+    """Runs each project as a container on the daemon this console can reach."""
+
+    name = "docker"
+
+    def start_service(self, slug: str, build_id: int | None = None) -> dict:
+        image = _image_name(slug)
+        if not _image_exists(slug):
+            raise RuntimeError(
+                f"Docker image {image!r} not found locally. Build it first by running "
+                f"'ngate docker {slug} --build' (--build is required to actually build "
+                f"the image; without it, 'ngate docker' only writes the Dockerfile)."
+            )
+
+        _remove_existing_container(slug)
+
+        port = allocate_port()
+        name = _container_name(slug)
+
+        # Unknown values get no -e flag at all rather than an empty one: the
+        # service treats an unset var as null, and an empty string would have to
+        # be special-cased there to mean the same thing.
+        provenance = ["-e", f"NATIVEGATE_PROJECT={slug}"]
+        if build_id is not None:
+            provenance += ["-e", f"NATIVEGATE_BUILD_ID={build_id}"]
+        digest = _image_digest(slug)
+        if digest is not None:
+            provenance += ["-e", f"NATIVEGATE_IMAGE_DIGEST={digest}"]
+
+        proc = _run_docker(
+            [
+                "run",
+                "-d",
+                "--name",
+                name,
+                "-m",
+                "512m",
+                "--cpus",
+                "1",
+                "--restart",
+                "unless-stopped",
+                "-p",
+                f"{port}:8000",
+                *provenance,
+                image,
+            ]
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to start container {name!r}: {proc.stderr.strip()}")
+
+        return {
+            "container_id": proc.stdout.strip(),
+            "port": port,
+            "url": f"http://localhost:{port}/",
+            "mcp_url": f"http://localhost:{port}/mcp/",
+        }
+
+    def stop_service(self, slug: str) -> None:
+        name = _container_name(slug)
+
+        proc = _run_docker(["stop", name])
+        if proc.returncode != 0 and "No such container" not in proc.stderr:
+            raise RuntimeError(f"Failed to stop container {name!r}: {proc.stderr.strip()}")
+
+        proc = _run_docker(["rm", name])
+        if proc.returncode != 0 and "No such container" not in proc.stderr:
+            raise RuntimeError(f"Failed to remove container {name!r}: {proc.stderr.strip()}")
+
+    def remove_image(self, slug: str) -> None:
+        """Delete the built image for ``slug``, if it exists.
+
+        Called on project deletion so repeated upload/build/delete cycles during
+        testing don't silently accumulate images forever — ``start_service``
+        tags every build's image ``<slug>:latest``, and nothing else in this
+        console removes an old one. No-op (no error) if the image doesn't exist
+        or is still in use by a container the caller hasn't stopped yet (that
+        case surfaces as a docker error in the log rather than raising, since a
+        left-behind image is a disk-space nuisance, not a correctness problem).
+        """
+        try:
+            _run_docker(["rmi", "-f", _image_name(slug)])
+        except (OSError, subprocess.SubprocessError):
+            # No docker binary, or the daemon hung past the timeout. Not
+            # fatal, same as a non-zero exit: deletion should still proceed
+            # even if docker refuses to drop the image (another tag or
+            # container may still reference it). A left-behind image is a
+            # disk-space nuisance, not a correctness problem.
+            return
+
+    def service_status(self, slug: str) -> dict:
+        name = _container_name(slug)
+        not_running = {"running": False, "port": None, "url": None, "mcp_url": None}
+
+        proc = _run_docker(
+            [
+                "inspect",
+                "--format",
+                "{{.State.Running}}|{{(index (index .NetworkSettings.Ports \"8000/tcp\") 0).HostPort}}",
+                name,
+            ]
+        )
+        if proc.returncode != 0:
+            return not_running
+
+        output = proc.stdout.strip()
+        if "|" not in output:
+            return not_running
+
+        running_str, port_str = output.split("|", 1)
+        running = running_str.strip() == "true"
+        if not running or not port_str.strip():
+            return {"running": running, "port": None, "url": None, "mcp_url": None}
+
+        port = int(port_str.strip())
+        return {
+            "running": True,
+            "port": port,
+            "url": f"http://localhost:{port}/",
+            "mcp_url": f"http://localhost:{port}/mcp/",
+        }
+
+    def log_follow_command(
+        self,
+        slug: str,
+        tail: str | None = None,
+        since: str | None = None,
+    ) -> list[str]:
+        cmd = ["docker", "logs", "-f"]
+        if tail is not None:
+            cmd += ["--tail", tail]
+        if since is not None:
+            cmd += ["--since", since]
+        cmd.append(_container_name(slug))
+        return cmd
